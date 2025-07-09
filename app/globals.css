@@ -135,3 +135,40 @@
 .swal2-container * {
   pointer-events: auto !important;
 }
+
+@keyframes typing {
+  from { width: 0 }
+  to { width: 100% }
+}
+@keyframes blink-caret {
+  0%, 100% { border-color: transparent }
+  50% { border-color: #2563eb; }
+}
+.animate-typing {
+  width: 38ch;
+  animation: typing 2.5s steps(18, end), blink-caret .75s step-end infinite;
+  white-space: nowrap;
+  overflow: hidden;
+  border-right: 2px solid #2563eb;
+}
+.animate-fadeInUp {
+  animation: fadeInUp 0.8s cubic-bezier(.39,.575,.565,1) both;
+}
+@keyframes fadeInUp {
+  0% { opacity: 0; transform: translateY(40px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeInLeft {
+  animation: fadeInLeft 0.8s cubic-bezier(.39,.575,.565,1) both;
+}
+@keyframes fadeInLeft {
+  0% { opacity: 0; transform: translateX(-40px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+.animate-slideIn {
+  animation: slideIn 0.8s cubic-bezier(.39,.575,.565,1) both;
+}
+@keyframes slideIn {
+  0% { opacity: 0; transform: translateY(40px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
