@@ -21,61 +21,85 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import { connectMQTT } from "@/lib/mqttClient";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function OverviewDashboard() {
-  // Modular/I2C
-  const [modularDevices, setModularDevices] = useState<any[]>([]);
-  // Modbus/SNMP
   const [modbusDevices, setModbusDevices] = useState<any[]>([]);
+  const [batteryChargerData, setBatteryChargerData] = useState<any>(null);
+  const [statusSummary, setStatusSummary] = useState<Record<string, string>>({});
+  const [deviceTopicData, setDeviceTopicData] = useState<Record<string, any>>({});
 
   useEffect(() => {
     const client = connectMQTT();
     if (!client) return;
-    // Modular/I2C
-    const handleI2C = (topic: string, message: Buffer) => {
+
+    const dynamicTopics = new Set<string>();
+
+    const handleMessage = (topic: string, message: Buffer) => {
       try {
         const payload = JSON.parse(message.toString());
-        console.log('[MQTT][I2C] payload:', payload); // DEBUG LOG
-        if (Array.isArray(payload)) setModularDevices(payload);
+
+        if (topic === "response_device_modbus") {
+          if (Array.isArray(payload)) {
+            setModbusDevices(payload);
+
+            payload.forEach((d) => {
+              const t = d.profile?.topic;
+              if (t && !dynamicTopics.has(t)) {
+                client.subscribe(t);
+                dynamicTopics.add(t);
+              }
+            });
+          }
+        } else if (topic === "batteryCharger") {
+          setBatteryChargerData(payload);
+        } else if (topic === "modbus_snmp_summ") {
+          const raw = payload["MODBUS SNMP STATUS"];
+          if (typeof raw === "string") {
+            const match = raw.match(/^(.*?)\s+(.+?)$/);
+            if (match) {
+              const deviceName = match[1];
+              const status = match[2];
+              setStatusSummary((prev) => ({ ...prev, [deviceName]: status }));
+            }
+          }
+        } else {
+          setDeviceTopicData((prev) => ({ ...prev, [topic]: payload }));
+        }
       } catch (e) {
-        console.error('[MQTT][I2C] Invalid JSON', e);
+        console.error("[MQTT] Invalid JSON:", e);
       }
     };
-    // Modbus/SNMP
-    const handleModbus = (topic: string, message: Buffer) => {
-      try {
-        const payload = JSON.parse(message.toString());
-        if (Array.isArray(payload)) setModbusDevices(payload);
-      } catch {}
-    };
-    client.on("message", handleI2C);
-    client.on("message", handleModbus);
-    client.subscribe("response_device_i2c");
-    client.subscribe("response_device_modbus");
-    client.publish("command_device_i2c", JSON.stringify({ command: "getDataI2C" }));
+
+    client.on("message", handleMessage);
+    const baseTopics = ["response_device_modbus", "batteryCharger", "modbus_snmp_summ"];
+    baseTopics.forEach((t) => client.subscribe(t));
+
     client.publish("command_device_modbus", JSON.stringify({ command: "getDataModbus" }));
+
     return () => {
-      client.unsubscribe("response_device_i2c");
-      client.unsubscribe("response_device_modbus");
-      client.off("message", handleI2C);
-      client.off("message", handleModbus);
+      baseTopics.forEach((t) => client.unsubscribe(t));
+      dynamicTopics.forEach((t) => client.unsubscribe(t));
+      client.off("message", handleMessage);
     };
   }, []);
 
-  // Helper: count online/offline
   const countStatus = (devices: any[]) => {
-    let online = 0, offline = 0;
+    let online = 0,
+      offline = 0;
     devices.forEach((d) => {
-      if (d.status === "online" || d.status === true) online++;
+      const status = statusSummary[d.profile?.name];
+      if (status?.includes("success")) online++;
       else offline++;
     });
     return { online, offline };
   };
-  const modularStats = countStatus(modularDevices);
-  const modbusStats = countStatus(modbusDevices);
-  const totalDevices = modularDevices.length + modbusDevices.length;
-  const totalOnline = modularStats.online + modbusStats.online;
-  const totalOffline = modularStats.offline + modbusStats.offline;
+
+  const stats = countStatus(modbusDevices);
+  const totalDevices = modbusDevices.length;
+  const totalOnline = stats.online;
+  const totalOffline = stats.offline;
+  const allDevicesOnline = totalDevices === totalOnline && totalDevices > 0;
 
   return (
     <SidebarInset>
@@ -87,14 +111,14 @@ export default function OverviewDashboard() {
           <h1 className="text-lg font-semibold">Node App</h1>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <RealtimeClock />
+          {!useIsMobile() && <RealtimeClock />}
           <Refresh />
         </div>
       </header>
 
       <div className="flex flex-1 flex-col gap-4 p-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Card>
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Devices</CardTitle>
               <Cpu className="h-5 w-5 text-muted-foreground" />
@@ -105,18 +129,25 @@ export default function OverviewDashboard() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Online</CardTitle>
               <Wifi className="h-5 w-5 text-green-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{totalOnline}</div>
-              <p className="text-xs text-muted-foreground">Devices currently online</p>
+              <div className="flex justify-between items-center mt-1">
+                <p className="text-xs text-muted-foreground">Devices currently online</p>
+                {allDevicesOnline && (
+                  <div className="px-2 py-0.5 rounded-full bg-green-100 text-green-600 text-xs font-medium border border-green-300">
+                    All devices are online
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Offline</CardTitle>
               <WifiOff className="h-5 w-5 text-red-500" />
@@ -128,96 +159,87 @@ export default function OverviewDashboard() {
           </Card>
         </div>
 
-        <div className="mt-4">
-          <Tabs defaultValue="modbus" className="w-full">
-            <div className="flex items-center justify-between">
-              <TabsList>
-                <TabsTrigger value="modbus">Device Modbus/SNMP</TabsTrigger>
-                <TabsTrigger value="modular">Device Modular</TabsTrigger>
-                <TabsTrigger value="control">Control</TabsTrigger>
-              </TabsList>
-              <MqttStatus />
-            </div>
-            <TabsContent value="modbus" className="mt-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Device Modbus/SNMP</CardTitle>
-                  <CardDescription>List of Modbus/SNMP devices</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {modbusDevices.length === 0 ? (
-                    <div>No Modbus/SNMP devices found.</div>
-                  ) : (
-                    <ul className="space-y-2">
-                      {modbusDevices.map((d, i) => (
-                        <li key={d.profile?.name || i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b pb-2 last:border-b-0 last:pb-0">
+        <Tabs defaultValue="modbus" className="w-full mt-4">
+          <div className="flex items-center justify-between">
+            <TabsList>
+              <TabsTrigger value="modbus">Device Modbus/SNMP</TabsTrigger>
+              <TabsTrigger value="battery">Battery Charger</TabsTrigger>
+            </TabsList>
+            <MqttStatus />
+          </div>
+
+          <TabsContent value="modbus" className="mt-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Device Modbus/SNMP</CardTitle>
+                <CardDescription>List of Modbus/SNMP devices</CardDescription>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                {modbusDevices.length === 0 ? (
+                  <div>No Modbus/SNMP devices found.</div>
+                ) : (
+                  <ul className="space-y-4">
+                    {modbusDevices.map((d, i) => (
+                      <li key={d.profile?.name || i} className="border-b pb-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <span className="font-semibold">{d.profile?.name}</span> <span className="ml-2 text-xs text-muted-foreground">({d.profile?.part_number})</span>
-                            <div className="text-xs">{d.protocol_setting?.protocol === "Modbus RTU" ? `Address: ${d.protocol_setting?.address}` : `IP: ${d.protocol_setting?.ip_address}`}</div>
+                            <span className="font-semibold">{d.profile?.name}</span>
+                            <span className="ml-2 text-xs text-muted-foreground">({d.profile?.part_number})</span>
+                            <div className="text-xs">
+                              {d.protocol_setting?.protocol === "Modbus RTU"
+                                ? `Address: ${d.protocol_setting?.address}`
+                                : `IP: ${d.protocol_setting?.ip_address}`}
+                            </div>
                             <div className="text-xs">Topic: {d.profile?.topic}</div>
                           </div>
-                          <span className={`text-xs font-semibold ml-2 ${d.status === "online" || d.status === true ? "text-green-600" : "text-red-600"}`}>{d.status === "online" || d.status === true ? "Online" : "Offline"}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="modular" className="mt-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Device Modular</CardTitle>
-                  <CardDescription>List of Modular/I2C devices</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {modularDevices.length === 0 ? (
-                    <div>No Modular devices found.</div>
-                  ) : (
-                    <ul className="space-y-2">
-                      {modularDevices.map((d, i) => (
-                        <li key={d.profile?.name || i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b pb-2 last:border-b-0 last:pb-0">
-                          <div>
-                            <span className="font-semibold">{d.profile?.name}</span> <span className="ml-2 text-xs text-muted-foreground">({d.profile?.part_number})</span>
-                            <div className="text-xs">Address: {d.protocol_setting?.address}</div>
-                            <div className="text-xs">Topic: {d.profile?.topic}</div>
-                          </div>
-                          <span className={`text-xs font-semibold ml-2 ${d.status === "online" || d.status === true ? "text-green-600" : "text-red-600"}`}>{d.status === "online" || d.status === true ? "Online" : "Offline"}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="control" className="mt-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Control Modular Devices</CardTitle>
-                  <CardDescription>Control panel for modular devices</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {modularDevices.length === 0 ? (
-                    <div>No Modular devices found.</div>
-                  ) : (
-                    <ul className="space-y-2">
-                      {modularDevices.map((d, i) => (
-                        <li key={d.profile?.name || i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b pb-2 last:border-b-0 last:pb-0">
-                          <div>
-                            <span className="font-semibold">{d.profile?.name}</span> <span className="ml-2 text-xs text-muted-foreground">({d.profile?.part_number})</span>
-                            <div className="text-xs">Address: {d.protocol_setting?.address}</div>
-                            <div className="text-xs">Topic: {d.profile?.topic}</div>
-                          </div>
-                          <span className={`text-xs font-semibold ml-2 ${d.status === "online" || d.status === true ? "text-green-600" : "text-red-600"}`}>{d.status === "online" || d.status === true ? "Online" : "Offline"}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
+                          <span className={`text-xs font-semibold ml-2 ${statusSummary[d.profile?.name]?.includes("success") ? "text-green-600 bg-green-200" : "text-red-600 bg-red-200"} rounded-full px-2 py-1`}>
+                            {statusSummary[d.profile?.name]?.includes("success") ? "Online" : "Offline"}
+                          </span>
+                        </div>
+                        <div className="text-xs mt-1">
+                          <span className="font-semibold">Live Data:</span>
+                          <pre className="whitespace-pre-wrap break-words text-[10px] text-muted-foreground bg-muted p-1 rounded">
+  {(() => {
+    const topicData = deviceTopicData[d.profile?.topic];
+    if (!topicData) return "Waiting...";
+    try {
+      const parsedValue = topicData.value ? JSON.parse(topicData.value) : {};
+      return JSON.stringify(parsedValue, null, 2);
+    } catch (err) {
+      return "Invalid JSON in 'value'";
+    }
+  })()}
+</pre>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="battery" className="mt-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Battery Charger</CardTitle>
+                <CardDescription>Live data from charger via MQTT</CardDescription>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                {batteryChargerData ? (
+                  Object.entries(batteryChargerData).map(([key, value]) => (
+                    <div key={key}>
+                      <div className="font-semibold">{key}</div>
+                      <div className="text-muted-foreground">{String(value)}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="col-span-full text-center">Waiting for battery data...</div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </SidebarInset>
   );

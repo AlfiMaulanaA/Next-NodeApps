@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
-import { Network, Wifi, WifiOff, Loader2, RefreshCw } from "lucide-react";
+import { Network, Wifi, WifiOff, Loader2, RotateCw } from "lucide-react";
 
 interface NetworkConfig {
   address: string;
@@ -34,6 +34,16 @@ export default function NetworkPage() {
     setEditConfig(prev => ({ ...prev, [field]: value }));
   };
 
+
+  
+
+  const readConfig = () => {
+    clientRef.current?.publish(
+      "command_device_ip",
+      JSON.stringify({ command: "readIP", interface: "eth0" })
+    );
+  };
+  
   useEffect(() => {
     const client = mqtt.connect(`${process.env.NEXT_PUBLIC_MQTT_BROKER_URL}`);
 
@@ -41,6 +51,7 @@ export default function NetworkPage() {
       setStatus("connected");
       client.subscribe("response_device_ip");
       client.publish("command_device_ip", JSON.stringify({ command: "readIP", interface: "eth0" }));
+      readConfig();
     });
 
     client.on("error", () => setStatus("error"));
@@ -111,9 +122,10 @@ export default function NetworkPage() {
         <div className="flex items-center gap-2">
           {renderStatusIcon()}
           <span className="capitalize text-sm">{status}</span>
-          <Button variant="outline" size="icon" onClick={() => window.location.reload()}>
-            <RefreshCw className="w-4 h-4" />
-          </Button>
+          <Button variant="outline" size="icon" onClick={readConfig}>
+  <RotateCw className="w-4 h-4" />
+</Button>
+
         </div>
       </header>
 

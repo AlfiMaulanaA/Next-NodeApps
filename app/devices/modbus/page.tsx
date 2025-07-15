@@ -15,11 +15,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { RotateCw, Server, ArrowUpDown } from "lucide-react";
+import { RotateCw, Server, ArrowUpDown, Cpu,
+  Network,
+  Layers, } from "lucide-react";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import Swal from "sweetalert2";
 import { connectMQTT } from "@/lib/mqttClient";
+import MqttStatus from "@/components/mqtt-status";
 import { useMQTTStatus } from "@/hooks/useMQTTStatus";
 import { useSortableTable } from "@/hooks/use-sort-table";
 import { useSearchFilter } from "@/hooks/use-search-filter";
@@ -141,23 +144,13 @@ export default function DeviceManagerPage() {
         <div className="flex items-center gap-2">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
-          <Server className="h-5 w-5 text-muted-foreground" />
+          <Server className="h-5 w-5" />
           <h1 className="text-lg font-semibold">Modbus SNMP Management</h1>
         </div>
         <div className="flex items-center gap-2">
           
-          <Badge
-            variant="outline"
-            className={`capitalize ${
-              status === "connected"
-                ? "text-green-600 border-green-600"
-                : status === "error"
-                ? "text-red-600 border-red-600"
-                : "text-yellow-600 border-yellow-600"
-            }`}
-          >
-            {status}
-          </Badge>
+          <MqttStatus />
+
           <Button
             variant="outline"
             size="icon"
@@ -201,6 +194,74 @@ export default function DeviceManagerPage() {
           </Button>
         </div>
       </header>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 m-4">
+  {/* Total Devices */}
+  <Card className="shadow-sm hover:shadow-md transition-shadow">
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium">Total Devices</CardTitle>
+      <Cpu className="h-5 w-5  text-green-600" />
+    </CardHeader>
+    <CardContent>
+      <div className="text-2xl font-bold">{devices.length}</div>
+      <p className="text-xs text-muted-foreground">All connected devices</p>
+    </CardContent>
+  </Card>
+
+  {/* Protocol Breakdown */}
+  <Card className="shadow-sm hover:shadow-md transition-shadow">
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium">Protocol Breakdown</CardTitle>
+      <Network className="h-5 w-5 text-green-600" />
+    </CardHeader>
+    <CardContent>
+      <div className="space-y-1 text-sm">
+        <div className="flex justify-between">
+          <span>Modbus RTU</span>
+          <span className="font-semibold">
+            {
+              devices.filter(
+                (d) => d.protocol_setting?.protocol?.toLowerCase() === "modbus rtu"
+              ).length
+            }
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span>SNMP</span>
+          <span className="font-semibold">
+            {
+              devices.filter(
+                (d) => d.protocol_setting?.protocol?.toLowerCase() === "snmp"
+              ).length
+            }
+          </span>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+
+  {/* Most Used Protocol */}
+  <Card className="shadow-sm hover:shadow-md transition-shadow">
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium">Most Used Protocol</CardTitle>
+      <Layers className="h-5 w-5 text-green-600" />
+    </CardHeader>
+    <CardContent>
+      <div className="text-xl font-semibold">
+        {(() => {
+          const modbusCount = devices.filter(
+            (d) => d.protocol_setting?.protocol?.toLowerCase() === "modbus rtu"
+          ).length;
+          const snmpCount = devices.filter(
+            (d) => d.protocol_setting?.protocol?.toLowerCase() === "snmp"
+          ).length;
+          if (modbusCount === snmpCount) return "Equal Use";
+          return modbusCount > snmpCount ? "Modbus RTU" : "SNMP";
+        })()}
+      </div>
+      <p className="text-xs text-muted-foreground">Most common protocol</p>
+    </CardContent>
+  </Card>
+</div>
       <Card className="m-4">
               <CardHeader>
                   <div className="flex justify-between">
@@ -222,7 +283,7 @@ export default function DeviceManagerPage() {
                 <TableHead>PN <ArrowUpDown className="inline mr-1 h-4 w-4" /></TableHead>
                 <TableHead>Address/IP <ArrowUpDown className="inline mr-1 h-4 w-4" /></TableHead>
                 <TableHead>Topic <ArrowUpDown className="inline mr-1 h-4 w-4" /></TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                {/* <TableHead className="text-right">Action</TableHead> */}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -238,7 +299,7 @@ export default function DeviceManagerPage() {
                         : device.protocol_setting?.ip_address}
                     </TableCell>
                     <TableCell>{device.profile?.topic}</TableCell>
-                    <TableCell className="text-right space-x-2">
+                    {/* <TableCell className="text-right space-x-2">
                       <Button
                         size="sm"
                         variant="outline"
@@ -258,7 +319,7 @@ export default function DeviceManagerPage() {
                       >
                         Delete
                       </Button>
-                    </TableCell>
+                    </TableCell> */}
                   </TableRow>
                 ))
               ) : (

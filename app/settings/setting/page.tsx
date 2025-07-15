@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Wifi, WifiOff, Loader2, PlugZap, Power, Terminal, RotateCw, Settings, Thermometer, Cpu, MemoryStick, HardDrive, Clock } from "lucide-react";
+import { Wifi, Power, Terminal, RotateCw, Settings, Thermometer, Cpu, MemoryStick, HardDrive, Clock } from "lucide-react";
 import mqtt from "mqtt";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
@@ -130,7 +130,6 @@ export default function AutomationControlPage() {
             <CardTitle className="flex justify-between items-center">
               <span>System Management</span>
               <span className="flex items-center gap-2 text-sm">
-                MQTT Status:
                 <MqttStatus />
               </span>
             </CardTitle>

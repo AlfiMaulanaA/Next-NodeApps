@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCw, Cpu, ArrowUpDown } from "lucide-react";
+import { RotateCw, Cpu, ArrowUpDown, Microchip, Unplug } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import Swal from "sweetalert2";
 import { connectMQTT } from "@/lib/mqttClient";
@@ -177,6 +177,96 @@ export default function DeviceManagerPage() {
           </Button>
         </div>
       </header>
+
+      <div className="grid grid-cols-3 gap-4 p-4">
+
+{/* Total Devices */}
+<Card>
+  <CardHeader>
+    <CardTitle>
+      <div className="flex justify-between items-center">
+      <div className="flex items-center gap-2">
+          <span>Total Device</span>
+          <span className="bg-blue-100 text-blue-700 rounded px-2 py-0.5 text-xs font-medium">
+            Summary
+          </span>
+        </div>
+        <Microchip className="text-muted-foreground w-5 h-5" />
+      </div>
+    </CardTitle>
+  </CardHeader>
+  <CardContent>
+    <p className="text-sm text-muted-foreground">Registered Devices</p>
+    <p className="text-2xl font-bold">{devices.length}</p>
+  </CardContent>
+</Card>
+
+{/* Device Status */}
+<Card>
+  <CardHeader>
+    <CardTitle>
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <span>Device Status</span>
+          <span className="bg-green-100 text-green-700 rounded px-2 py-0.5 text-xs font-medium">
+            Online/Offline</span>
+        </div>
+        <Unplug className="text-muted-foreground w-5 h-5" />
+      </div>
+    </CardTitle>
+  </CardHeader>
+  <CardContent>
+    <div className="flex items-center gap-6">
+      <div>
+        <p className="text-xs text-muted-foreground">Online</p>
+        <p className="text-xl font-semibold text-green-600">
+          {
+            devices.filter(
+              (device) => device.status?.toLowerCase() === "online"
+            ).length
+          }
+        </p>
+      </div>
+      <span className="text-muted-foreground text-lg font-light">/</span>
+      <div>
+        <p className="text-xs text-muted-foreground">Offline</p>
+        <p className="text-xl font-semibold text-red-600">
+          {
+            devices.filter(
+              (device) => device.status?.toLowerCase() === "offline"
+            ).length
+          }
+        </p>
+      </div>
+    </div>
+  </CardContent>
+</Card>
+
+{/* Top Device Type */}
+<Card>
+  <CardHeader>
+    <CardTitle>Top Device Type</CardTitle>
+  </CardHeader>
+  <CardContent>
+    <p className="text-sm text-muted-foreground">Most Common</p>
+    {
+      (() => {
+        const counts: { [key: string]: number } = {};
+        devices.forEach((d) => {
+          const type = d.profile?.part_number || "Unknown";
+          counts[type] = (counts[type] || 0) + 1;
+        });
+        const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+        return (
+          <p className="text-xl font-semibold">
+            {top?.[0]} ({top?.[1]})
+          </p>
+        );
+      })()
+    }
+  </CardContent>
+</Card>
+</div>
 
       <Card className="m-4">
         <CardHeader>

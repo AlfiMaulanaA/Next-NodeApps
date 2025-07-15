@@ -17,8 +17,8 @@ export function connectMQTT(): MqttClient {
   if (!client || client.disconnected) {
     client = mqtt.connect(brokerUrl, {
       clean: true,
-      connectTimeout: 4000,
-      reconnectPeriod: 1000,
+      connectTimeout: 3000,
+      reconnectPeriod: 750,
     });
   }
 

@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 
 function getCurrentTime() {
   const now = new Date();
-  const time = now.toLocaleTimeString("id-ID", {
+  const time = now.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: true,
   });
 
-  const date = now.toLocaleDateString("id-ID", {
+  const date = now.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",

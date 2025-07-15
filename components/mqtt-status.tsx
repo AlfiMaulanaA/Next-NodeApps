@@ -1,3 +1,4 @@
+//components/mqtt-status.tsx
 "use client";
 
 import { useMQTTStatus } from "@/hooks/useMQTTStatus";
