@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { LayoutDashboard, Cpu, Wifi, WifiOff } from "lucide-react";
+import { LayoutDashboard, Cpu, Wifi, WifiOff, Link } from "lucide-react";
 import RealtimeClock from "@/components/realtime-clock";
 import Refresh from "@/components/refresh-button";
 import MqttStatus from "@/components/mqtt-status";
@@ -100,6 +100,8 @@ export default function OverviewDashboard() {
   const totalOnline = stats.online;
   const totalOffline = stats.offline;
   const allDevicesOnline = totalDevices === totalOnline && totalDevices > 0;
+  const noDevicesOnline = totalDevices > 0 && totalOnline === 0;
+  const noDeviceRegistered = totalDevices === 0;
 
   return (
     <SidebarInset>
@@ -118,46 +120,58 @@ export default function OverviewDashboard() {
 
       <div className="flex flex-1 flex-col gap-4 p-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Devices</CardTitle>
-              <Cpu className="h-5 w-5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
+        <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Devices</CardTitle>
+            <Cpu className="h-5 w-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
               <div className="text-2xl font-bold">{totalDevices}</div>
-              <p className="text-xs text-muted-foreground">All registered devices</p>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Online</CardTitle>
-              <Wifi className="h-5 w-5 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalOnline}</div>
               <div className="flex justify-between items-center mt-1">
-                <p className="text-xs text-muted-foreground">Devices currently online</p>
-                {allDevicesOnline && (
-                  <div className="px-2 py-0.5 rounded-full bg-green-100 text-green-600 text-xs font-medium border border-green-300">
-                    All devices are online
-                  </div>
+            <p className="text-xs text-muted-foreground">All registered devices</p>
+            {noDeviceRegistered && ( // Menggunakan variabel yang sudah didefinisikan
+                <div className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-medium border border-blue-300">
+                  No devices registered
+                </div>
                 )}
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+          </CardContent>
+        </Card>
 
-          <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Offline</CardTitle>
-              <WifiOff className="h-5 w-5 text-red-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalOffline}</div>
-              <p className="text-xs text-muted-foreground">Devices currently offline</p>
-            </CardContent>
-          </Card>
-        </div>
+        <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Online</CardTitle>
+            <Wifi className="h-5 w-5 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalOnline}</div>
+            <div className="flex justify-between items-center mt-1">
+              <p className="text-xs text-muted-foreground">Devices currently online</p>
+              {allDevicesOnline && (
+                <div className="px-2 py-0.5 rounded-full bg-green-100 text-green-600 text-xs font-medium border border-green-300">
+                  All devices are online
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Offline</CardTitle>
+            <WifiOff className="h-5 w-5 text-red-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalOffline}</div>
+            <p className="text-xs text-muted-foreground">Devices currently offline</p>
+            {noDevicesOnline && (
+              <div className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-medium border border-red-300">
+                All devices are offline
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
         <Tabs defaultValue="modbus" className="w-full mt-4">
           <div className="flex items-center justify-between">

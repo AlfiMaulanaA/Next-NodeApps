@@ -1,0 +1,4 @@
+npm run build
+npm run export
+scp -r out npi@<your-npi-ip>:~/
+sudo mv out* /var/www/html/

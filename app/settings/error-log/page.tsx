@@ -1,16 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import mqtt from "mqtt";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react"; // Add useCallback
 import * as XLSX from "xlsx";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import MqttStatus from "@/components/mqtt-status";
@@ -24,7 +18,9 @@ import {
   AlertTriangle,
   CircleAlert,
   Bug,
-  BarChart3, Hash,
+  BarChart3,
+  Hash,
+  Loader2, // Import Loader2 for loading state
 } from "lucide-react";
 import {
   Table,
@@ -44,6 +40,8 @@ import {
   PaginationNext,
 } from "@/components/ui/pagination";
 import { useSortableTable } from "@/hooks/use-sort-table";
+import { connectMQTT, getMQTTClient } from "@/lib/mqttClient"; // Ensure getMQTTClient is imported
+import type { MqttClient } from "mqtt";
 
 interface ErrorLog {
   data: string;
@@ -52,55 +50,142 @@ interface ErrorLog {
 }
 
 export default function ErrorLogPage() {
-  const [status, setStatus] = useState<"connected" | "disconnected" | "error">("disconnected");
   const [logs, setLogs] = useState<ErrorLog[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true); // New loading state
   const logsPerPage = 10;
-  const clientRef = useRef<mqtt.MqttClient | null>(null);
+  const clientRef = useRef<MqttClient | null>(null); // Use MqttClient type
 
   const { sorted, handleSort, sortField, sortDirection } = useSortableTable(logs);
 
-  useEffect(() => {
-    const client = mqtt.connect(`${process.env.NEXT_PUBLIC_MQTT_BROKER_URL}`);
-
-    client.on("connect", () => {
-      setStatus("connected");
-      client.subscribe("subrack/error/data");
-      client.subscribe("subrack/error/data/delete");
-    });
-
-    client.on("error", () => setStatus("error"));
-    client.on("close", () => setStatus("disconnected"));
-
-    client.on("message", (topic, payload) => {
-      try {
-        const data = JSON.parse(payload.toString());
-        if (topic === "subrack/error/data/delete" && data.command === "delete") {
-          setLogs([]);
-        } else {
-          setLogs(Array.isArray(data) ? data : []);
-        }
-        setCurrentPage(1);
-      } catch {
-        toast.error("Invalid payload format");
-      }
-    });
-
-    clientRef.current = client;
-    return () => {
-      client.end();
-    };
+  // Function to request all logs from the device
+  const requestAllLogs = useCallback(() => {
+    const client = getMQTTClient();
+    if (!client || !client.connected) {
+      toast.warning("MQTT not connected. Cannot request logs.");
+      setIsLoading(false); // Stop loading if not connected
+      return;
+    }
+    setIsLoading(true); // Start loading state
+    setTimeout(() => {
+      client.publish("subrack/error/data/request", JSON.stringify({ command: "get_all" }));
+      toast.info("Requesting error logs from device...");
+    }, 300); // Small delay to ensure subscription is active
   }, []);
 
+  useEffect(() => {
+    const mqttClientInstance = connectMQTT();
+    clientRef.current = mqttClientInstance;
+
+    // If client is already connected on mount, request logs immediately
+    if (mqttClientInstance.connected) {
+      requestAllLogs();
+    }
+
+    // Subscribe to topics immediately
+    mqttClientInstance.subscribe("subrack/error/data", (err) => {
+      if (err) console.error("Failed to subscribe to subrack/error/data:", err);
+    });
+    mqttClientInstance.subscribe("subrack/error/data/delete", (err) => {
+      if (err) console.error("Failed to subscribe to subrack/error/data/delete:", err);
+    });
+
+    const handleConnect = () => {
+      // Re-subscribe on connect (though mqtt.js often handles this)
+      mqttClientInstance.subscribe("subrack/error/data");
+      mqttClientInstance.subscribe("subrack/error/data/delete");
+      requestAllLogs(); // Request logs every time connection is established (including re-connects)
+      toast.success("MQTT Connected for Error Logs. Fetching data...");
+    };
+
+    const handleError = (err: Error) => {
+      console.error("MQTT Client Error:", err);
+      // setStatus("error"); // MqttStatus component already handles this internally
+      toast.error(`MQTT Error: ${err.message}`);
+      setIsLoading(false); // Stop loading on error
+    };
+
+    const handleClose = () => {
+      // setStatus("disconnected"); // MqttStatus component already handles this internally
+      toast.warning("MQTT disconnected. Log data may be outdated.");
+      setIsLoading(false); // Stop loading on close
+    };
+
+    const handleMessage = (topic: string, payload: Buffer) => {
+      try {
+        const data = JSON.parse(payload.toString());
+        if (topic === "subrack/error/data/delete") {
+          if (data.command === "delete_success") {
+            setLogs([]);
+            toast.success("All logs deleted successfully. 🗑️");
+          } else {
+            toast.error(data.message || "Failed to delete logs.");
+          }
+          setIsLoading(false); // Stop loading after delete response
+        } else if (topic === "subrack/error/data") {
+          if (Array.isArray(data)) {
+            setLogs(data);
+            toast.success("Error logs updated. ✔️");
+          } else {
+            toast.error("Received invalid log data format. ⚠️");
+            console.warn("Expected array for logs, got:", data);
+          }
+          setCurrentPage(1); // Reset to first page on log update
+          setIsLoading(false); // Stop loading after data is received
+        }
+      } catch (err) {
+        toast.error("Invalid payload format received from MQTT. ❌");
+        console.error("MQTT message parsing error:", err);
+        setIsLoading(false); // Stop loading on parsing error
+      }
+    };
+
+    // Attach event listeners
+    mqttClientInstance.on("connect", handleConnect);
+    mqttClientInstance.on("error", handleError);
+    mqttClientInstance.on("close", handleClose);
+    mqttClientInstance.on("message", handleMessage);
+
+    // Cleanup function
+    return () => {
+      if (clientRef.current?.connected) { // Only unsubscribe if connected
+        clientRef.current.unsubscribe("subrack/error/data");
+        clientRef.current.unsubscribe("subrack/error/data/delete");
+      }
+      // Detach all listeners to prevent memory leaks
+      mqttClientInstance.off("connect", handleConnect);
+      mqttClientInstance.off("error", handleError);
+      mqttClientInstance.off("close", handleClose);
+      mqttClientInstance.off("message", handleMessage);
+      // Do NOT call client.end() here; it's managed globally by mqttClient.ts.
+    };
+  }, [requestAllLogs]); // Add requestAllLogs as a dependency
+
   const deleteAll = () => {
-    clientRef.current?.publish("subrack/error/data/delete", JSON.stringify({ command: "delete" }));
+    // Publish a command to delete all logs
+    if (clientRef.current?.connected) {
+      toast.info("Sending command to delete all logs...");
+      clientRef.current.publish("subrack/error/data/command", JSON.stringify({ command: "delete_all" }), (err) => {
+        if (err) {
+          toast.error(`Failed to send delete command: ${err.message} 🚫`);
+          console.error("Publish error:", err);
+        }
+      });
+    } else {
+      toast.error("MQTT not connected to send delete command. 🚨");
+    }
   };
 
   const exportExcel = () => {
+    if (logs.length === 0) {
+      toast.info("No logs to export. 📝");
+      return;
+    }
     const ws = XLSX.utils.json_to_sheet(logs);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Logs");
     XLSX.writeFile(wb, "ErrorLogs.xlsx");
+    toast.success("Logs exported to Excel. 📊");
   };
 
   const totalPages = Math.ceil(sorted.length / logsPerPage);
@@ -150,79 +235,75 @@ export default function ErrorLogPage() {
         </div>
         <div className="flex items-center gap-2">
           <MqttStatus />
-          <Button variant="outline" size="icon" onClick={() => window.location.reload()} title="Reload">
-            <RotateCw className="w-4 h-4" />
+          <Button variant="outline" size="icon" onClick={requestAllLogs} title="Refresh Logs" disabled={isLoading}>
+            <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </header>
 
       <div className="p-6 space-y-4">
         {/* Summary Cards */}
-       
-<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-  {/* Card 1: Total Errors */}
-  <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Erros</CardTitle>
-                  <Hash className="h-5 w-5 text-green-600" />
-                </CardHeader>
-    <CardContent>
-              <div className="text-3xl font-bold">{summary.total}</div>
-              <p className="text-xs text-muted-foreground">Error System Logs</p>
-    </CardContent>
-  </Card>
-
-  {/* Card 2: By Type */}
-  <Card className="shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-      <CardTitle className="text-sm font-medium">By Type</CardTitle>
-      <BarChart3 className="h-5 w-5 text-green-600" />
-    </CardHeader>
-            
-    <CardContent className="space-y-1">
-      {Object.entries(summary.counts).map(([type, count]) => (
-        <div key={type} className="flex items-center gap-2">
-          {getTypeIcon(type)}
-          <span className="capitalize">{type}</span>: {count}
-        </div>
-      ))}
-              <p className="text-xs text-muted-foreground">All type error</p>
-    </CardContent>
-  </Card>
-
-  {/* Card 3: Most Common */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Card 1: Total Errors */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Most Common</CardTitle>
-                <AlertTriangle className="h-5 w-5 text-green-600" />
-              </CardHeader>
-    
-    <CardContent>
-      {summary.mostCommon ? (
-        <div className="flex items-center gap-2">
-          {getTypeIcon(summary.mostCommon[0])}
-          <span className="capitalize font-semibold">
-            {summary.mostCommon[0]} ({summary.mostCommon[1]})
-          </span>
-        </div>
-      ) : (
-        <span className="text-muted-foreground">No data</span>
-              )}
-              <p className="text-xs text-muted-foreground">Most Common Errors</p>
-    </CardContent>
-  </Card>
-</div>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Errors</CardTitle>
+              <Hash className="h-5 w-5 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{summary.total}</div>
+              <p className="text-xs text-muted-foreground">System Logs</p>
+            </CardContent>
+          </Card>
 
+          {/* Card 2: By Type */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">By Type</CardTitle>
+              <BarChart3 className="h-5 w-5 text-green-600" />
+            </CardHeader>
+            <CardContent className="space-y-1">
+              {Object.entries(summary.counts).map(([type, count]) => (
+                <div key={type} className="flex items-center gap-2">
+                  {getTypeIcon(type)}
+                  <span className="capitalize">{type}</span>: {count}
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">All error types</p>
+            </CardContent>
+          </Card>
+
+          {/* Card 3: Most Common */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Most Common</CardTitle>
+              <AlertTriangle className="h-5 w-5 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              {summary.mostCommon ? (
+                <div className="flex items-center gap-2">
+                  {getTypeIcon(summary.mostCommon[0])}
+                  <span className="capitalize font-semibold">
+                    {summary.mostCommon[0]} ({summary.mostCommon[1]})
+                  </span>
+                </div>
+              ) : (
+                <span className="text-muted-foreground">No data</span>
+              )}
+              <p className="text-xs text-muted-foreground">Most frequent errors</p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Table Card */}
         <Card>
           <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <CardTitle className="text-base">Error Logs</CardTitle>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="destructive" onClick={deleteAll} title="Delete all logs">
+              <Button size="sm" variant="destructive" onClick={deleteAll} title="Delete all logs" disabled={logs.length === 0 || isLoading}>
                 <Trash2 className="w-4 h-4 mr-1" /> Delete All
               </Button>
-              <Button size="sm" variant="secondary" onClick={exportExcel} title="Export logs to Excel">
+              <Button size="sm" variant="secondary" onClick={exportExcel} title="Export logs to Excel" disabled={logs.length === 0}>
                 <Download className="w-4 h-4 mr-1" /> Export to Excel
               </Button>
             </div>
@@ -234,31 +315,45 @@ export default function ErrorLogPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>#</TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("data")}>Data <ArrowUpDown className="inline w-4 h-4 ml-1" /></TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("type")}>Type <ArrowUpDown className="inline w-4 h-4 ml-1" /></TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("Timestamp")}>Timestamp <ArrowUpDown className="inline w-4 h-4 ml-1" /></TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("data")}>
+                    Data <ArrowUpDown className="inline w-4 h-4 ml-1" />
+                  </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("type")}>
+                    Type <ArrowUpDown className="inline w-4 h-4 ml-1" />
+                  </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("Timestamp")}>
+                    Timestamp <ArrowUpDown className="inline w-4 h-4 ml-1" />
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {currentLogs.map((log, i) => (
-                  <TableRow key={i}>
-                    <TableCell>{(currentPage - 1) * logsPerPage + i + 1}</TableCell>
-                    <TableCell className="max-w-xs truncate" title={log.data}>{log.data}</TableCell>
-                    <TableCell>{getTypeBadge(log.type)}</TableCell>
-                    <TableCell>{log.Timestamp}</TableCell>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-6 text-blue-500">
+                      <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                      Fetching logs...
+                    </TableCell>
                   </TableRow>
-                ))}
-                {currentLogs.length === 0 && (
+                ) : currentLogs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
                       No logs available.
                     </TableCell>
                   </TableRow>
+                ) : (
+                  currentLogs.map((log, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{(currentPage - 1) * logsPerPage + i + 1}</TableCell>
+                      <TableCell className="max-w-xs truncate" title={log.data}>{log.data}</TableCell>
+                      <TableCell>{getTypeBadge(log.type)}</TableCell>
+                      <TableCell>{log.Timestamp}</TableCell>
+                    </TableRow>
+                  ))
                 )}
               </TableBody>
             </Table>
 
-            {totalPages > 1 && (
+            {totalPages > 1 && !isLoading && (
               <Pagination className="mt-4">
                 <PaginationContent>
                   <PaginationItem>

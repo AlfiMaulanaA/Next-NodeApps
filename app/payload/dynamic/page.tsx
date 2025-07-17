@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import mqtt from "mqtt";
+// import mqtt from "mqtt"; // Remove direct mqtt import
 import { toast } from "sonner";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
@@ -22,6 +22,8 @@ import {
   PaginationNext,
 } from "@/components/ui/pagination";
 import axios from "axios";
+import { connectMQTT } from "@/lib/mqttClient";
+import type { MqttClient } from "mqtt"; // Import MqttClient type for useRef
 
 interface Device {
   name: string;
@@ -55,25 +57,69 @@ export default function CustomPayloadPage() {
   const [interval, setIntervalValue] = useState(10);
   const [devices, setDevices] = useState<Device[]>([{ name:"", keyOptions: [], value_keys:[{key:"",value:""}] }]);
 
-  const clientRef = useRef<mqtt.MqttClient>();
+  const clientRef = useRef<MqttClient>(); // Use MqttClient type
 
   useEffect(() => {
-    const cl = mqtt.connect(process.env.NEXT_PUBLIC_MQTT_BROKER_URL!);
-    cl.on("connect", () => {
+    // Connect using the centralized function
+    const mqttClientInstance = connectMQTT();
+    clientRef.current = mqttClientInstance;
+
+    const handleConnect = () => {
       setStatus("connected");
-      cl.subscribe("config/device_info/response");
-      cl.subscribe("config/summary_device/response");
-      cl.publish("config/device_info", JSON.stringify({ command: "getDeviceInfo" }));
-    });
-    cl.on("error", () => setStatus("error"));
-    cl.on("close", () => setStatus("disconnected"));
-    cl.on("message", (_, buf) => {
-      const msg = JSON.parse(buf.toString());
-      if (_.endsWith("/device_info/response")) setDevicesInfo(msg);
-      if (_.endsWith("/summary_device/response")) setConfig(msg);
-    });
-    clientRef.current = cl;
-    return () => { cl.end(); };
+      // Subscribe to necessary topics
+      mqttClientInstance.subscribe("config/device_info/response");
+      mqttClientInstance.subscribe("config/summary_device/response");
+      // Request initial data upon connection
+      mqttClientInstance.publish("config/device_info", JSON.stringify({ command: "getDeviceInfo" }));
+      mqttClientInstance.publish("config/summary_device", JSON.stringify({ command: "getData" }));
+    };
+
+    const handleError = (err: Error) => {
+      console.error("MQTT Client Error:", err);
+      setStatus("error");
+    };
+    const handleClose = () => setStatus("disconnected");
+
+    const handleMessage = (topic: string, buf: Buffer) => {
+      try {
+        const msg = JSON.parse(buf.toString());
+        if (topic.endsWith("/device_info/response")) {
+          setDevicesInfo(msg);
+        } else if (topic.endsWith("/summary_device/response")) {
+          if (msg.command === "getDataResponse") {
+              setConfig(msg.data); // Assuming msg.data contains the SummaryConfig
+          } else if (msg.status === "success" || msg.status === "error") {
+              toast[msg.status === "success" ? "success" : "error"](msg.message || "Operation completed.");
+              // After a write/update/delete operation, request fresh data
+              setTimeout(() => {
+                  mqttClientInstance.publish("config/summary_device", JSON.stringify({ command: "getData" }));
+              }, 500);
+          }
+        }
+      } catch (err) {
+        toast.error("Invalid payload format from broker");
+        console.error("MQTT message parsing error:", err);
+      }
+    };
+
+    // Attach event listeners
+    mqttClientInstance.on("connect", handleConnect);
+    mqttClientInstance.on("error", handleError);
+    mqttClientInstance.on("close", handleClose);
+    mqttClientInstance.on("message", handleMessage);
+
+    // Cleanup function
+    return () => {
+      if (mqttClientInstance.connected) {
+        mqttClientInstance.unsubscribe("config/device_info/response");
+        mqttClientInstance.unsubscribe("config/summary_device/response");
+      }
+      mqttClientInstance.off("connect", handleConnect);
+      mqttClientInstance.off("error", handleError);
+      mqttClientInstance.off("close", handleClose);
+      mqttClientInstance.off("message", handleMessage);
+      // Do NOT call client.end() here; it's managed globally.
+    };
   }, []);
 
   // Load device keys from devices.json and merge into devicesInfo
@@ -81,15 +127,18 @@ export default function CustomPayloadPage() {
     if (!devicesInfo.length) return;
     axios.get("/devices.json").then(res => {
       const keys: Record<string, string[]> = {};
-      Object.entries(res.data).forEach(([_, devices]: any) => {
-        devices.forEach((device: any) => {
+      Object.entries(res.data).forEach(([_, devicesArray]: any) => { // Renamed 'devices' to 'devicesArray' to avoid conflict
+        devicesArray.forEach((device: any) => {
           keys[device.name] = device.data.map((item: any) => item.var_name);
         });
       });
       setDevicesInfo(devicesInfo.map(d => ({ ...d, keyOptions: keys[d.name] || [] })));
+    }).catch(error => {
+      console.error("Failed to load devices.json:", error);
+      toast.error("Failed to load device key options.");
     });
-    // eslint-disable-next-line
-  }, [devicesInfo.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devicesInfo.length]); // Depend on devicesInfo.length to re-run when devicesInfo is first populated
 
   const openEditor = (idx?: number) => {
     if (idx !== undefined && config) {
@@ -100,42 +149,63 @@ export default function CustomPayloadPage() {
       setIntervalValue(g.interval);
       setDevices(g.included_devices.map(d => ({
         ...d,
+        // Ensure keyOptions are correctly populated for editing existing devices
         keyOptions: devicesInfo.find(x=>x.name===d.name)?.keyOptions||[],
       })));
       setEditIndex(idx);
     } else {
       setSummaryTopic(""); setRetain(false);
       setQos(0); setIntervalValue(10);
-      setDevices([{ name:"", keyOptions: [], value_keys:[{key:"",value:""}] }]);
+      setDevices([{ name:"", keyOptions:[], value_keys:[{key:"",value:""}] }]);
       setEditIndex(null);
     }
     setModalOpen(true);
   };
 
-  const saveGroup = () => {
-    const payload = {
-      command: editIndex===null ? "writeData" : "updateData",
-      data: {
-        summary_topic: summaryTopic,
-        retain, qos, interval,
-        included_devices: devices.map(d=>({
-          name:d.name,
-          value_group:d.value_group,
-          value_keys:Object.fromEntries(d.value_keys.map(kv=>[kv.key,kv.value])),
-        })),
-      }
-    };
-    clientRef.current?.publish("config/summary_device", JSON.stringify(payload));
-    setModalOpen(false);
-    toast.success("Summary saved");
-    clientRef.current?.publish("config/summary_device", JSON.stringify({ command: "getData" }));
+  const sendCommand = (command: string, data: any) => {
+    if (!clientRef.current?.connected) {
+      toast.error("MQTT not connected. Please wait for connection or refresh.");
+      return;
+    }
+    clientRef.current.publish("config/summary_device", JSON.stringify({ command, data }), (err) => {
+        if (err) {
+            toast.error(`Failed to send command: ${err.message}`);
+            console.error("Publish error:", err);
+        }
+    });
   };
 
-  const deleteGroup = (idx:number) => {
+  const saveGroup = () => {
+    const payloadData = {
+      summary_topic: summaryTopic,
+      retain, qos, interval,
+      included_devices: devices.map(d => ({
+        name: d.name,
+        value_group: d.value_group, // Ensure value_group is passed if available
+        value_keys: Object.fromEntries(d.value_keys.map(kv => [kv.key, kv.value])),
+      })),
+    };
+
+    if (editIndex === null) {
+      sendCommand("writeData", payloadData);
+      toast.info("Sending create command...");
+    } else {
+      // For update, you might need to send the old topic as well to identify the item to update
+      // Or the backend can infer it from the summary_topic if it's unique
+      sendCommand("updateData", payloadData);
+      toast.info("Sending update command...");
+    }
+    setModalOpen(false);
+  };
+
+  const deleteGroup = (idx: number) => {
     const topic = config?.groups[idx].summary_topic;
-    clientRef.current?.publish("config/summary_device", JSON.stringify({ command:"deleteData", data:{ summary_topic:topic } }));
-    toast.success("Deleted");
-    clientRef.current?.publish("config/summary_device", JSON.stringify({ command:"getData" }));
+    if (topic) {
+      sendCommand("deleteData", { summary_topic: topic });
+      toast.info(`Sending delete command for topic: ${topic}`);
+    } else {
+      toast.error("Could not find topic to delete.");
+    }
   };
 
   // --- Pagination, Sort, and Search Logic ---
@@ -193,14 +263,14 @@ export default function CustomPayloadPage() {
                 <TableCell>{g.qos}</TableCell>
                 <TableCell>{g.interval}s</TableCell>
                 <TableCell>
-                  <Button size="icon" onClick={()=>openEditor(i)}><Edit2/></Button>
-                  <Button size="icon" variant="destructive" onClick={()=>deleteGroup(i)}><Trash2/></Button>
+                  <Button size="icon" onClick={()=>openEditor(i)}><Edit2 className="w-4 h-4" /></Button>
+                  <Button size="icon" variant="destructive" onClick={()=>deleteGroup(i)}><Trash2 className="w-4 h-4" /></Button>
                 </TableCell>
               </TableRow>
             )) : (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                  Tidak ada data konfigurasi custom payload. Klik "Add Data" untuk menambah konfigurasi baru.
+                  No custom payload configuration data. Click "Create New Data" to add a new configuration.
                 </TableCell>
               </TableRow>
             )}
@@ -234,32 +304,48 @@ export default function CustomPayloadPage() {
               <div className="flex gap-2">
                 <Input placeholder="QoS" type="number" value={qos} onChange={e=>setQos(Number(e.target.value))}/>
                 <Input placeholder="Interval" type="number" value={interval} onChange={e=>setIntervalValue(Number(e.target.value))}/>
-                <label className="flex items-center gap-2">
+                <label className="flex items-center gap-2 text-sm font-medium leading-none">
                   <input type="checkbox" checked={retain} onChange={e=>setRetain(e.target.checked)}/> Retain
                 </label>
               </div>
               {devices.map((d,di)=>(
-                <div key={di} className="space-y-1 border p-2">
-                  <select className="border rounded p-1" value={d.name} onChange={e=>{
+                <div key={di} className="space-y-1 border p-2 rounded-md">
+                  <div className="flex items-center justify-between">
+                    <select className="border rounded p-1 text-sm" value={d.name} onChange={e=>{
+                      const nd = [...devices];
+                      nd[di].name = e.target.value;
+                      nd[di].keyOptions = devicesInfo.find(x=>x.name===e.target.value)?.keyOptions||[];
+                      nd[di].value_keys = [{key:"", value:""}]; // Reset keys when device changes
+                      setDevices(nd);
+                    }}>
+                      <option value="">Select Device</option>
+                      {devicesInfo.map(x=><option key={x.name} value={x.name}>{x.name}</option>)}
+                    </select>
+                    {devices.length > 1 && (
+                       <Button variant="destructive" size="sm" onClick={() => {
+                         const nd = [...devices];
+                         nd.splice(di, 1);
+                         setDevices(nd);
+                       }}>Remove Device</Button>
+                    )}
+                  </div>
+                  <Input placeholder="Value Group (Optional)" value={d.value_group || ""} onChange={e => {
                     const nd = [...devices];
-                    nd[di].name = e.target.value;
-                    nd[di].keyOptions = devicesInfo.find(x=>x.name===e.target.value)?.keyOptions||[];
+                    nd[di].value_group = e.target.value;
                     setDevices(nd);
-                  }}>
-                    <option value="">Select Device</option>
-                    {devicesInfo.map(x=><option key={x.name} value={x.name}>{x.name}</option>)}
-                  </select>
+                  }} className="mt-2" />
+                  <h5 className="text-sm font-semibold mt-2">Value Keys:</h5>
                   {d.value_keys.map((kv,ki)=>(
-                    <div key={ki} className="flex gap-2">
-                      <select className="border rounded p-1" value={kv.key}
+                    <div key={ki} className="flex gap-2 items-center">
+                      <select className="border rounded p-1 text-sm flex-1" value={kv.key}
                         onChange={e=>{
                           const nd=[...devices];
                           nd[di].value_keys[ki].key=e.target.value; setDevices(nd);
                         }}>
-                        <option value="">Key</option>
-                        {d.keyOptions.map(k=> <option key={k}>{k}</option>)}
+                        <option value="">Select Key</option>
+                        {d.keyOptions.map(k=> <option key={k} value={k}>{k}</option>)}
                       </select>
-                      <Input placeholder="Value" value={kv.value}
+                      <Input placeholder="Assign Value" value={kv.value} className="flex-1"
                         onChange={e=>{
                           const nd=[...devices];
                           nd[di].value_keys[ki].value=e.target.value;
@@ -279,8 +365,8 @@ export default function CustomPayloadPage() {
                   }}>Add Key</Button>
                 </div>
               ))}
-              <Button size="sm" variant="secondary" onClick={()=> setDevices([...devices, { name:"", keyOptions:[], value_keys:[{key:"",value:""}] }])}>
-                <PlusCircle /> Add Device
+              <Button size="sm" variant="outline" onClick={()=> setDevices([...devices, { name:"", keyOptions:[], value_keys:[{key:"",value:""}] }])} className="w-full">
+                <PlusCircle className="mr-2 h-4 w-4" /> Add Device
               </Button>
             </div>
             <DialogFooter>

@@ -1,34 +1,80 @@
 // lib/mqttClient.ts
 import mqtt, { MqttClient } from "mqtt";
+import { getAppConfig } from "@/lib/config";
 
 let client: MqttClient | null = null;
+let isConnecting: boolean = false;
 
-/**
- * Menginisialisasi koneksi MQTT jika belum ada koneksi atau koneksi sebelumnya terputus.
- * @returns {MqttClient} Koneksi MQTT client yang aktif.
- */
 export function connectMQTT(): MqttClient {
-  const brokerUrl = process.env.NEXT_PUBLIC_MQTT_BROKER_URL;
+  const { mqttBrokerUrl } = getAppConfig();
 
-  if (!brokerUrl) {
-    throw new Error("MQTT broker URL tidak didefinisikan di .env");
+  if (!mqttBrokerUrl) {
+    throw new Error("MQTT broker URL is missing from configuration.");
+  }
+
+  if (client && (client.connected || isConnecting)) {
+    return client;
   }
 
   if (!client || client.disconnected) {
-    client = mqtt.connect(brokerUrl, {
+    if (isConnecting) {
+      return client!;
+    }
+
+    isConnecting = true;
+    console.log(`MQTT: Attempting connection to ${mqttBrokerUrl}...`);
+
+    client = mqtt.connect(mqttBrokerUrl, {
       clean: true,
       connectTimeout: 3000,
-      reconnectPeriod: 750,
+      reconnectPeriod: 1000,
+    });
+
+    client.on("connect", () => {
+      console.log(`MQTT: Connected to ${mqttBrokerUrl}`);
+      isConnecting = false;
+    });
+
+    client.on("error", (err) => {
+      console.error(`MQTT Error: ${err.message}`);
+      isConnecting = false;
+    });
+
+    client.on("reconnect", () => {
+      console.log(`MQTT: Reconnecting to ${mqttBrokerUrl}`);
+      isConnecting = true;
+    });
+
+    client.on("close", () => {
+      console.log(`MQTT: Connection to ${mqttBrokerUrl} closed.`);
+      isConnecting = false;
+    });
+
+    client.on("offline", () => {
+      console.log(`MQTT: Client is offline.`);
+      isConnecting = false;
     });
   }
 
   return client;
 }
 
-/**
- * Mendapatkan instance MQTT client yang sedang aktif (jika sudah terhubung).
- * @returns {MqttClient | null}
- */
 export function getMQTTClient(): MqttClient | null {
   return client;
+}
+
+export function disconnectMQTT(): void {
+  if (client && client.connected) {
+    client.end(false, () => {
+      console.log("MQTT client disconnected.");
+      client = null;
+      isConnecting = false;
+    });
+  } else if (client) {
+    client.end(true, () => {
+      console.log("MQTT client forced end.");
+      client = null;
+      isConnecting = false;
+    });
+  }
 }

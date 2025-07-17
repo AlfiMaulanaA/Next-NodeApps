@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import mqtt from "mqtt";
+// import mqtt from "mqtt"; // Remove direct mqtt import
 import { toast } from "sonner";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
@@ -25,6 +25,8 @@ import {
   PaginationEllipsis,
 } from "@/components/ui/pagination";
 import MQTTConnectionBadge from "@/components/mqtt-status";
+import { connectMQTT } from "@/lib/mqttClient";
+import type { MqttClient } from "mqtt"; // Import MqttClient type for useRef
 
 interface PayloadField { key: string; type: string; value: string; }
 interface DataItem {
@@ -46,34 +48,85 @@ export default function StaticPayloadPage() {
   const [responseMessage, setResponseMessage] = useState<string>("");
   const [updateIndex, setUpdateIndex] = useState<number | null>(null);
 
-  const clientRef = useRef<mqtt.MqttClient>();
+  const clientRef = useRef<MqttClient>(); // Use MqttClient type
 
   useEffect(() => {
-    const client = mqtt.connect(process.env.NEXT_PUBLIC_MQTT_BROKER_URL!);
+    // Connect using the centralized function
+    const mqttClientInstance = connectMQTT();
+    clientRef.current = mqttClientInstance;
 
-    client.on("connect", () => setStatus("connected"));
-    client.on("error", () => setStatus("error"));
-    client.on("close", () => setStatus("disconnected"));
+    const handleConnect = () => {
+      setStatus("connected");
+      // Subscribe to the response topic
+      mqttClientInstance.subscribe("response/data/payload");
+      // Request initial data upon connection
+      mqttClientInstance.publish("command/data/payload", JSON.stringify({ command: "getData" }));
+    };
 
-    client.on("message", (_, buf) => {
+    const handleError = (err: Error) => {
+      console.error("MQTT Client Error:", err);
+      setStatus("error");
+    };
+    const handleClose = () => setStatus("disconnected");
+
+    const handleMessage = (topic: string, buf: Buffer) => {
       try {
         const msg = JSON.parse(buf.toString());
-        setItems(Array.isArray(msg) ? msg : items);
-        tab === "list" && toast.success("Received latest payload list");
-      } catch {
+        // Check if the message is a response to getData command
+        if (topic === "response/data/payload") {
+          if (Array.isArray(msg)) {
+            setItems(msg);
+            toast.success("Received latest payload list");
+          } else if (msg.status === "success" || msg.status === "error") {
+            // Handle success/error messages from create/update/delete commands
+            setResponseMessage(msg.message);
+            if (msg.status === "success") {
+                toast.success(msg.message || "Operation successful!");
+            } else {
+                toast.error(msg.message || "Operation failed!");
+            }
+            // After an operation, refresh data (with a slight delay)
+            setTimeout(() => {
+                mqttClientInstance.publish("command/data/payload", JSON.stringify({ command: "getData" }));
+            }, 500);
+          }
+        }
+      } catch (err) {
         toast.error("Invalid payload from broker");
+        console.error("MQTT message parsing error:", err);
       }
-    });
+    };
 
-    clientRef.current = client;
-    // Remove invalid connect options
-    // client.connect({ reconnectPeriod: 1000 });
-    return () => { client.end(); };
+    // Attach event listeners
+    mqttClientInstance.on("connect", handleConnect);
+    mqttClientInstance.on("error", handleError);
+    mqttClientInstance.on("close", handleClose);
+    mqttClientInstance.on("message", handleMessage);
+
+    // Cleanup function
+    return () => {
+      if (mqttClientInstance.connected) {
+        mqttClientInstance.unsubscribe("response/data/payload");
+      }
+      mqttClientInstance.off("connect", handleConnect);
+      mqttClientInstance.off("error", handleError);
+      mqttClientInstance.off("close", handleClose);
+      mqttClientInstance.off("message", handleMessage);
+      // Do NOT call client.end() here; it's managed globally.
+    };
   }, []);
 
   const send = (command: string, payload: any) => {
-    if (status !== "connected") return toast.error("MQTT not connected");
-    clientRef.current?.publish("command/data/payload", JSON.stringify({ command, ...payload }));
+    if (status !== "connected" || !clientRef.current?.connected) {
+      toast.error("MQTT not connected. Please wait for connection or refresh.");
+      return;
+    }
+    clientRef.current?.publish("command/data/payload", JSON.stringify({ command, ...payload }), (err) => {
+        if (err) {
+            toast.error(`Failed to send command: ${err.message}`);
+            console.error("Publish error:", err);
+        }
+    });
   };
 
   // --- CRUD Handlers ---
@@ -86,21 +139,21 @@ export default function StaticPayloadPage() {
     send("writeData", { ...formMeta, data: Object.fromEntries(formFields.map(f => [f.key, parseField(f)])) });
     setCreateOpen(false);
     setResponseMessage("Create command sent. Waiting for response...");
-    setTimeout(handleGet, 1000);
+    // Response will trigger handleGet via message listener
   };
 
   const handleUpdate = () => {
     send("updateData", { ...formMeta, data: Object.fromEntries(formFields.map(f => [f.key, parseField(f)])) });
     setUpdateOpen(false);
     setResponseMessage("Update command sent. Waiting for response...");
-    setTimeout(handleGet, 1000);
+    // Response will trigger handleGet via message listener
   };
 
   const handleDelete = (idx: number) => {
-    setFormMeta(items[idx]);
-    send("deleteData", { topic: items[idx].topic });
-    setResponseMessage(`Delete command sent for topic: ${items[idx].topic}`);
-    setTimeout(handleGet, 1000);
+    const topicToDelete = items[idx].topic;
+    send("deleteData", { topic: topicToDelete });
+    setResponseMessage(`Delete command sent for topic: ${topicToDelete}`);
+    // Response will trigger handleGet via message listener
   };
 
   // --- Modal Openers ---
@@ -161,7 +214,7 @@ export default function StaticPayloadPage() {
         </div>
       </header>
       <div className="p-6">
-        {responseMessage && <Alert>{responseMessage}</Alert>}
+        {responseMessage && <Alert className="mb-4">{responseMessage}</Alert>} {/* Use className for margin */}
         {/* Controls above table */}
         <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
           <div className="flex gap-2">
@@ -191,7 +244,7 @@ export default function StaticPayloadPage() {
           </TableHeader>
           <TableBody>
             {paginatedData.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center text-warning">No data received yet. Click "Get Data" to fetch the data.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No data received yet. Click "Get Data" to fetch the data.</TableCell></TableRow>
             ) : paginatedData.map((it, i) => (
               <TableRow key={i}>
                 <TableCell>{(currentPage - 1) * pageSize + i + 1}</TableCell>
@@ -209,8 +262,8 @@ export default function StaticPayloadPage() {
                   <ul>
                     <li>Interval {it.interval} s</li>
                     <li>Qos {it.qos}</li>
-                    <li>LWT <span className={it.lwt ? "text-success" : "text-danger"}>{String(it.lwt)}</span></li>
-                    <li>Retain <span className={it.retain ? "text-success" : "text-danger"}>{String(it.retain)}</span></li>
+                    <li>LWT <Badge variant={it.lwt ? "default" : "destructive"}>{String(it.lwt)}</Badge></li>
+                    <li>Retain <Badge variant={it.retain ? "default" : "destructive"}>{String(it.retain)}</Badge></li>
                   </ul>
                 </TableCell>
                 <TableCell className="flex flex-col gap-1 items-start">
@@ -308,7 +361,7 @@ export default function StaticPayloadPage() {
     </SidebarInset>
   );
 
-  // Helper functions
+  // Helper functions for form fields
   function addField() {
     setFormFields([...formFields, { key: "", type: "string", value: "" }]);
   }
@@ -319,8 +372,10 @@ export default function StaticPayloadPage() {
     const v = [...formFields]; v[idx] = { ...v[idx], [attr]: val}; setFormFields(v);
   }
   function parseField(f: PayloadField) {
-    if (f.type === "number") return Number(f.value);
+    // Handle "int" type explicitly
+    if (f.type === "int") return parseInt(f.value, 10);
     if (f.type === "boolean") return f.value === "true";
+    // Attempt to parse as JSON for object/array, otherwise return as string
     try { return JSON.parse(f.value); } catch { return f.value; }
   }
 }

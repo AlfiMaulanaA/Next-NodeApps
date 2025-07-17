@@ -18,7 +18,8 @@ import { Input } from "@/components/ui/input"
 import { connectMQTT } from "@/lib/mqttClient"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { RotateCw, Network } from "lucide-react" // ✅ Perbaikan import
+import { RotateCw, Network } from "lucide-react"
+import MQTTStatus from "@/components/mqtt-status"
 
 // ✅ Schema validasi menggunakan zod
 const schema = z.object({
@@ -94,6 +95,7 @@ export default function BatteryThresholdPage() {
           <h1 className="text-lg font-semibold">Battery Threshold Configuration</h1>
         </div>
         <div className="flex items-center gap-2">
+          <MQTTStatus />
           <Button
             variant="outline"
             size="icon"

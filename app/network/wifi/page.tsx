@@ -1,40 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import mqtt from "mqtt";
+// import mqtt from "mqtt"; // Remove direct mqtt import
 import { toast } from "sonner";
-import {
-  SidebarInset,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
-import {
-  Card,
-  CardHeader,
-  CardContent,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Button
-} from "@/components/ui/button";
-import {
-  Wifi,
-  WifiOff,
-  Loader2,
-  RefreshCw,
-  Radar,
-  Repeat,
-  Trash2,
-} from "lucide-react";
-import {
-  Input
-} from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Wifi, WifiOff, Loader2, RefreshCw, Radar, Repeat, Trash2 } from "lucide-react";
+import { connectMQTT } from "@/lib/mqttClient";
+import type { MqttClient } from "mqtt"; // Import MqttClient type for useRef
+import MqttStatus from "@/components/mqtt-status";
 
 interface Network {
   ssid: string;
@@ -49,37 +27,60 @@ export default function WifiScannerPage() {
   const [password, setPassword] = useState("");
   const [delSsid, setDelSsid] = useState("");
 
-  const clientRef = useRef<mqtt.MqttClient>();
+  const clientRef = useRef<MqttClient>(); // Use MqttClient type
 
   useEffect(() => {
-    const client = mqtt.connect(process.env.NEXT_PUBLIC_MQTT_BROKER_URL || "");
+    // Connect using the centralized function
+    const mqttClientInstance = connectMQTT();
+    clientRef.current = mqttClientInstance;
 
-    client.on("connect", () => {
+    const handleConnect = () => {
       setStatus("connected");
-      client.subscribe("wifi/scan_results");
-      client.subscribe("wifi/ip_update");
-    });
+      // Subscribe to necessary topics
+      mqttClientInstance.subscribe("wifi/scan_results");
+      mqttClientInstance.subscribe("wifi/ip_update");
+    };
 
-    client.on("error", () => setStatus("error"));
-    client.on("close", () => setStatus("disconnected"));
+    const handleError = () => setStatus("error");
+    const handleClose = () => setStatus("disconnected");
 
-    client.on("message", (_, payload) => {
+    const handleMessage = (topic: string, payload: Buffer) => {
       try {
         const msg = JSON.parse(payload.toString());
-        if (_.endsWith("scan_results")) {
+        // Process messages based on topic
+        if (topic === "wifi/scan_results") {
           setNetworks(msg.networks || []);
           toast.success("Wi-Fi scan complete");
-        }
-        if (_.endsWith("ip_update") && msg.status === "success") {
+        } else if (topic === "wifi/ip_update" && msg.status === "success") {
           toast.success(`Switched to ${msg.ssid}, new IP: ${msg.ip}`);
+        } else if (msg.status === "error") {
+          toast.error(msg.message || "An error occurred.");
         }
-      } catch {
+      } catch (err) {
         toast.error("Invalid data received");
+        console.error("MQTT message parsing error:", err);
       }
-    });
+    };
 
-    clientRef.current = client;
-    return () => { client.end(); };
+    // Attach event listeners
+    mqttClientInstance.on("connect", handleConnect);
+    mqttClientInstance.on("error", handleError);
+    mqttClientInstance.on("close", handleClose);
+    mqttClientInstance.on("message", handleMessage);
+
+    // Cleanup function
+    return () => {
+      if (mqttClientInstance.connected) {
+        mqttClientInstance.unsubscribe("wifi/scan_results");
+        mqttClientInstance.unsubscribe("wifi/ip_update");
+      }
+      // Detach event listeners to prevent memory leaks
+      mqttClientInstance.off("connect", handleConnect);
+      mqttClientInstance.off("error", handleError);
+      mqttClientInstance.off("close", handleClose);
+      mqttClientInstance.off("message", handleMessage);
+      // Do NOT call client.end() here; it's managed globally.
+    };
   }, []);
 
   const renderIcon = () => {
@@ -89,7 +90,9 @@ export default function WifiScannerPage() {
   };
 
   const scanWifi = () => {
-    clientRef.current?.publish("wifi/scan_request", "{}");
+    clientRef.current?.publish("wifi/scan_request", "{}", (err) => {
+      if (err) toast.error(`Failed to request scan: ${err.message}`);
+    });
   };
 
   const switchWifi = () => {
@@ -97,8 +100,10 @@ export default function WifiScannerPage() {
       toast.error("SSID & password required");
       return;
     }
-    clientRef.current?.publish("wifi/switch_wifi", JSON.stringify({ ssid: chosenSsid, password }));
-    toast.success(`Switching to ${chosenSsid}...`);
+    clientRef.current?.publish("wifi/switch_wifi", JSON.stringify({ ssid: chosenSsid, password }), (err) => {
+      if (err) toast.error(`Failed to switch Wi-Fi: ${err.message}`);
+      else toast.success(`Switching to ${chosenSsid}...`);
+    });
   };
 
   const deleteWifi = () => {
@@ -106,8 +111,10 @@ export default function WifiScannerPage() {
       toast.error("SSID required");
       return;
     }
-    clientRef.current?.publish("wifi/delete_wifi", JSON.stringify({ ssid: delSsid }));
-    toast.success(`Deleted ${delSsid}`);
+    clientRef.current?.publish("wifi/delete_wifi", JSON.stringify({ ssid: delSsid }), (err) => {
+      if (err) toast.error(`Failed to delete Wi-Fi: ${err.message}`);
+      else toast.success(`Deleted ${delSsid}`);
+    });
   };
 
   const signalColor = (s: number) =>
@@ -124,8 +131,7 @@ export default function WifiScannerPage() {
           <h1 className="text-lg font-semibold">Wi‑Fi Scanner</h1>
         </div>
         <div className="flex items-center gap-2">
-          {renderIcon()}
-          <span className="capitalize text-sm">{status}</span>
+          <MqttStatus />
           <Button variant="outline" size="icon" onClick={() => window.location.reload()}>
             <RefreshCw className="w-4 h-4" />
           </Button>

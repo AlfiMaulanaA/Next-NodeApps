@@ -17,7 +17,7 @@ export default function NotFound() {
         </div>
       </header>
       <main className="flex flex-col items-center justify-center min-h-[calc(100vh-80px)] p-8 bg-gradient-to-br from-gray-50 to-white">
-        <Image src="/public/not-found.svg" alt="Not Found" width={220} height={220} className="mb-6 opacity-80" />
+        <Image src="/images/ErrorNotFound.png" alt="Not Found" width={320} height={320} />
         <h2 className="text-3xl font-bold mb-2 text-gray-800">404 - Page Not Found</h2>
         <p className="text-gray-600 mb-6 text-center max-w-md">
           Sorry, the page you are looking for does not exist or has been moved.<br />

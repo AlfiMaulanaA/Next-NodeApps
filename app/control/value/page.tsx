@@ -1,10 +1,15 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import mqtt from "mqtt";
+// Hapus import mqtt dan mqttBrokerUrl yang lama
+// import mqtt from "mqtt";
+// import { mqttBrokerUrl } from "@/lib/config";
+
+// Import fungsi connectMQTT dan getMQTTClient dari lib/mqttClient.ts
+import { connectMQTT, getMQTTClient } from "@/lib/mqttClient"; // <-- Perbaikan: Impor dari sini
+
 import { toast } from "sonner";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -28,6 +33,7 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
+import type { MqttClient } from "mqtt"; // Import tipe MqttClient untuk useRef
 
 interface DeviceProfile { profile: any; data?: any[]; protocol_setting?: any; }
 interface AutomationValue {
@@ -56,27 +62,66 @@ export default function AutomationValuesPage() {
   const [outputPin, setOutputPin] = useState("");
   const [outputLogic, setOutputLogic] = useState<boolean>(false);
 
-  const clientRef = useRef<mqtt.MqttClient>();
+  // clientRef sekarang akan menyimpan instance MqttClient yang dikelola oleh mqttClient.ts
+  const clientRef = useRef<MqttClient>(); // <-- Gunakan tipe MqttClient dari 'mqtt'
 
   useEffect(() => {
-    const c = mqtt.connect(process.env.NEXT_PUBLIC_MQTT_BROKER_URL!);
-    c.on("connect", () => {
+    // Panggil connectMQTT untuk mendapatkan atau membuat instance klien
+    const mqttClientInstance = connectMQTT();
+    clientRef.current = mqttClientInstance; // Simpan ke ref
+
+    // Pasang event listener pada instance klien yang didapat
+    const handleConnect = () => {
       setStatus("connected");
-      c.subscribe("automation_value/data");
-      c.subscribe("modbus_value/data");
-      c.subscribe("modular_value/data");
-    });
-    c.on("error", () => setStatus("error"));
-    c.on("close", () => setStatus("disconnected"));
-    c.on("message", (_, buf) => {
-      const msg = JSON.parse(buf.toString());
-      if (_.endsWith("automation_value/data")) setAutomationValues(msg);
-      if (_.endsWith("modbus_value/data")) setModbusDevices(msg);
-      if (_.endsWith("modular_value/data")) setModularDevices(msg);
-    });
-    clientRef.current = c;
-    return () => { c.end() };
-  }, []);
+      // Subscribe topic di sini setelah koneksi berhasil
+      mqttClientInstance.subscribe("automation_value/data");
+      mqttClientInstance.subscribe("modbus_value/data");
+      mqttClientInstance.subscribe("modular_value/data");
+    };
+
+    const handleError = (err: Error) => {
+      console.error("MQTT Client Error:", err);
+      setStatus("error");
+    };
+
+    const handleClose = () => setStatus("disconnected");
+
+    const handleMessage = (topic: string, messageBuf: Buffer) => {
+      try {
+        const msg = JSON.parse(messageBuf.toString());
+        // Gunakan perbandingan topic string secara langsung
+        if (topic === "automation_value/data") {
+          setAutomationValues(msg);
+        } else if (topic === "modbus_value/data") {
+          setModbusDevices(msg);
+        } else if (topic === "modular_value/data") {
+          setModularDevices(msg);
+        }
+      } catch (e) {
+        console.error("Failed to parse MQTT message:", e);
+      }
+    };
+
+    mqttClientInstance.on("connect", handleConnect);
+    mqttClientInstance.on("error", handleError);
+    mqttClientInstance.on("close", handleClose);
+    mqttClientInstance.on("message", handleMessage);
+
+    // Cleanup function: unsubscribe dari topik dan hapus listener
+    return () => {
+      if (mqttClientInstance.connected) {
+        mqttClientInstance.unsubscribe("automation_value/data");
+        mqttClientInstance.unsubscribe("modbus_value/data");
+        mqttClientInstance.unsubscribe("modular_value/data");
+      }
+      // Hapus event listener untuk mencegah memory leak
+      mqttClientInstance.off("connect", handleConnect);
+      mqttClientInstance.off("error", handleError);
+      mqttClientInstance.off("close", handleClose);
+      mqttClientInstance.off("message", handleMessage);
+      // Jangan panggil mqttClientInstance.end() di sini karena mqttClient.ts mengelola satu instance global.
+    };
+  }, []); // Dependensi kosong agar useEffect hanya berjalan sekali
 
   const resetForm = () => {
     setSelectedDevice(""); setSelectedTopic("");
@@ -105,15 +150,30 @@ export default function AutomationValuesPage() {
       ? { ...editing, config: { key_value: selectedVar, logic, value: valueTrigger }, relay: { name: selectedDeviceOutput, pin: outputPin, logic: outputLogic } }
       : { name: selectedDevice, topic: selectedTopic, config: { key_value: selectedVar, logic, value: valueTrigger }, relay: { name: selectedDeviceOutput, pin: outputPin, logic: outputLogic } };
     const topic = editing ? "automation_value/update" : "automation_value/create";
-    clientRef.current?.publish(topic, JSON.stringify(payload));
-    toast.success(editing ? "Updated" : "Created");
-    setModalOpen(false);
+
+    // Gunakan klien dari ref untuk publish
+    clientRef.current?.publish(topic, JSON.stringify(payload), (err) => {
+        if (err) {
+            toast.error(`Failed to publish: ${err.message}`);
+            console.error("Publish error:", err);
+        } else {
+            toast.success(editing ? "Updated" : "Created");
+            setModalOpen(false);
+        }
+    });
   };
 
   const remove = (item: AutomationValue) => {
     const msg = JSON.stringify({ name: item.name });
-    clientRef.current?.publish("automation_value/delete", msg);
-    toast.success("Deleted");
+    // Gunakan klien dari ref untuk publish
+    clientRef.current?.publish("automation_value/delete", msg, (err) => {
+        if (err) {
+            toast.error(`Failed to delete: ${err.message}`);
+            console.error("Delete publish error:", err);
+        } else {
+            toast.success("Deleted");
+        }
+    });
   };
 
   // --- Pagination, Sort, and Search Logic ---
@@ -135,7 +195,7 @@ export default function AutomationValuesPage() {
           <Zap className="w-5 h-5 text-muted-foreground"/>
           <h1 className="text-lg font-semibold">Automation Values</h1>
         </div>
-        <MQTTConnectionBadge />
+        <MQTTConnectionBadge /> {/* Pastikan badge ini juga membaca status koneksi dari klien global */}
       </header>
       <div className="p-6 space-y-4">
         <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
@@ -234,7 +294,7 @@ export default function AutomationValuesPage() {
                 <Select value={logic} onValueChange={setLogic}>
                   <SelectTrigger><SelectValue placeholder="Select.." /></SelectTrigger>
                   <SelectContent>
-                    {[" >", "<", ">=", "<=", "==", "!="].map(lo => (
+                    {[">", "<", ">=", "<=", "==", "!="].map(lo => (
                       <SelectItem key={lo} value={lo}>{lo}</SelectItem>
                     ))}
                   </SelectContent>
