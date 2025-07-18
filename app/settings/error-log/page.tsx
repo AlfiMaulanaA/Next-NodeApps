@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react"; // Add useCallback
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
@@ -20,7 +20,7 @@ import {
   Bug,
   BarChart3,
   Hash,
-  Loader2, // Import Loader2 for loading state
+  Loader2,
 } from "lucide-react";
 import {
   Table,
@@ -40,7 +40,7 @@ import {
   PaginationNext,
 } from "@/components/ui/pagination";
 import { useSortableTable } from "@/hooks/use-sort-table";
-import { connectMQTT, getMQTTClient } from "@/lib/mqttClient"; // Ensure getMQTTClient is imported
+import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
 import type { MqttClient } from "mqtt";
 
 interface ErrorLog {
@@ -52,9 +52,9 @@ interface ErrorLog {
 export default function ErrorLogPage() {
   const [logs, setLogs] = useState<ErrorLog[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isLoading, setIsLoading] = useState(true); // New loading state
+  const [isLoading, setIsLoading] = useState(true);
   const logsPerPage = 10;
-  const clientRef = useRef<MqttClient | null>(null); // Use MqttClient type
+  const clientRef = useRef<MqttClient | null>(null);
 
   const { sorted, handleSort, sortField, sortDirection } = useSortableTable(logs);
 
@@ -63,26 +63,24 @@ export default function ErrorLogPage() {
     const client = getMQTTClient();
     if (!client || !client.connected) {
       toast.warning("MQTT not connected. Cannot request logs.");
-      setIsLoading(false); // Stop loading if not connected
+      setIsLoading(false);
       return;
     }
-    setIsLoading(true); // Start loading state
+    setIsLoading(true);
     setTimeout(() => {
       client.publish("subrack/error/data/request", JSON.stringify({ command: "get_all" }));
       toast.info("Requesting error logs from device...");
-    }, 300); // Small delay to ensure subscription is active
+    }, 300);
   }, []);
 
   useEffect(() => {
     const mqttClientInstance = connectMQTT();
     clientRef.current = mqttClientInstance;
 
-    // If client is already connected on mount, request logs immediately
     if (mqttClientInstance.connected) {
       requestAllLogs();
     }
 
-    // Subscribe to topics immediately
     mqttClientInstance.subscribe("subrack/error/data", (err) => {
       if (err) console.error("Failed to subscribe to subrack/error/data:", err);
     });
@@ -91,24 +89,21 @@ export default function ErrorLogPage() {
     });
 
     const handleConnect = () => {
-      // Re-subscribe on connect (though mqtt.js often handles this)
       mqttClientInstance.subscribe("subrack/error/data");
       mqttClientInstance.subscribe("subrack/error/data/delete");
-      requestAllLogs(); // Request logs every time connection is established (including re-connects)
+      requestAllLogs();
       toast.success("MQTT Connected for Error Logs. Fetching data...");
     };
 
     const handleError = (err: Error) => {
       console.error("MQTT Client Error:", err);
-      // setStatus("error"); // MqttStatus component already handles this internally
       toast.error(`MQTT Error: ${err.message}`);
-      setIsLoading(false); // Stop loading on error
+      setIsLoading(false);
     };
 
     const handleClose = () => {
-      // setStatus("disconnected"); // MqttStatus component already handles this internally
       toast.warning("MQTT disconnected. Log data may be outdated.");
-      setIsLoading(false); // Stop loading on close
+      setIsLoading(false);
     };
 
     const handleMessage = (topic: string, payload: Buffer) => {
@@ -121,48 +116,50 @@ export default function ErrorLogPage() {
           } else {
             toast.error(data.message || "Failed to delete logs.");
           }
-          setIsLoading(false); // Stop loading after delete response
+          setIsLoading(false);
         } else if (topic === "subrack/error/data") {
           if (Array.isArray(data)) {
-            setLogs(data);
+            // --- FILTERING LOGS START ---
+            const filteredLogs = data.filter((logItem: ErrorLog) => {
+              // Contoh log yang ingin disembunyikan
+              const ignoredErrorPattern = "MODULAR I2C cannot connect to server broker mqtt";
+              return !logItem.data.includes(ignoredErrorPattern);
+            });
+            setLogs(filteredLogs);
+            // --- FILTERING LOGS END ---
             toast.success("Error logs updated. ✔️");
           } else {
             toast.error("Received invalid log data format. ⚠️");
             console.warn("Expected array for logs, got:", data);
           }
-          setCurrentPage(1); // Reset to first page on log update
-          setIsLoading(false); // Stop loading after data is received
+          setCurrentPage(1);
+          setIsLoading(false);
         }
       } catch (err) {
         toast.error("Invalid payload format received from MQTT. ❌");
         console.error("MQTT message parsing error:", err);
-        setIsLoading(false); // Stop loading on parsing error
+        setIsLoading(false);
       }
     };
 
-    // Attach event listeners
     mqttClientInstance.on("connect", handleConnect);
     mqttClientInstance.on("error", handleError);
     mqttClientInstance.on("close", handleClose);
     mqttClientInstance.on("message", handleMessage);
 
-    // Cleanup function
     return () => {
-      if (clientRef.current?.connected) { // Only unsubscribe if connected
+      if (clientRef.current?.connected) {
         clientRef.current.unsubscribe("subrack/error/data");
         clientRef.current.unsubscribe("subrack/error/data/delete");
       }
-      // Detach all listeners to prevent memory leaks
       mqttClientInstance.off("connect", handleConnect);
       mqttClientInstance.off("error", handleError);
       mqttClientInstance.off("close", handleClose);
       mqttClientInstance.off("message", handleMessage);
-      // Do NOT call client.end() here; it's managed globally by mqttClient.ts.
     };
-  }, [requestAllLogs]); // Add requestAllLogs as a dependency
+  }, [requestAllLogs]);
 
   const deleteAll = () => {
-    // Publish a command to delete all logs
     if (clientRef.current?.connected) {
       toast.info("Sending command to delete all logs...");
       clientRef.current.publish("subrack/error/data/command", JSON.stringify({ command: "delete_all" }), (err) => {
