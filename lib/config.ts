@@ -1,4 +1,4 @@
-// src/config/appConfig.ts atau config/appConfig.ts
+// src/config/appConfig.ts
 
 interface AppConfig {
   mqttBrokerUrl: string;
@@ -10,35 +10,34 @@ export function getAppConfig(): AppConfig {
   let apiBaseUrl: string;
 
   const isProduction = process.env.NODE_ENV === "production";
-
-  // Tentukan protokol berdasarkan lingkungan (HTTPS di produksi, atau dari env)
-  // Penting: Pastikan broker MQTT Anda mendukung WSS di port 9000 jika menggunakan HTTPS
-  const protocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws";
+  const currentBrowserProtocol = typeof window !== "undefined" ? window.location.protocol : '';
 
   if (isProduction) {
-    if (typeof window !== "undefined") {
-      // Di produksi, gunakan window.location.hostname dengan port 9000
-      // Protokol disesuaikan secara dinamis
-      mqttBrokerUrl = `${protocol}://${window.location.hostname}:9000`; // Sesuaikan port jika berbeda
-      apiBaseUrl = `http://${window.location.hostname}:8000`; // Sesuaikan port jika berbeda
+    if (currentBrowserProtocol === "https:") {
+      // Production (HTTPS): Use environment variable for MQTT, assume API is also HTTPS
+      mqttBrokerUrl = process.env.NEXT_PUBLIC_MQTT_BROKER_URL || "wss://localhost:9000";
+      apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "https://localhost:8000";
+    } else if (typeof window !== "undefined") {
+      // Production (HTTP, e.g., local test): Use hostname with ws
+      mqttBrokerUrl = `ws://${window.location.hostname}:9000`;
+      apiBaseUrl = `http://${window.location.hostname}:8000`;
     } else {
-      // Fallback untuk SSR di produksi (jika diperlukan koneksi di server, tapi ini client component)
+      // Production (SSR): Fallback to environment variables
       mqttBrokerUrl = process.env.NEXT_PUBLIC_MQTT_BROKER_URL || "ws://localhost:9000";
       apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
     }
   } else {
-    // Development environment: Gunakan langsung dari .env
-    // Protokol diambil dari env, jika tidak ada, default ke ws
-    mqttBrokerUrl = process.env.NEXT_PUBLIC_MQTT_BROKER_URL || "ws://localhost:9000"; // Sesuaikan port jika berbeda
-    apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"; // Sesuaikan port jika berbeda
+    // Development: Always use environment variables (or localhost fallbacks)
+    mqttBrokerUrl = process.env.NEXT_PUBLIC_MQTT_BROKER_URL || "ws://localhost:9000";
+    apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
   }
 
-  // Pastikan URL tidak kosong
+  // Ensure URLs are defined
   if (!mqttBrokerUrl) {
-    throw new Error("MQTT broker URL is not defined in any environment or fallback.");
+    throw new Error("MQTT broker URL is not defined.");
   }
   if (!apiBaseUrl) {
-    throw new Error("API base URL is not defined in any environment or fallback.");
+    throw new Error("API base URL is not defined.");
   }
 
   return { mqttBrokerUrl, apiBaseUrl };
