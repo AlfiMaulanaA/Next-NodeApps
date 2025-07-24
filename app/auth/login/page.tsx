@@ -31,16 +31,6 @@ const LoginPage = () => {
   ];
 
   useEffect(() => {
-    // Karena middleware sekarang menangani redirect otentikasi,
-    // pengecekan awal di client-side untuk redirect ini bisa dihapus atau dipertahankan
-    // jika Anda ingin perilaku redirect yang instan tanpa refresh halaman.
-    // Namun, untuk kesederhanaan, kita akan mengandalkan middleware.
-    // Jika Anda mempertahankan ini, pastikan perilaku konsisten.
-    // if (typeof window !== 'undefined' && getCookie('authToken')) { // Gunakan getCookie
-    //   router.replace("/");
-    //   return;
-    // }
-
     let imageIndex = 0;
     const intervalId = setInterval(() => {
       imageIndex = (imageIndex + 1) % images.length;

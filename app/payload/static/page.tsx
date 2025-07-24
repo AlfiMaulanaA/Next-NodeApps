@@ -1,11 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-// import mqtt from "mqtt"; // Remove direct mqtt import
 import { toast } from "sonner";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileText, PlusCircle, Edit2, Eye, ArrowUpDown } from "lucide-react";
@@ -26,7 +23,7 @@ import {
 } from "@/components/ui/pagination";
 import MQTTConnectionBadge from "@/components/mqtt-status";
 import { connectMQTT } from "@/lib/mqttClient";
-import type { MqttClient } from "mqtt"; // Import MqttClient type for useRef
+import type { MqttClient } from "mqtt";
 
 interface PayloadField { key: string; type: string; value: string; }
 interface DataItem {
@@ -35,148 +32,91 @@ interface DataItem {
   interval: number; qos: number; lwt: boolean; retain: boolean;
 }
 
-export default function StaticPayloadPage() {
-  const [status, setStatus] = useState<"connected" | "disconnected" | "error">("disconnected");
-  const [tab, setTab] = useState("list");
-  const [items, setItems] = useState<DataItem[]>([]);
-  const [previewPayload, setPreviewPayload] = useState<any>(null);
-  const [formFields, setFormFields] = useState<PayloadField[]>([]);
-  const [formMeta, setFormMeta] = useState({ topic: "", interval: 0, qos: 0, lwt: false, retain: false });
-  const [createOpen, setCreateOpen] = useState(false);
-  const [updateOpen, setUpdateOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [responseMessage, setResponseMessage] = useState<string>("");
-  const [updateIndex, setUpdateIndex] = useState<number | null>(null);
+// Refactor form into a reusable component
+interface PayloadFormProps {
+  initialMeta: { topic: string; interval: number; qos: number; lwt: boolean; retain: boolean; };
+  initialFields: PayloadField[];
+  onSubmit: (meta: typeof initialMeta, fields: { key: string; value: any }[]) => void;
+  onClose: () => void;
+  title: string;
+}
 
-  const clientRef = useRef<MqttClient>(); // Use MqttClient type
+function PayloadForm({ initialMeta, initialFields, onSubmit, onClose, title }: PayloadFormProps) {
+  const [formMeta, setFormMeta] = useState(initialMeta);
+  const [formFields, setFormFields] = useState(initialFields);
 
   useEffect(() => {
-    // Connect using the centralized function
-    const mqttClientInstance = connectMQTT();
-    clientRef.current = mqttClientInstance;
+    setFormMeta(initialMeta);
+    setFormFields(initialFields);
+  }, [initialMeta, initialFields]); // Reset form when initial props change (e.g., for update)
 
-    const handleConnect = () => {
-      setStatus("connected");
-      // Subscribe to the response topic
-      mqttClientInstance.subscribe("response/data/payload");
-      // Request initial data upon connection
-      mqttClientInstance.publish("command/data/payload", JSON.stringify({ command: "getData" }));
-    };
+  function addField() {
+    setFormFields([...formFields, { key: "", type: "string", value: "" }]);
+  }
+  function removeField(idx: number) {
+    const v = [...formFields]; v.splice(idx, 1); setFormFields(v);
+  }
+  function updateField(idx: number, attr: "key" | "value" | "type", val: string) {
+    const v = [...formFields]; v[idx] = { ...v[idx], [attr]: val }; setFormFields(v);
+  }
 
-    const handleError = (err: Error) => {
-      console.error("MQTT Client Error:", err);
-      setStatus("error");
-    };
-    const handleClose = () => setStatus("disconnected");
-
-    const handleMessage = (topic: string, buf: Buffer) => {
-      try {
-        const msg = JSON.parse(buf.toString());
-        // Check if the message is a response to getData command
-        if (topic === "response/data/payload") {
-          if (Array.isArray(msg)) {
-            setItems(msg);
-            toast.success("Received latest payload list");
-          } else if (msg.status === "success" || msg.status === "error") {
-            // Handle success/error messages from create/update/delete commands
-            setResponseMessage(msg.message);
-            if (msg.status === "success") {
-                toast.success(msg.message || "Operation successful!");
-            } else {
-                toast.error(msg.message || "Operation failed!");
-            }
-            // After an operation, refresh data (with a slight delay)
-            setTimeout(() => {
-                mqttClientInstance.publish("command/data/payload", JSON.stringify({ command: "getData" }));
-            }, 500);
-          }
-        }
-      } catch (err) {
-        toast.error("Invalid payload from broker");
-        console.error("MQTT message parsing error:", err);
+  // Helper to parse field values based on their declared type
+  function parseField(f: PayloadField): any {
+    if (f.type === "int") {
+      const parsed = parseInt(f.value, 10);
+      if (isNaN(parsed)) {
+        toast.error(`Invalid integer value for key '${f.key}'. Please enter a number.`);
+        throw new Error("Invalid integer value"); // Throw to stop form submission
       }
-    };
-
-    // Attach event listeners
-    mqttClientInstance.on("connect", handleConnect);
-    mqttClientInstance.on("error", handleError);
-    mqttClientInstance.on("close", handleClose);
-    mqttClientInstance.on("message", handleMessage);
-
-    // Cleanup function
-    return () => {
-      if (mqttClientInstance.connected) {
-        mqttClientInstance.unsubscribe("response/data/payload");
-      }
-      mqttClientInstance.off("connect", handleConnect);
-      mqttClientInstance.off("error", handleError);
-      mqttClientInstance.off("close", handleClose);
-      mqttClientInstance.off("message", handleMessage);
-      // Do NOT call client.end() here; it's managed globally.
-    };
-  }, []);
-
-  const send = (command: string, payload: any) => {
-    if (status !== "connected" || !clientRef.current?.connected) {
-      toast.error("MQTT not connected. Please wait for connection or refresh.");
-      return;
+      return parsed;
     }
-    clientRef.current?.publish("command/data/payload", JSON.stringify({ command, ...payload }), (err) => {
-        if (err) {
-            toast.error(`Failed to send command: ${err.message}`);
-            console.error("Publish error:", err);
-        }
-    });
+    if (f.type === "boolean") {
+      if (f.value !== "true" && f.value !== "false") {
+        toast.error(`Invalid boolean value for key '${f.key}'. Please use 'true' or 'false'.`);
+        throw new Error("Invalid boolean value");
+      }
+      return f.value === "true";
+    }
+    if (f.type === "object" || f.type === "array") {
+      try {
+        return JSON.parse(f.value);
+      } catch (e) {
+        toast.error(`Invalid JSON for key '${f.key}'. Please ensure it's valid JSON.`);
+        throw new Error("Invalid JSON value"); // Throw to stop form submission
+      }
+    }
+    return f.value; // Default to string
+  }
+
+  const handleSubmit = () => {
+    try {
+      // Validate topic
+      if (!formMeta.topic.trim()) { // ✨ Corrected: Using formMeta here
+        toast.error("Topic cannot be empty.");
+        return;
+      }
+      // Ensure all keys are unique and not empty
+      const keys = formFields.map(f => f.key.trim());
+      const uniqueKeys = new Set(keys);
+      if (keys.length !== uniqueKeys.size) {
+        toast.error("Duplicate keys found in data fields. Keys must be unique.");
+        return;
+      }
+      if (keys.some(k => !k)) {
+        toast.error("Data field keys cannot be empty.");
+        return;
+      }
+
+      const parsedFields = formFields.map(f => ({ key: f.key, value: parseField(f) }));
+      onSubmit(formMeta, parsedFields); // ✨ Corrected: Using formMeta here
+    } catch (error) {
+      // Errors are already toasted by parseField
+      console.error("Form submission error:", error);
+    }
   };
 
-  // --- CRUD Handlers ---
-  const handleGet = () => {
-    setResponseMessage("");
-    send("getData", {});
-  };
-
-  const handleCreate = () => {
-    send("writeData", { ...formMeta, data: Object.fromEntries(formFields.map(f => [f.key, parseField(f)])) });
-    setCreateOpen(false);
-    setResponseMessage("Create command sent. Waiting for response...");
-    // Response will trigger handleGet via message listener
-  };
-
-  const handleUpdate = () => {
-    send("updateData", { ...formMeta, data: Object.fromEntries(formFields.map(f => [f.key, parseField(f)])) });
-    setUpdateOpen(false);
-    setResponseMessage("Update command sent. Waiting for response...");
-    // Response will trigger handleGet via message listener
-  };
-
-  const handleDelete = (idx: number) => {
-    const topicToDelete = items[idx].topic;
-    send("deleteData", { topic: topicToDelete });
-    setResponseMessage(`Delete command sent for topic: ${topicToDelete}`);
-    // Response will trigger handleGet via message listener
-  };
-
-  // --- Modal Openers ---
-  const openCreateModal = () => {
-    setFormMeta({ topic: "", interval: 0, qos: 0, lwt: false, retain: false });
-    setFormFields([]);
-    setCreateOpen(true);
-  };
-  const openUpdateModal = (idx: number) => {
-    setUpdateIndex(idx);
-    const it = items[idx];
-    setFormMeta({ topic: it.topic, interval: it.interval, qos: it.qos, lwt: it.lwt, retain: it.retain });
-    setFormFields(Object.entries(it.data).map(([k, v]) => ({ key: k, type: typeof v === "number" ? "int" : typeof v === "boolean" ? "boolean" : Array.isArray(v) ? "array" : typeof v === "object" ? "object" : "string", value: typeof v === "object" ? JSON.stringify(v) : String(v) })));
-    setUpdateOpen(true);
-  };
-  const openPreviewModal = (data: any) => {
-    setPreviewPayload(data);
-    setPreviewOpen(true);
-  };
-
-  // --- Field UI ---
-  function renderFields(fields: typeof formFields, setFields: typeof setFormFields) {
-    return fields.map((f, i) => (
+  const renderFields = () => {
+    return formFields.map((f, i) => (
       <div key={i} className="flex gap-2 items-center mb-2">
         <Input placeholder="Key" value={f.key} onChange={e => updateField(i, "key", e.target.value)} />
         <select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="border rounded px-2 py-1">
@@ -190,7 +130,180 @@ export default function StaticPayloadPage() {
         <Button variant="destructive" onClick={() => removeField(i)}>×</Button>
       </div>
     ));
-  }
+  };
+
+  return (
+    <DialogContent>
+      <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+      <Input placeholder="Topic" value={formMeta.topic} onChange={e => setFormMeta({ ...formMeta, topic: e.target.value })} disabled={title === "Update Data"} />
+      <div className="flex gap-2 mt-2">
+        <Input type="number" placeholder="Interval" value={formMeta.interval} onChange={e => setFormMeta({ ...formMeta, interval: Number(e.target.value) })} />
+        <select value={formMeta.qos} onChange={e => setFormMeta({ ...formMeta, qos: Number(e.target.value) })} className="border rounded px-2 py-1">
+          <option value={0}>Qos 0</option>
+          <option value={1}>Qos 1</option>
+          <option value={2}>Qos 2</option>
+        </select>
+        <select value={String(formMeta.lwt)} onChange={e => setFormMeta({ ...formMeta, lwt: e.target.value === "true" })} className="border rounded px-2 py-1">
+          <option value="true">LWT True</option>
+          <option value="false">LWT False</option>
+        </select>
+        <select value={String(formMeta.retain)} onChange={e => setFormMeta({ ...formMeta, retain: e.target.value === "true" })} className="border rounded px-2 py-1">
+          <option value="true">Retain True</option>
+          <option value="false">Retain False</option>
+        </select>
+      </div>
+      <h4 className="mt-4">Data Fields</h4>
+      {renderFields()}
+      <Button size="sm" variant="default" onClick={addField}>Add Field</Button>
+      <DialogFooter>
+        <Button variant="default" onClick={handleSubmit}>Send Data</Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+export default function StaticPayloadPage() {
+  const [status, setStatus] = useState<"connected" | "disconnected" | "error">("disconnected");
+  const [items, setItems] = useState<DataItem[]>([]);
+  const [previewPayload, setPreviewPayload] = useState<any>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [responseMessage, setResponseMessage] = useState<string>("");
+  const [updateIndex, setUpdateIndex] = useState<number | null>(null);
+
+  const clientRef = useRef<MqttClient>();
+
+  const [currentFormMeta, setCurrentFormMeta] = useState({ topic: "", interval: 0, qos: 0, lwt: false, retain: false });
+  const [currentFormFields, setCurrentFormFields] = useState<PayloadField[]>([]);
+
+  useEffect(() => {
+    const mqttClientInstance = connectMQTT();
+    clientRef.current = mqttClientInstance;
+
+    const handleConnect = () => {
+      setStatus("connected");
+      mqttClientInstance.subscribe("response/data/#");
+      mqttClientInstance.publish("command/data/payload", JSON.stringify({ command: "getData" }));
+      toast.info("Connected to MQTT. Requesting initial data...");
+    };
+
+    const handleError = (err: Error) => {
+      console.error("MQTT Client Error:", err);
+      setStatus("error");
+      toast.error(`MQTT Error: ${err.message}`);
+    };
+    const handleClose = () => {
+      setStatus("disconnected");
+      toast.warning("Disconnected from MQTT broker.");
+    };
+
+    const handleMessage = (topic: string, buf: Buffer) => {
+      try {
+        const msg = JSON.parse(buf.toString());
+
+        if (topic === "response/data/payload") {
+          if (Array.isArray(msg)) {
+            setItems(msg);
+            toast.success("Received latest payload list.");
+          } else {
+            console.warn("Unexpected message format on response/data/payload:", msg);
+          }
+        } else if (topic === "response/data/write" || topic === "response/data/update" || topic === "response/data/delete") {
+          setResponseMessage(msg.message);
+          if (msg.status === "success") {
+            toast.success(msg.message || "Operation successful!");
+            setTimeout(() => {
+                clientRef.current?.publish("command/data/payload", JSON.stringify({ command: "getData" }));
+            }, 500);
+          } else {
+            toast.error(msg.message || "Operation failed!");
+          }
+        } else {
+            console.log(`Received unknown message on topic ${topic}:`, msg);
+        }
+      } catch (err) {
+        toast.error("Invalid payload from broker. Check console for details.");
+        console.error("MQTT message parsing error:", err);
+      }
+    };
+
+    mqttClientInstance.on("connect", handleConnect);
+    mqttClientInstance.on("error", handleError);
+    mqttClientInstance.on("close", handleClose);
+    mqttClientInstance.on("message", handleMessage);
+
+    return () => {
+      if (mqttClientInstance.connected) {
+        mqttClientInstance.unsubscribe("response/data/#");
+      }
+      mqttClientInstance.off("connect", handleConnect);
+      mqttClientInstance.off("error", handleError);
+      mqttClientInstance.off("close", handleClose);
+      mqttClientInstance.off("message", handleMessage);
+    };
+  }, []);
+
+  const send = (command: string, payload: any, responseTopic: string) => {
+    if (status !== "connected" || !clientRef.current?.connected) {
+      toast.error("MQTT not connected. Please wait for connection or refresh.");
+      return;
+    }
+    clientRef.current?.publish("command/data/payload", JSON.stringify({ command, ...payload }), (err) => {
+      if (err) {
+        toast.error(`Failed to send command: ${err.message}`);
+        console.error("Publish error:", err);
+      }
+    });
+  };
+
+  // --- CRUD Handlers ---
+  const handleGet = () => {
+    setResponseMessage("");
+    send("getData", {}, "response/data/payload");
+  };
+
+  const handleCreateSubmit = (meta: typeof currentFormMeta, parsedFields: { key: string; value: any }[]) => {
+    const dataToSend = Object.fromEntries(parsedFields.map(f => [f.key, f.value]));
+    send("writeData", { ...meta, data: dataToSend }, "response/data/write");
+    setCreateOpen(false);
+  };
+
+  const handleUpdateSubmit = (meta: typeof currentFormMeta, parsedFields: { key: string; value: any }[]) => {
+    const dataToSend = Object.fromEntries(parsedFields.map(f => [f.key, f.value]));
+    send("updateData", { ...meta, data: dataToSend, topic: meta.topic }, "response/data/update");
+    setUpdateOpen(false);
+  };
+
+  const handleDelete = (idx: number) => {
+    const topicToDelete = items[idx].topic;
+    send("deleteData", { topic: topicToDelete }, "response/data/delete");
+  };
+
+  // --- Modal Openers ---
+  const openCreateModal = () => {
+    setCurrentFormMeta({ topic: "", interval: 0, qos: 0, lwt: false, retain: false });
+    setCurrentFormFields([]);
+    setCreateOpen(true);
+  };
+
+  const openUpdateModal = (idx: number) => {
+    setUpdateIndex(idx);
+    const it = items[idx];
+    setCurrentFormMeta({ topic: it.topic, interval: it.interval, qos: it.qos, lwt: it.lwt, retain: it.retain });
+    // Convert data object to PayloadField array for form
+    setCurrentFormFields(Object.entries(it.data).map(([k, v]) => ({
+      key: k,
+      type: typeof v === "number" ? "int" : typeof v === "boolean" ? "boolean" : Array.isArray(v) ? "array" : typeof v === "object" ? "object" : "string",
+      value: typeof v === "object" ? JSON.stringify(v) : String(v)
+    })));
+    setUpdateOpen(true);
+  };
+
+  const openPreviewModal = (data: any) => {
+    setPreviewPayload(data);
+    setPreviewOpen(true);
+  };
 
   // --- Pagination, Sort, and Search Logic ---
   const { searchQuery, setSearchQuery, filteredData } = useSearchFilter(items, ["topic"]);
@@ -214,8 +327,7 @@ export default function StaticPayloadPage() {
         </div>
       </header>
       <div className="p-6">
-        {responseMessage && <Alert className="mb-4">{responseMessage}</Alert>} {/* Use className for margin */}
-        {/* Controls above table */}
+        {responseMessage && <Alert className="mb-4">{responseMessage}</Alert>}
         <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
           <div className="flex gap-2">
             <Button size="sm" variant="secondary" onClick={handleGet}>Get Data</Button>
@@ -229,7 +341,6 @@ export default function StaticPayloadPage() {
             onChange={e => setSearchQuery(e.target.value)}
           />
         </div>
-        {/* Table with Sort and Pagination */}
         <Table>
           <TableHeader>
             <TableRow>
@@ -246,7 +357,7 @@ export default function StaticPayloadPage() {
             {paginatedData.length === 0 ? (
               <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No data received yet. Click "Get Data" to fetch the data.</TableCell></TableRow>
             ) : paginatedData.map((it, i) => (
-              <TableRow key={i}>
+              <TableRow key={it.topic}>
                 <TableCell>{(currentPage - 1) * pageSize + i + 1}</TableCell>
                 <TableCell>{it.topic}</TableCell>
                 <TableCell>
@@ -275,7 +386,6 @@ export default function StaticPayloadPage() {
             ))}
           </TableBody>
         </Table>
-        {/* Pagination */}
         <Pagination className="mt-4">
           <PaginationContent>
             <PaginationPrevious onClick={() => setCurrentPage(p => Math.max(1, p - 1))} />
@@ -292,64 +402,29 @@ export default function StaticPayloadPage() {
             <PaginationNext onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} />
           </PaginationContent>
         </Pagination>
+
         {/* Create Modal */}
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Create New Data</DialogTitle></DialogHeader>
-            <Input placeholder="Topic" value={formMeta.topic} onChange={e => setFormMeta({ ...formMeta, topic: e.target.value })} />
-            <div className="flex gap-2 mt-2">
-              <Input type="number" placeholder="Interval" value={formMeta.interval} onChange={e => setFormMeta({ ...formMeta, interval: Number(e.target.value) })} />
-              <select value={formMeta.qos} onChange={e => setFormMeta({ ...formMeta, qos: Number(e.target.value) })} className="border rounded px-2 py-1">
-                <option value={0}>Qos 0</option>
-                <option value={1}>Qos 1</option>
-                <option value={2}>Qos 2</option>
-              </select>
-              <select value={String(formMeta.lwt)} onChange={e => setFormMeta({ ...formMeta, lwt: e.target.value === "true" })} className="border rounded px-2 py-1">
-                <option value="true">LWT True</option>
-                <option value="false">LWT False</option>
-              </select>
-              <select value={String(formMeta.retain)} onChange={e => setFormMeta({ ...formMeta, retain: e.target.value === "true" })} className="border rounded px-2 py-1">
-                <option value="true">Retain True</option>
-                <option value="false">Retain False</option>
-              </select>
-            </div>
-            <h4 className="mt-4">Data Fields</h4>
-            {renderFields(formFields, setFormFields)}
-            <Button size="sm" variant="default" onClick={addField}>Add Field</Button>
-            <DialogFooter>
-              <Button variant="default" onClick={handleCreate}>Send Data</Button>
-            </DialogFooter>
-          </DialogContent>
+          <PayloadForm
+            title="Create New Data"
+            initialMeta={currentFormMeta}
+            initialFields={currentFormFields}
+            onSubmit={handleCreateSubmit}
+            onClose={() => setCreateOpen(false)}
+          />
         </Dialog>
+
         {/* Update Modal */}
         <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Update Data</DialogTitle></DialogHeader>
-            <Input placeholder="Topic" value={formMeta.topic} onChange={e => setFormMeta({ ...formMeta, topic: e.target.value })} />
-            <div className="flex gap-2 mt-2">
-              <Input type="number" placeholder="Interval" value={formMeta.interval} onChange={e => setFormMeta({ ...formMeta, interval: Number(e.target.value) })} />
-              <select value={formMeta.qos} onChange={e => setFormMeta({ ...formMeta, qos: Number(e.target.value) })} className="border rounded px-2 py-1">
-                <option value={0}>Qos 0</option>
-                <option value={1}>Qos 1</option>
-                <option value={2}>Qos 2</option>
-              </select>
-              <select value={String(formMeta.lwt)} onChange={e => setFormMeta({ ...formMeta, lwt: e.target.value === "true" })} className="border rounded px-2 py-1">
-                <option value="true">LWT True</option>
-                <option value="false">LWT False</option>
-              </select>
-              <select value={String(formMeta.retain)} onChange={e => setFormMeta({ ...formMeta, retain: e.target.value === "true" })} className="border rounded px-2 py-1">
-                <option value="true">Retain True</option>
-                <option value="false">Retain False</option>
-              </select>
-            </div>
-            <h4 className="mt-4">Data Fields</h4>
-            {renderFields(formFields, setFormFields)}
-            <Button size="sm" variant="default" onClick={addField}>Add Field</Button>
-            <DialogFooter>
-              <Button variant="default" onClick={handleUpdate}>Send Update</Button>
-            </DialogFooter>
-          </DialogContent>
+          <PayloadForm
+            title="Update Data"
+            initialMeta={currentFormMeta}
+            initialFields={currentFormFields}
+            onSubmit={handleUpdateSubmit}
+            onClose={() => setUpdateOpen(false)}
+          />
         </Dialog>
+
         {/* Preview Modal */}
         <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
           <DialogContent>
@@ -360,22 +435,4 @@ export default function StaticPayloadPage() {
       </div>
     </SidebarInset>
   );
-
-  // Helper functions for form fields
-  function addField() {
-    setFormFields([...formFields, { key: "", type: "string", value: "" }]);
-  }
-  function removeField(idx: number) {
-    const v = [...formFields]; v.splice(idx,1); setFormFields(v);
-  }
-  function updateField(idx: number, attr: "key" | "value" | "type", val: string) {
-    const v = [...formFields]; v[idx] = { ...v[idx], [attr]: val}; setFormFields(v);
-  }
-  function parseField(f: PayloadField) {
-    // Handle "int" type explicitly
-    if (f.type === "int") return parseInt(f.value, 10);
-    if (f.type === "boolean") return f.value === "true";
-    // Attempt to parse as JSON for object/array, otherwise return as string
-    try { return JSON.parse(f.value); } catch { return f.value; }
-  }
 }

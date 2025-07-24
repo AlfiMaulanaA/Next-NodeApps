@@ -62,6 +62,11 @@ import { Separator } from "@radix-ui/react-separator"
 import { deleteCookie } from 'cookies-next';
 import { useRouter } from 'next/navigation'; // Keep the import here
 
+
+const appName = process.env.NEXT_PUBLIC_APP_NAME || "MQTT Gateway Dashboard";
+
+const avatarIcon = process.env.NEXT_PUBLIC_APP_AVATAR_URL || "/images/avatar-user.png";
+
 const navigation = [
   {
     title: "Main",
@@ -73,9 +78,6 @@ const navigation = [
       // { title: "Modular Devices", url: "/devices/modular", icon: Cpu },
       { title: "Modbus Devices", url: "/devices/modbus", icon: Server },
       { title: "Battery Threshold", url: "/devices/threshold", icon: ShieldAlert },
-      { title: "Device Info", url: "/devices/info", icon: InfoIcon },
-      // { title: "Modbit Devices", url: "/devices/modbit", icon: CircuitBoard },
-      // { title: "I2C Scanner", url: "/devices/i2cScan", icon: ScanLine },
     ],
   },
   // {
@@ -86,9 +88,6 @@ const navigation = [
   //     { title: "Logic Control", url: "/control/logic", icon: FileBarChart },
   //     { title: "Voice Control", url: "/control/voice", icon: AudioLines },
   //     { title: "Value-Based Control", url: "/control/value", icon: FileBarChart },
-  //     { title: "Geofencing", url: "/control/geofence", icon: Globe },
-  //     { title: "Weather Automation", url: "/control/weather", icon: Cloud },
-  //     { title: "CCTV Integration", url: "/control/surveilance", icon: Video },
   //   ],
   // },
   // {
@@ -146,7 +145,7 @@ export function AppSidebar() {
           </div>
           <div>
             <h1 className="text-lg font-semibold text-sidebar-foreground">GSPE</h1>
-            <p className="text-xs text-sidebar-foreground/70">Battery Charging System</p>
+            <p className="text-xs text-sidebar-foreground/70">{appName }</p>
           </div>
         </div>
       </SidebarHeader>
@@ -187,7 +186,7 @@ export function AppSidebar() {
               <div className="flex items-center gap-3 mb-4 px-1 cursor-pointer hover:bg-muted rounded-md p-1 transition hover:shadow-sm">
                 <div className="h-10 w-10 rounded-full overflow-hidden border-2 border-sidebar-border">
                   <img
-                    src="/images/avatar-user.png"
+                    src={avatarIcon}
                     alt="User Avatar"
                     className="object-cover h-full w-full"
                   />
@@ -216,7 +215,7 @@ export function AppSidebar() {
               <div className="flex flex-col items-center mt-2">
                 <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary shadow-md mb-2">
                   <img
-                    src="/images/avatar-user.png"
+                    src={avatarIcon}
                     alt="User Avatar"
                     className="object-cover w-full h-full"
                   />

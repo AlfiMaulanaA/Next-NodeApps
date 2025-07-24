@@ -1,20 +1,15 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-// Hapus import mqtt dan mqttBrokerUrl yang lama
-// import mqtt from "mqtt";
-// import { mqttBrokerUrl } from "@/lib/config";
-
-// Import fungsi connectMQTT dan getMQTTClient dari lib/mqttClient.ts
-import { connectMQTT, getMQTTClient } from "@/lib/mqttClient"; // <-- Perbaikan: Impor dari sini
-
+import { connectMQTT } from "@/lib/mqttClient";
 import { toast } from "sonner";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Zap, Edit2, Trash2, ArrowUpDown } from "lucide-react";
+import { Zap, Edit2, Trash2, ArrowUpDown, CircleCheck, CircleX, Target } from "lucide-react";
 import MQTTConnectionBadge from "@/components/mqtt-status";
+import { Label } from "@/components/ui/label";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { useSearchFilter } from "@/hooks/use-search-filter";
 import { useSortableTable } from "@/hooks/use-sort-table";
@@ -33,159 +28,292 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
-import type { MqttClient } from "mqtt"; // Import tipe MqttClient untuk useRef
+import { Checkbox } from "@/components/ui/checkbox";
+import type { MqttClient } from "mqtt";
 
-interface DeviceProfile { profile: any; data?: any[]; protocol_setting?: any; }
-interface AutomationValue {
-  name: string;
-  topic: string;
-  config: { key_value: string; value: number; logic: string };
-  relay: { name: string; pin: string; logic: boolean };
+// --- INTERFACE DEFINITIONS ---
+
+// Interface untuk perangkat Modbus (Trigger Device)
+interface ModbusDeviceProfile {
+  profile: {
+    name: string;
+    data_topic: string; // Topik tempat data sensor perangkat ini dipublikasikan
+  };
+  data?: any[]; // Data sensor aktual dari perangkat
+  protocol_setting?: any; // Pengaturan protokol perangkat
 }
 
+// Interface untuk perangkat Modular (Relay Output Device)
+interface ModularDeviceProfile {
+  profile: {
+    name: string;
+    device_bus: number; // Tipe diubah menjadi number sesuai konfirmasi
+    address: number;     // Tipe diubah menjadi number sesuai konfirmasi
+  };
+  data?: any[]; // Data aktual dari perangkat modular (misal: status pin)
+}
+
+// Interface untuk nilai Automasi
+interface AutomationValue {
+  name: string; // Nama unik untuk aturan automasi (misal: "Lampu Ruang Tamu Otomatis")
+  topic: string; // Topik MQTT dari perangkat pemicu (misal: "modbus/sensor/temperature")
+  config: {
+    key_value: string; // Kunci data sensor yang akan dipantau (misal: "temperature_c")
+    value: number;     // Nilai ambang batas untuk pemicu
+    logic: string;     // Logika perbandingan (misal: ">", "<", "==")
+    auto?: boolean;    // Mode otomatis: true jika relay diatur otomatis oleh rule, false jika hanya notifikasi/trigger manual
+  };
+  relay: {
+    name: string;      // Nama perangkat relay (misal: "RELAYMINI_1")
+    pin: string;       // Pin relay yang akan dikontrol (misal: "1", "2")
+    logic: boolean;    // Logika output relay saat terpicu (true = ON, false = OFF)
+    address?: number;  // Alamat perangkat relay (misal: 32 untuk 0x20)
+    bus?: number;      // Bus perangkat relay (misal: 1 untuk i2c-1)
+  };
+}
+
+// --- CONSTANTS ---
+const ITEMS_PER_PAGE = 10; // Jumlah item per halaman untuk tabel
+
+// --- MAIN COMPONENT ---
 export default function AutomationValuesPage() {
+  // --- STATE MANAGEMENT ---
   const [status, setStatus] = useState<"connected"|"disconnected"|"error">("disconnected");
   const [automationValues, setAutomationValues] = useState<AutomationValue[]>([]);
-  const [modbusDevices, setModbusDevices] = useState<DeviceProfile[]>([]);
-  const [modularDevices, setModularDevices] = useState<DeviceProfile[]>([]);
+  const [modbusDevices, setModbusDevices] = useState<ModbusDeviceProfile[]>([]);
+  const [modularDevices, setModularDevices] = useState<ModularDeviceProfile[]>([]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AutomationValue | null>(null);
 
-  const [selectedDevice, setSelectedDevice] = useState("");
-  const [selectedTopic, setSelectedTopic] = useState("");
-  const [selectedVar, setSelectedVar] = useState("");
-  const [logic, setLogic] = useState("");
+  // Form states for Automation Rule (Trigger Configuration)
+  const [automationName, setAutomationName] = useState("");
+  const [selectedDeviceTrigger, setSelectedDeviceTrigger] = useState("");
+  const [selectedTopicTrigger, setSelectedTopicTrigger] = useState("");
+  const [selectedVarTrigger, setSelectedVarTrigger] = useState("");
+  const [logicTrigger, setLogicTrigger] = useState("");
   const [valueTrigger, setValueTrigger] = useState<number>(0);
+  const [autoMode, setAutoMode] = useState<boolean>(false);
 
+  // Form states for Relay Output Configuration
   const [selectedDeviceOutput, setSelectedDeviceOutput] = useState("");
   const [outputPin, setOutputPin] = useState("");
   const [outputLogic, setOutputLogic] = useState<boolean>(false);
 
-  // clientRef sekarang akan menyimpan instance MqttClient yang dikelola oleh mqttClient.ts
-  const clientRef = useRef<MqttClient>(); // <-- Gunakan tipe MqttClient dari 'mqtt'
+  // MQTT Client Reference
+  const clientRef = useRef<MqttClient>();
 
+  // --- EFFECT HOOKS ---
+
+  // Effect untuk inisialisasi MQTT client dan subscription
   useEffect(() => {
-    // Panggil connectMQTT untuk mendapatkan atau membuat instance klien
     const mqttClientInstance = connectMQTT();
-    clientRef.current = mqttClientInstance; // Simpan ke ref
+    clientRef.current = mqttClientInstance;
 
-    // Pasang event listener pada instance klien yang didapat
     const handleConnect = () => {
       setStatus("connected");
-      // Subscribe topic di sini setelah koneksi berhasil
+      // Subscribe topics setelah koneksi berhasil
       mqttClientInstance.subscribe("automation_value/data");
       mqttClientInstance.subscribe("modbus_value/data");
       mqttClientInstance.subscribe("modular_value/data");
+      console.log("Subscribed to automation, modbus, and modular data topics.");
     };
 
     const handleError = (err: Error) => {
       console.error("MQTT Client Error:", err);
       setStatus("error");
+      toast.error(`MQTT connection error: ${err.message}`);
     };
 
-    const handleClose = () => setStatus("disconnected");
+    const handleClose = () => {
+      setStatus("disconnected");
+      console.warn("MQTT connection closed.");
+    };
 
     const handleMessage = (topic: string, messageBuf: Buffer) => {
       try {
         const msg = JSON.parse(messageBuf.toString());
-        // Gunakan perbandingan topic string secara langsung
         if (topic === "automation_value/data") {
           setAutomationValues(msg);
+          console.log("Received automation data:", msg);
         } else if (topic === "modbus_value/data") {
           setModbusDevices(msg);
+          console.log("Received modbus device data:", msg);
         } else if (topic === "modular_value/data") {
           setModularDevices(msg);
+          console.log("Received modular device data:", msg);
         }
       } catch (e) {
-        console.error("Failed to parse MQTT message:", e);
+        console.error("Failed to parse MQTT message:", e, "Topic:", topic, "Message:", messageBuf.toString());
+        toast.error(`Failed to parse message from ${topic}`);
       }
     };
 
+    // Attach event listeners
     mqttClientInstance.on("connect", handleConnect);
     mqttClientInstance.on("error", handleError);
     mqttClientInstance.on("close", handleClose);
     mqttClientInstance.on("message", handleMessage);
 
-    // Cleanup function: unsubscribe dari topik dan hapus listener
+    // Cleanup function: unsubscribe dari topik dan hapus listener saat komponen unmount
     return () => {
       if (mqttClientInstance.connected) {
         mqttClientInstance.unsubscribe("automation_value/data");
         mqttClientInstance.unsubscribe("modbus_value/data");
         mqttClientInstance.unsubscribe("modular_value/data");
+        console.log("Unsubscribed from MQTT topics.");
       }
-      // Hapus event listener untuk mencegah memory leak
       mqttClientInstance.off("connect", handleConnect);
       mqttClientInstance.off("error", handleError);
       mqttClientInstance.off("close", handleClose);
       mqttClientInstance.off("message", handleMessage);
-      // Jangan panggil mqttClientInstance.end() di sini karena mqttClient.ts mengelola satu instance global.
     };
-  }, []); // Dependensi kosong agar useEffect hanya berjalan sekali
+  }, []); // Dependensi kosong agar useEffect hanya berjalan sekali saat mount
 
+  // Effect untuk memperbarui selectedTopicTrigger saat selectedDeviceTrigger berubah
+  useEffect(() => {
+    const device = modbusDevices.find(d => d.profile.name === selectedDeviceTrigger);
+    if (device) {
+      setSelectedTopicTrigger(device.profile.data_topic || "");
+    } else {
+      setSelectedTopicTrigger("");
+    }
+  }, [selectedDeviceTrigger, modbusDevices]);
+
+  // --- FORM & CRUD LOGIC ---
+
+  // Mereset semua state form ke nilai default
   const resetForm = () => {
-    setSelectedDevice(""); setSelectedTopic("");
-    setSelectedVar(""); setLogic(""); setValueTrigger(0);
-    setSelectedDeviceOutput(""); setOutputPin(""); setOutputLogic(false);
+    setAutomationName("");
+    setSelectedDeviceTrigger("");
+    setSelectedTopicTrigger("");
+    setSelectedVarTrigger("");
+    setLogicTrigger("");
+    setValueTrigger(0);
+    setAutoMode(false);
+
+    setSelectedDeviceOutput("");
+    setOutputPin("");
+    setOutputLogic(false);
     setEditing(null);
   };
 
+  // Membuka modal untuk menambah atau mengedit automasi
   const openModal = (item?: AutomationValue) => {
     if (item) {
       setEditing(item);
-      setSelectedDevice(item.name);
-      setSelectedTopic(item.topic);
-      setSelectedVar(item.config.key_value);
-      setLogic(item.config.logic);
+      setAutomationName(item.name);
+      // Asumsi nama automasi sama dengan nama device trigger untuk pengeditan
+      setSelectedDeviceTrigger(item.name);
+      setSelectedTopicTrigger(item.topic);
+      setSelectedVarTrigger(item.config.key_value);
+      setLogicTrigger(item.config.logic);
       setValueTrigger(item.config.value);
+      setAutoMode(item.config.auto || false);
+
       setSelectedDeviceOutput(item.relay.name);
       setOutputPin(item.relay.pin);
       setOutputLogic(item.relay.logic);
-    } else resetForm();
+    } else {
+      resetForm(); // Reset form jika menambah baru
+    }
     setModalOpen(true);
   };
 
+  // Menyimpan atau memperbarui automasi
   const save = () => {
-    const payload = editing
-      ? { ...editing, config: { key_value: selectedVar, logic, value: valueTrigger }, relay: { name: selectedDeviceOutput, pin: outputPin, logic: outputLogic } }
-      : { name: selectedDevice, topic: selectedTopic, config: { key_value: selectedVar, logic, value: valueTrigger }, relay: { name: selectedDeviceOutput, pin: outputPin, logic: outputLogic } };
+    // Basic validation
+    if (!automationName || !selectedDeviceTrigger || !selectedTopicTrigger || !selectedVarTrigger || !logicTrigger || !selectedDeviceOutput || !outputPin) {
+      toast.error("Please fill all required fields for Trigger and Relay.");
+      return;
+    }
+
+    // Validate valueTrigger for numerical comparisons
+    if (['>', '<', '>=', '<=', '==', '!='].includes(logicTrigger)) {
+      if (isNaN(valueTrigger)) {
+        toast.error("Trigger Value must be a number for selected logic.");
+        return;
+      }
+    }
+
+    // Get relay device details for address and bus
+    const selectedModularDevice = modularDevices.find(d => d.profile.name === selectedDeviceOutput);
+    // Menggunakan nullish coalescing operator (??) untuk memberikan nilai default 0 (number)
+    const relayAddress = selectedModularDevice?.profile?.address ?? 0;
+    const relayBus = selectedModularDevice?.profile?.device_bus ?? 0;
+
+    const payload: AutomationValue = editing
+      ? {
+          ...editing, // Pertahankan properti lain jika ada di 'editing'
+          name: automationName,
+          topic: selectedTopicTrigger,
+          config: {
+            key_value: selectedVarTrigger,
+            logic: logicTrigger,
+            value: valueTrigger,
+            auto: autoMode,
+          },
+          relay: {
+            name: selectedDeviceOutput,
+            pin: outputPin,
+            logic: outputLogic,
+            address: relayAddress,
+            bus: relayBus,
+          },
+        }
+      : {
+          name: automationName,
+          topic: selectedTopicTrigger,
+          config: {
+            key_value: selectedVarTrigger,
+            logic: logicTrigger,
+            value: valueTrigger,
+            auto: autoMode,
+          },
+          relay: {
+            name: selectedDeviceOutput,
+            pin: outputPin,
+            logic: outputLogic,
+            address: relayAddress,
+            bus: relayBus,
+          },
+        };
+
     const topic = editing ? "automation_value/update" : "automation_value/create";
 
-    // Gunakan klien dari ref untuk publish
     clientRef.current?.publish(topic, JSON.stringify(payload), (err) => {
-        if (err) {
-            toast.error(`Failed to publish: ${err.message}`);
-            console.error("Publish error:", err);
-        } else {
-            toast.success(editing ? "Updated" : "Created");
-            setModalOpen(false);
-        }
+      if (err) {
+        toast.error(`Failed to publish automation: ${err.message}`);
+        console.error("Publish automation error:", err);
+      } else {
+        toast.success(editing ? "Automation Rule Updated" : "New Automation Rule Created");
+        setModalOpen(false);
+        resetForm(); // Reset form setelah berhasil disimpan
+      }
     });
   };
 
+  // Menghapus automasi
   const remove = (item: AutomationValue) => {
     const msg = JSON.stringify({ name: item.name });
-    // Gunakan klien dari ref untuk publish
     clientRef.current?.publish("automation_value/delete", msg, (err) => {
-        if (err) {
-            toast.error(`Failed to delete: ${err.message}`);
-            console.error("Delete publish error:", err);
-        } else {
-            toast.success("Deleted");
-        }
+      if (err) {
+        toast.error(`Failed to delete automation: ${err.message}`);
+        console.error("Delete automation publish error:", err);
+      } else {
+        toast.success("Automation Rule Deleted");
+      }
     });
   };
 
-  // --- Pagination, Sort, and Search Logic ---
+  // --- TABLE LOGIC (Search, Sort, Pagination) ---
   const { searchQuery, setSearchQuery, filteredData } = useSearchFilter(automationValues, ["name", "topic"]);
   const { sorted, sortField, sortDirection, handleSort } = useSortableTable(filteredData);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
-  const totalPages = Math.ceil(sorted.length / pageSize);
-  const paginatedData = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalPages = Math.ceil(sorted.length / ITEMS_PER_PAGE);
+  const paginatedData = sorted.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const renderStatus = status === "connected" ? "text-green-600" : status === "error" ? "text-red-600" : "text-yellow-600";
-
+  // --- RENDER UI ---
   return (
     <SidebarInset>
       <header className="flex h-16 items-center justify-between border-b px-4">
@@ -195,59 +323,96 @@ export default function AutomationValuesPage() {
           <Zap className="w-5 h-5 text-muted-foreground"/>
           <h1 className="text-lg font-semibold">Automation Values</h1>
         </div>
-        <MQTTConnectionBadge /> {/* Pastikan badge ini juga membaca status koneksi dari klien global */}
+        <MQTTConnectionBadge />
       </header>
       <div className="p-6 space-y-4">
         <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
           <Button size="sm" variant="default" onClick={() => openModal()}>Add Automation</Button>
-          <input
+          <Input
             type="text"
-            placeholder="Search..."
-            className="border rounded px-2 py-1 w-64"
+            placeholder="Search automation by name or topic..."
+            className="w-64"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
           />
         </div>
         <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>#</TableHead>
-              <TableHead onClick={() => handleSort('name' as keyof AutomationValue)} className="cursor-pointer select-none">
-                Name / Topic <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" />
-              </TableHead>
-              <TableHead>Trigger</TableHead>
-              <TableHead>Relay</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedData.length ? paginatedData.map((item, i) => (
-              <TableRow key={i}>
-                <TableCell>{(currentPage - 1) * pageSize + i + 1}</TableCell>
-                <TableCell>
-                  <div className="font-semibold">{item.name}</div>
-                  <div className="text-muted text-xs">{item.topic}</div>
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className="badge">{item.config.key_value} {item.config.logic} {item.config.value}</span>
-                </TableCell>
-                <TableCell className="text-center">
-                  {item.relay.name} pin {item.relay.pin} = <strong>{item.relay.logic ? "ON" : "OFF"}</strong>
-                </TableCell>
-                <TableCell className="flex gap-1 justify-center">
-                  <Button size="icon" onClick={() => openModal(item)}><Edit2 /></Button>
-                  <Button size="icon" variant="destructive" onClick={() => remove(item)}><Trash2 /></Button>
-                </TableCell>
-              </TableRow>
-            )) : (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                  No automation data. Click "Add Automation" to create one.
-                </TableCell>
-              </TableRow>
+  <TableHeader>
+    <TableRow>
+      <TableHead className="w-[50px]">#</TableHead> {/* Lebar tetap untuk nomor */}
+      <TableHead onClick={() => handleSort('name' as keyof AutomationValue)} className="cursor-pointer select-none min-w-[150px]">
+        Name <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" />
+      </TableHead>
+      <TableHead className="min-w-[200px]">Trigger Device / Topic</TableHead>
+      <TableHead className="text-center min-w-[150px]">Trigger Rule</TableHead>
+      <TableHead className="text-center min-w-[150px]">Relay Output</TableHead>
+      <TableHead className="text-center w-[100px]">Auto Mode</TableHead>
+      <TableHead className="text-center w-[120px]">Actions</TableHead>
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    {paginatedData.length > 0 ? paginatedData.map((item, i) => (
+      <TableRow key={item.name}>
+        <TableCell className="align-top py-3">{(currentPage - 1) * ITEMS_PER_PAGE + i + 1}</TableCell>
+        <TableCell className="font-semibold align-top py-3">{item.name}</TableCell>
+        <TableCell className="align-top py-3">
+          <div className="flex items-start space-x-2"> {/* Gunakan items-start untuk top alignment */}
+            <Zap className="w-4 h-4 text-blue-500 mt-1" /> {/* mt-1 untuk align dengan teks */}
+            <div>
+              <div className="font-medium text-sm">{item.name}</div>
+              <div className="text-muted-foreground text-xs break-all leading-relaxed">{item.topic || "N/A"}</div> {/* Tambah N/A jika kosong */}
+            </div>
+          </div>
+        </TableCell>
+        <TableCell className="text-center align-top py-3">
+          <span className="font-mono text-xs md:text-sm bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-md inline-block whitespace-nowrap">
+            {item.config.key_value} {item.config.logic} {item.config.value}
+          </span>
+        </TableCell>
+        <TableCell className="text-center align-top py-3">
+          <div className="flex items-start justify-center space-x-2"> {/* Gunakan items-start */}
+            <Target className="w-4 h-4 text-green-500 mt-1" /> {/* mt-1 untuk align dengan teks */}
+            <div>
+              <div className="font-medium text-sm">{item.relay.name}</div>
+              <div className="text-muted-foreground text-xs">Pin: {item.relay.pin}</div>
+              <strong className={`text-sm ${item.relay.logic ? "text-green-600" : "text-red-600"}`}>
+                {item.relay.logic ? "ON" : "OFF"}
+              </strong>
+              {item.relay.address !== undefined && item.relay.bus !== undefined && (
+                <div className="text-muted-foreground text-xs">Bus: {item.relay.bus}, Addr: {item.relay.address}</div>
+              )}
+            </div>
+          </div>
+        </TableCell>
+        <TableCell className="text-center align-top py-3">
+          <div className="flex flex-col items-center justify-center space-y-1">
+            {item.config.auto ? (
+              <>
+                <CircleCheck className="w-5 h-5 text-green-600" />
+                <span className="text-xs text-muted-foreground">Yes</span>
+              </>
+            ) : (
+              <>
+                <CircleX className="w-5 h-5 text-red-600" />
+                <span className="text-xs text-muted-foreground">No</span>
+              </>
             )}
-          </TableBody>
-        </Table>
+          </div>
+        </TableCell>
+        <TableCell className="flex gap-1 justify-center align-top py-3">
+          <Button size="icon" variant="ghost" onClick={() => openModal(item)}><Edit2 className="w-4 h-4" /></Button>
+          <Button size="icon" variant="destructive" onClick={() => remove(item)}><Trash2 className="w-4 h-4" /></Button>
+        </TableCell>
+      </TableRow>
+    )) : (
+      <TableRow>
+        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+          No automation data. Click "Add Automation" to create one.
+        </TableCell>
+      </TableRow>
+    )}
+  </TableBody>
+</Table>
         <Pagination className="mt-4">
           <PaginationContent>
             <PaginationPrevious onClick={() => setCurrentPage(p => Math.max(1, p - 1))} />
@@ -265,15 +430,28 @@ export default function AutomationValuesPage() {
           </PaginationContent>
         </Pagination>
         <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-[600px]">
             <DialogHeader>
-              <DialogTitle>{editing ? "Edit Automation" : "Add Automation"}</DialogTitle>
+              <DialogTitle>{editing ? "Edit Automation Rule" : "Add New Automation Rule"}</DialogTitle>
             </DialogHeader>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+              {/* Automation Rule Name */}
+              <div className="col-span-2">
+                <Label>Automation Rule Name</Label>
+                <Input
+                  value={automationName}
+                  onChange={e => setAutomationName(e.target.value)}
+                  placeholder="e.g., Living Room Light Automation"
+                  disabled={!!editing} // Disable editing name for existing rules
+                />
+              </div>
+
+              {/* Trigger Configuration */}
+              <div className="col-span-2 text-lg font-semibold border-b pb-2 mb-2">Trigger Configuration</div>
               <div>
-                <label>Device</label>
-                <Select value={selectedDevice} onValueChange={setSelectedDevice}>
-                  <SelectTrigger><SelectValue placeholder="Select.." /></SelectTrigger>
+                <Label>Trigger Device</Label>
+                <Select value={selectedDeviceTrigger} onValueChange={setSelectedDeviceTrigger}>
+                  <SelectTrigger><SelectValue placeholder="Select device to monitor" /></SelectTrigger>
                   <SelectContent>
                     {modbusDevices.map(d => (
                       <SelectItem key={d.profile.name} value={d.profile.name}>{d.profile.name}</SelectItem>
@@ -282,17 +460,17 @@ export default function AutomationValuesPage() {
                 </Select>
               </div>
               <div>
-                <label>Topic</label>
-                <Input value={selectedTopic} onChange={e => setSelectedTopic(e.target.value)} />
+                <Label>Trigger Topic</Label>
+                <Input value={selectedTopicTrigger} disabled placeholder="Auto-filled from selected device" />
               </div>
               <div>
-                <label>Variable</label>
-                <Input value={selectedVar} onChange={e => setSelectedVar(e.target.value)} />
+                <Label>Variable (Key Value)</Label>
+                <Input value={selectedVarTrigger} onChange={e => setSelectedVarTrigger(e.target.value)} placeholder="e.g., temperature" />
               </div>
               <div>
-                <label>Logic</label>
-                <Select value={logic} onValueChange={setLogic}>
-                  <SelectTrigger><SelectValue placeholder="Select.." /></SelectTrigger>
+                <Label>Logic</Label>
+                <Select value={logicTrigger} onValueChange={setLogicTrigger}>
+                  <SelectTrigger><SelectValue placeholder="Select logic" /></SelectTrigger>
                   <SelectContent>
                     {[">", "<", ">=", "<=", "==", "!="].map(lo => (
                       <SelectItem key={lo} value={lo}>{lo}</SelectItem>
@@ -301,13 +479,24 @@ export default function AutomationValuesPage() {
                 </Select>
               </div>
               <div>
-                <label>Value</label>
-                <Input type="number" value={valueTrigger} onChange={e => setValueTrigger(Number(e.target.value))} />
+                <Label>Trigger Value</Label>
+                <Input type="number" value={valueTrigger} onChange={e => setValueTrigger(Number(e.target.value))} placeholder="e.g., 25" />
               </div>
+              <div className="col-span-1 flex items-center space-x-2">
+                <Checkbox
+                  id="auto-mode"
+                  checked={autoMode}
+                  onCheckedChange={(checked) => setAutoMode(Boolean(checked))}
+                />
+                <Label htmlFor="auto-mode">Enable Automatic Mode</Label>
+              </div>
+
+              {/* Relay Output Configuration */}
+              <div className="col-span-2 text-lg font-semibold border-b pb-2 mb-2 mt-4">Relay Output Configuration</div>
               <div>
-                <label>Relay Device</label>
+                <Label>Relay Device</Label>
                 <Select value={selectedDeviceOutput} onValueChange={setSelectedDeviceOutput}>
-                  <SelectTrigger><SelectValue placeholder="Select.." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select relay device" /></SelectTrigger>
                   <SelectContent>
                     {modularDevices.map(d => (
                       <SelectItem key={d.profile.name} value={d.profile.name}>{d.profile.name}</SelectItem>
@@ -316,22 +505,22 @@ export default function AutomationValuesPage() {
                 </Select>
               </div>
               <div>
-                <label>Pin</label>
-                <Input value={outputPin} onChange={e => setOutputPin(e.target.value)} />
+                <Label>Relay Pin</Label>
+                <Input value={outputPin} onChange={e => setOutputPin(e.target.value)} placeholder="e.g., 1" />
               </div>
               <div>
-                <label>Output Logic</label>
+                <Label>Output Logic (True/False)</Label>
                 <Select value={outputLogic ? "true" : "false"} onValueChange={v => setOutputLogic(v === "true") }>
-                  <SelectTrigger><SelectValue placeholder="Select.." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Set output logic" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="true">True</SelectItem>
-                    <SelectItem value="false">False</SelectItem>
+                    <SelectItem value="true">ON (True)</SelectItem>
+                    <SelectItem value="false">OFF (False)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={save}>{editing ? "Update" : "Create"}</Button>
+              <Button onClick={save}>{editing ? "Update Automation" : "Create Automation"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

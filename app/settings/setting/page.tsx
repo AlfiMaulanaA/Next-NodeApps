@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,14 +11,11 @@ import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useTheme } from "next-themes";
 import MqttStatus from '@/components/mqtt-status';
 
-// Import SweetAlert2
 import Swal from 'sweetalert2';
 
-// Import centralized MQTT client functions
-import { connectMQTT } from "@/lib/mqttClient";
-import type { MqttClient } from "mqtt"; // Import MqttClient type for useRef
+import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
+import type { MqttClient } from "mqtt";
 
-// Define the interface for SystemInfo
 interface SystemInfo {
   cpu_usage: number;
   cpu_temp: string;
@@ -33,9 +30,7 @@ interface SystemInfo {
   uptime: number;
 }
 
-export default function SettingsPage() { // <--- Nama komponen diubah di sini
-  // State variables for MQTT status, system info, IP display, and theme
-  const [mqttStatus, setMqttStatus] = useState<"Connected" | "Disconnected" | "Failed to Connect">("Disconnected");
+export default function SettingsPage() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo>({
     cpu_usage: 0,
     cpu_temp: "N/A",
@@ -54,48 +49,79 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
   const clientRef = useRef<MqttClient | null>(null);
   const { theme, setTheme } = useTheme();
 
-  // useEffect hook to handle MQTT connection and event listeners
+  const requestSystemStatus = useCallback(() => {
+    const client = getMQTTClient();
+    if (client && client.connected) {
+      toast.info("Requesting system status...");
+    } else {
+      toast.warning("MQTT not connected. Cannot request system status.");
+    }
+  }, []);
+
   useEffect(() => {
-    // Connect using the centralized function
     const mqttClientInstance = connectMQTT();
     clientRef.current = mqttClientInstance;
 
-    // MQTT event handlers
+    const topicsToSubscribe = [
+      "system/status",
+      "service/response",
+      "command/reset_config",
+      "batteryCharger/reset/energy/response",
+      "batteryCharger/reset/cycle/response",
+    ];
+
+    const subscribeToTopics = () => {
+      topicsToSubscribe.forEach((topic) => {
+        mqttClientInstance.subscribe(topic, (err) => {
+          if (err) console.error(`Failed to subscribe to ${topic}:`, err);
+        });
+      });
+    };
+
     const handleConnect = () => {
-      setMqttStatus("Connected");
-      // Subscribe to necessary topics
-      mqttClientInstance.subscribe("system/status");
-      mqttClientInstance.subscribe("service/response");
-      mqttClientInstance.subscribe("command/reset_config");
-      // Subscribe to the energy reset response topic
-      mqttClientInstance.subscribe("batteryCharger/reset/energy/response");
+      subscribeToTopics();
+      requestSystemStatus();
+      toast.success("MQTT Connected. Fetching system data...");
     };
 
     const handleError = (err: Error) => {
       console.error("MQTT Client Error:", err);
-      setMqttStatus("Failed to Connect");
       toast.error("MQTT connection error. Please check broker settings.");
     };
 
     const handleClose = () => {
-      setMqttStatus("Disconnected");
+      console.log("MQTT client disconnected.");
     };
 
     const handleMessage = (topic: string, payload: Buffer) => {
       try {
         const msg = JSON.parse(payload.toString());
+
         if (topic === "system/status") {
           setSystemInfo(msg);
         } else if (topic === "service/response") {
-          // Dismiss the loading toast if it exists
           toast.dismiss("serviceCommand");
-          // Dismiss the specific reset config toast if it exists
           toast.dismiss("resetConfigCommand");
 
           if (msg.result === "success") {
-            toast.success(msg.message || "Command executed successfully.");
+            Swal.fire({
+              position: 'top-end',
+              icon: 'success',
+              title: msg.message || "Command executed successfully.",
+              showConfirmButton: false,
+              timer: 3000,
+              toast: true
+            });
           } else {
-            toast.error(msg.message || "Command failed.");
+            Swal.fire({
+              position: 'top-end',
+              icon: 'error',
+              title: 'Error!',
+              text: msg.message || 'Command failed.',
+              showConfirmButton: false,
+              timer: 3000,
+              toast: true
+            });
             console.error("Service command error response:", msg);
           }
         } else if (topic === "command/reset_config") {
@@ -104,24 +130,54 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
             toast.info("Hardware button initiated a configuration reset. System may reboot soon.");
           }
         } else if (topic === "batteryCharger/reset/energy/response") {
-          // Dismiss any loading states related to energy reset
-          toast.dismiss("resetEnergyCommand");
+          Swal.close(); // Close any active SweetAlert2 instance (e.g., loading spinner)
 
           if (msg.status === "reset") {
             Swal.fire({
+              position: 'top-end',
+              icon: 'success',
               title: 'Success!',
               text: msg.message || 'Energy counters reset successfully.',
-              icon: 'success',
-              confirmButtonText: 'OK'
+              showConfirmButton: false,
+              timer: 3000,
+              toast: true
             });
           } else if (msg.status === "error") {
             Swal.fire({
+              position: 'top-end',
+              icon: 'error',
               title: 'Error!',
               text: msg.message || 'Failed to reset energy counters.',
-              icon: 'error',
-              confirmButtonText: 'OK'
+              showConfirmButton: false,
+              timer: 3000,
+              toast: true
             });
             console.error("Energy reset error response:", msg);
+          }
+        } else if (topic === "batteryCharger/reset/cycle/response") {
+          Swal.close(); // Close any active SweetAlert2 instance
+
+          if (msg.status === "reset") {
+            Swal.fire({
+              position: 'top-end',
+              icon: 'success',
+              title: 'Success!',
+              text: msg.message || 'Cycle counters reset successfully.',
+              showConfirmButton: false,
+              timer: 3000,
+              toast: true
+            });
+          } else if (msg.status === "error") {
+            Swal.fire({
+              position: 'top-end',
+              icon: 'error',
+              title: 'Error!',
+              text: msg.message || 'Failed to reset cycle counters.',
+              showConfirmButton: false,
+              timer: 3000,
+              toast: true
+            });
+            console.error("Cycle reset error response:", msg);
           }
         }
       } catch (err) {
@@ -130,53 +186,39 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
       }
     };
 
-    // Attach event listeners
     mqttClientInstance.on("connect", handleConnect);
     mqttClientInstance.on("error", handleError);
     mqttClientInstance.on("close", handleClose);
     mqttClientInstance.on("message", handleMessage);
 
-    // Interval to toggle IP address display
+    if (mqttClientInstance.connected) {
+      subscribeToTopics();
+      requestSystemStatus();
+    }
+
     const ipInterval = setInterval(() => setIpIndex(i => (i + 1) % 2), 3000);
 
-    // Cleanup function: runs when the component unmounts
     return () => {
-      clearInterval(ipInterval); // Clear the IP display interval
-      if (mqttClientInstance.connected) {
-        // Unsubscribe from topics if still connected
-        mqttClientInstance.unsubscribe("system/status");
-        mqttClientInstance.unsubscribe("service/response");
-        mqttClientInstance.unsubscribe("command/reset_config");
-        // Unsubscribe from the energy reset response topic
-        mqttClientInstance.unsubscribe("batteryCharger/reset/energy/response");
+      clearInterval(ipInterval);
+      if (clientRef.current) {
+        topicsToSubscribe.forEach((topic) => {
+          clientRef.current?.unsubscribe(topic);
+        });
+        clientRef.current.off("connect", handleConnect);
+        clientRef.current.off("error", handleError);
+        clientRef.current.off("close", handleClose);
+        clientRef.current.off("message", handleMessage);
       }
-      // Remove all event listeners to prevent memory leaks
-      mqttClientInstance.off("connect", handleConnect);
-      mqttClientInstance.off("error", handleError);
-      mqttClientInstance.off("close", handleClose);
-      mqttClientInstance.off("message", handleMessage);
-      // Do NOT call client.end() here; it's managed globally by connectMQTT.
     };
-  }, []); // Empty dependency array means this runs once on mount and cleans up on unmount
+  }, [requestSystemStatus]);
 
-  /**
-   * Sends a command to the MQTT broker after an optional confirmation.
-   * This is for generic service commands (e.g., restart specific services, reboot, shutdown).
-   * It publishes to "service/command".
-   * @param services An array of service names to apply the action to (can be empty for system-wide commands).
-   * @param action The action to perform (e.g., "restart", "reboot", "reset", "shutdown now").
-   * @param confirmMessage An optional message to display in a SweetAlert2 confirmation dialog.
-   */
   const sendCommand = async (services: string[], action: string, confirmMessage?: string) => {
-    // Ensure MQTT client is connected before publishing
     if (!clientRef.current || !clientRef.current.connected) {
       toast.error("MQTT not connected. Please wait for connection or refresh.");
       return;
     }
 
-    let proceed = true; // Flag to determine if the command should proceed
-
-    // If a confirmation message is provided, show the SweetAlert2 dialog
+    let proceed = true;
     if (confirmMessage) {
       const result = await Swal.fire({
         title: 'Are you sure?',
@@ -189,12 +231,11 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
       });
 
       if (!result.isConfirmed) {
-        proceed = false; // If the user cancels, do not proceed with the command
-        toast.info("Action cancelled."); // Inform the user that the action was cancelled
+        proceed = false;
+        toast.info("Action cancelled.");
       }
     }
 
-    // Only proceed if the user confirmed or no confirmation was required
     if (proceed) {
       const payload = JSON.stringify({ services, action });
       clientRef.current.publish("service/command", payload, (err) => {
@@ -202,18 +243,21 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
           toast.error(`Failed to send command: ${err.message}`);
           console.error("Publish error:", err);
         } else {
-          // Show a loading toast while waiting for the response
-          toast.loading(`${action.toUpperCase()} initiated...`, { id: "serviceCommand" });
+          Swal.fire({
+            title: 'Processing...',
+            text: `${action.toUpperCase()} initiated. Please wait for a response.`,
+            icon: 'info',
+            allowOutsideClick: false,
+            showConfirmButton: false,
+            didOpen: () => {
+              Swal.showLoading();
+            }
+          });
         }
       });
     }
   };
 
-  /**
-   * Publishes a specific "reset config" command directly to "command/reset_config".
-   * This is intended to directly trigger the Python script's reset function.
-   * @param confirmMessage An optional message for the confirmation dialog.
-   */
   const resetConfig = async (confirmMessage?: string) => {
     if (!clientRef.current || !clientRef.current.connected) {
       toast.error("MQTT not connected. Please wait for connection or refresh.");
@@ -239,24 +283,27 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
     }
 
     if (proceed) {
-      // Directly publish to "command/reset_config" with the specified payload
       const payload = JSON.stringify({ action: "reset" });
       clientRef.current.publish("command/reset_config", payload, (err) => {
         if (err) {
           toast.error(`Failed to send reset config command: ${err.message}`);
           console.error("Publish error for reset config:", err);
         } else {
-          // Show a loading toast specifically for this command
-          toast.loading("Resetting configurations...", { id: "resetConfigCommand" });
+          Swal.fire({
+            title: 'Resetting Configuration...',
+            text: 'This may take a moment. Please wait.',
+            icon: 'info',
+            allowOutsideClick: false,
+            showConfirmButton: false,
+            didOpen: () => {
+              Swal.showLoading();
+            }
+          });
         }
       });
     }
   };
 
-  /**
-   * Publishes an empty payload to "batteryCharger/reset/energy" to reset energy counters.
-   * Shows a confirmation dialog and then an appropriate alert based on the MQTT response.
-   */
   const resetEnergyCounters = async () => {
     if (!clientRef.current || !clientRef.current.connected) {
       toast.error("MQTT not connected. Please wait for connection or refresh.");
@@ -279,7 +326,37 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
           toast.error(`Failed to send energy reset command: ${err.message}`);
           console.error("Publish error for energy reset:", err);
         } else {
-          toast.loading("Resetting energy counters...", { id: "resetEnergyCommand" });
+          Swal.fire({
+            title: 'Resetting Energy...',
+            html: 'Please wait, this will take approximately <b></b> seconds.',
+            timer: 10000,
+            timerProgressBar: true,
+            allowOutsideClick: false,
+            showConfirmButton: false,
+            didOpen: () => {
+              Swal.showLoading();
+              const b = Swal.getHtmlContainer()?.querySelector('b');
+              let timerInterval: NodeJS.Timeout | null = null; // Declare timerInterval with null
+              if (b) {
+                timerInterval = setInterval(() => {
+                  if (Swal.getTimerLeft()) {
+                    b.textContent = String(Math.ceil(Swal.getTimerLeft()! / 1000));
+                  }
+                }, 100);
+              }
+              // Fix: Assign a function that returns the timerInterval or undefined
+              Swal.stopTimer = () => {
+                if (timerInterval) {
+                  clearInterval(timerInterval);
+                }
+                return undefined; // Explicitly return undefined
+              };
+            },
+            willClose: () => {
+              // No change needed here, as the response handler will close Swal.
+              // If Swal is still open after the timer, it means no response came.
+            }
+          });
         }
       });
     } else {
@@ -287,12 +364,68 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
     }
   };
 
+  const resetCycleCounters = async () => {
+    if (!clientRef.current || !clientRef.current.connected) {
+      toast.error("MQTT not connected. Please wait for connection or refresh.");
+      return;
+    }
 
-  // Determine which IP address to display based on ipIndex
+    const result = await Swal.fire({
+      title: 'Reset Cycle Counters?',
+      text: "This action will reset the battery cycle count to zero. Are you sure?",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Yes, reset it!'
+    });
+
+    if (result.isConfirmed) {
+      clientRef.current.publish("batteryCharger/reset/cycle", "", (err) => {
+        if (err) {
+          toast.error(`Failed to send cycle reset command: ${err.message}`);
+          console.error("Publish error for cycle reset:", err);
+        } else {
+          Swal.fire({
+            title: 'Resetting Cycle Count...',
+            html: 'Please wait, this will take approximately <b></b> seconds.',
+            timer: 10000,
+            timerProgressBar: true,
+            allowOutsideClick: false,
+            showConfirmButton: false,
+            didOpen: () => {
+              Swal.showLoading();
+              const b = Swal.getHtmlContainer()?.querySelector('b');
+              let timerInterval: NodeJS.Timeout | null = null; // Declare timerInterval with null
+              if (b) {
+                timerInterval = setInterval(() => {
+                  if (Swal.getTimerLeft()) {
+                    b.textContent = String(Math.ceil(Swal.getTimerLeft()! / 1000));
+                  }
+                }, 100);
+              }
+              // Fix: Assign a function that returns the timerInterval or undefined
+              Swal.stopTimer = () => {
+                if (timerInterval) {
+                  clearInterval(timerInterval);
+                }
+                return undefined; // Explicitly return undefined
+              };
+            },
+            willClose: () => {
+              // No change needed here.
+            }
+          });
+        }
+      });
+    } else {
+      toast.info("Cycle reset cancelled.");
+    }
+  };
+
   const ipType = ipIndex === 0 ? "eth0" : "wlan0";
   const ipAddress = ipIndex === 0 ? systemInfo.eth0_ip_address : systemInfo.wlan0_ip_address;
 
-  // Render the UI
   return (
     <SidebarInset>
       <header className="flex h-16 items-center justify-between border-b px-4">
@@ -303,7 +436,6 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
           <h1 className="text-lg font-semibold">General Settings</h1>
         </div>
         <div className="flex items-center gap-2">
-          {/* Theme Toggle Button */}
           <Button
             variant="ghost"
             size="icon"
@@ -320,7 +452,6 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
           <span className="text-xs font-medium min-w-[70px] text-center select-none">
             {theme === "dark" ? "Dark Mode" : "Light Mode"}
           </span>
-          {/* Refresh Button */}
           <Button
             variant="outline"
             size="icon"
@@ -343,51 +474,48 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
           </CardHeader>
           <CardContent>
             <div className="flex flex-col md:flex-row gap-4 justify-between w-full">
-              {/* Config Services Section */}
               <div className="flex-1 min-w-[200px]">
                 <h6 className="text-sm font-semibold mb-2">Config</h6>
                 <Button
                   onClick={() => sendCommand(["Multiprocesing.service"], "restart", "This will restart MQTT and IP configurations. Are you sure?")}
                   className="w-full mb-2 flex justify-between items-center"
                   variant="secondary"
-                  disabled={mqttStatus !== "Connected"}
+                  disabled={!clientRef.current || !clientRef.current.connected}
                 >
                   <span className="flex items-center gap-2"><Settings className="h-4 w-4" />Restart MQTT + IP</span>
                 </Button>
-                {/* <Button
-                  onClick={() => sendCommand(["Multiprocesing.service"], "restart", "This will restart Device Modular configurations. Are you sure?")}
-                  className="w-full mb-2 flex justify-between items-center"
-                  variant="secondary"
-                  disabled={mqttStatus !== "Connected"}
-                >
-                  <span className="flex items-center gap-2"><Settings className="h-4 w-4" />Restart Device Modular</span>
-                </Button> */}
                 <Button
                   onClick={() => sendCommand(["Multiprocesing.service"], "restart", "This will restart Device Modbus configurations. Are you sure?")}
                   className="w-full flex justify-between items-center"
                   variant="secondary"
-                  disabled={mqttStatus !== "Connected"}
+                  disabled={!clientRef.current || !clientRef.current.connected}
                 >
                   <span className="flex items-center gap-2"><Settings className="h-4 w-4" />Restart Device Modbus</span>
                 </Button>
-                {/* Tombol Reset Energy */}
                 <Button
                   onClick={resetEnergyCounters}
                   className="w-full mt-2 flex justify-between items-center"
                   variant="secondary"
-                  disabled={mqttStatus !== "Connected"}
+                  disabled={!clientRef.current || !clientRef.current.connected}
                 >
                   <span className="flex items-center gap-2"><BatteryCharging className="h-4 w-4" />Reset Energy Counters</span>
                 </Button>
+                <Button
+                  onClick={resetCycleCounters}
+                  className="w-full mt-2 flex justify-between items-center"
+                  variant="secondary"
+                  disabled={!clientRef.current || !clientRef.current.connected}
+                >
+                  <span className="flex items-center gap-2"><BatteryCharging className="h-4 w-4" />Reset Cycle Counters</span>
+                </Button>
               </div>
-              {/* System Services Section */}
               <div className="flex-1 min-w-[200px]">
                 <h6 className="text-sm font-semibold mb-2">System</h6>
                 <Button
                   onClick={() => resetConfig("This will reset specific configurations to their defaults. This action may cause a temporary service interruption. Are you sure?")}
                   className="w-full mb-2 flex justify-between items-center"
                   variant="destructive"
-                  disabled={mqttStatus !== "Connected"}
+                  disabled={!clientRef.current || !clientRef.current.connected}
                 >
                   <span className="flex items-center gap-2"><Terminal className="h-4 w-4" />Reset System to Default</span>
                 </Button>
@@ -395,7 +523,7 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
                   onClick={() => sendCommand([], "sudo reboot", "This will reboot the system. All current operations will be interrupted. Are you sure?")}
                   className="w-full mb-2 flex justify-between items-center"
                   variant="destructive"
-                  disabled={mqttStatus !== "Connected"}
+                  disabled={!clientRef.current || !clientRef.current.connected}
                 >
                   <span className="flex items-center gap-2"><RotateCw className="h-4 w-4" />Reboot System</span>
                 </Button>
@@ -403,7 +531,7 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
                   onClick={() => sendCommand([], "sudo shutdown now", "This will shut down the system. You will need physical access to power it back on. Are you sure?")}
                   className="w-full flex justify-between items-center"
                   variant="destructive"
-                  disabled={mqttStatus !== "Connected"}
+                  disabled={!clientRef.current || !clientRef.current.connected}
                 >
                   <span className="flex items-center gap-2"><Power className="h-4 w-4" />Shutdown System</span>
                 </Button>
@@ -412,7 +540,6 @@ export default function SettingsPage() { // <--- Nama komponen diubah di sini
           </CardContent>
         </Card>
 
-        {/* System Information Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="flex items-center gap-4 p-4">

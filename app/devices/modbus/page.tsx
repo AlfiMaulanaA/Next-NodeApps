@@ -38,7 +38,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+}
+ from "@/components/ui/select";
 
 const ITEMS_PER_PAGE = 5;
 
@@ -314,36 +315,28 @@ export default function DeviceManagerPage() {
                   onClick={() => handleSort("profile.name")}
                 >
                   Device Name{" "}
-                  {sortField === "profile.name" && (
-                    <ArrowUpDown className={`inline ml-1 h-4 w-4 transform ${sortDirection === "desc" ? "rotate-180" : ""}`} />
-                  )}
+                  <ArrowUpDown className="inline mr-1 h-4 w-4" />
                 </TableHead>
                 <TableHead
                   className="cursor-pointer"
                   onClick={() => handleSort("profile.part_number")}
                 >
                   PN{" "}
-                  {sortField === "profile.part_number" && (
-                    <ArrowUpDown className={`inline ml-1 h-4 w-4 transform ${sortDirection === "desc" ? "rotate-180" : ""}`} />
-                  )}
+                  <ArrowUpDown className="inline mr-1 h-4 w-4" />
                 </TableHead>
                 <TableHead
                   className="cursor-pointer"
                   onClick={() => handleSort("protocol_setting.address")}
                 >
                   Address/IP{" "}
-                  {sortField === "protocol_setting.address" && (
-                    <ArrowUpDown className={`inline ml-1 h-4 w-4 transform ${sortDirection === "desc" ? "rotate-180" : ""}`} />
-                  )}
+                  <ArrowUpDown className="inline mr-1 h-4 w-4" />
                 </TableHead>
                 <TableHead
                   className="cursor-pointer"
                   onClick={() => handleSort("profile.topic")}
                 >
                   Topic{" "}
-                  {sortField === "profile.topic" && (
-                    <ArrowUpDown className={`inline ml-1 h-4 w-4 transform ${sortDirection === "desc" ? "rotate-180" : ""}`} />
-                  )}
+                  <ArrowUpDown className="inline mr-1 h-4 w-4" />
                 </TableHead>
                 {/* <TableHead className="text-right">Action</TableHead> */}
               </TableRow>

@@ -1,103 +1,212 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Network, RefreshCw, Save, CheckCircle2, XCircle, Loader2 } from "lucide-react"; // Import Loader2
+import { Network, RefreshCw, Save, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
 import MqttStatus from "@/components/mqtt-status";
 import type { MqttClient } from "mqtt";
 import { toast } from "sonner";
+import Swal from 'sweetalert2';
+
+// --- MQTT Topics ---
+const MODBUS_SETTING_COMMAND_TOPIC = "IOT/Containment/modbustcp/setting/command";
+const MODBUS_SETTING_DATA_TOPIC = "IOT/Containment/modbustcp/setting/data";
+const MODBUS_STATUS_TOPIC = "IOT/Containment/modbustcp/status";
+const SERVICE_COMMAND_TOPIC = "service/command";
+const SERVICE_RESPONSE_TOPIC = "service/response"; // Topic to receive service command responses
 
 export default function ModbusTCPSettingsPage() {
-  const [modbusIP, setModbusIP] = useState("");
-  const [modbusPort, setModbusPort] = useState("");
-  const [inputIP, setInputIP] = useState("");
-  const [inputPort, setInputPort] = useState("");
-  const [modbusStatus, setModbusStatus] = useState("Unknown");
-  const [matchConfig, setMatchConfig] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // State untuk loading
-  const clientRef = React.useRef<MqttClient | null>(null); // Referensi ke klien MQTT
+  // --- State Variables ---
+  const [modbusIP, setModbusIP] = useState(""); // Current IP from backend
+  const [modbusPort, setModbusPort] = useState(""); // Current Port from backend
+  const [inputIP, setInputIP] = useState(""); // User input for IP
+  const [inputPort, setInputPort] = useState(""); // User input for Port
+  const [modbusStatus, setModbusStatus] = useState("Unknown"); // Status of Modbus TCP service
+  const [isLoading, setIsLoading] = useState(true); // Loading state for initial data fetch and config save
+  const clientRef = useRef<MqttClient | null>(null); // Reference to the MQTT client instance
 
-  // Callback untuk mendapatkan pengaturan saat ini
+  // --- Utility Functions ---
+
+  /**
+   * Requests the current Modbus TCP settings from the backend via MQTT.
+   */
   const getCurrentSetting = useCallback(() => {
-    const client = getMQTTClient();
+    const client = clientRef.current; // Use the ref for the client
     if (!client || !client.connected) {
       toast.warning("MQTT not connected. Cannot retrieve settings.");
-      setIsLoading(false); // Pastikan loading berhenti jika tidak terhubung
+      setIsLoading(false);
       return;
     }
 
-    setIsLoading(true); // Set loading true saat request
-    // Beri sedikit delay untuk memastikan subscribe sudah aktif di broker
-    setTimeout(() => {
-      client.publish("IOT/Containment/modbustcp/setting/command", JSON.stringify({ command: "read" }));
-      toast.info("Requesting Modbus TCP settings...");
-    }, 300); // Delay 300ms
-  }, []);
+    setIsLoading(true); // Set loading true when requesting settings
+    client.publish(MODBUS_SETTING_COMMAND_TOPIC, JSON.stringify({ command: "read" }), {}, (err) => {
+      if (err) {
+        toast.error(`Failed to request settings: ${err.message}`);
+        console.error("Publish error (read command):", err);
+        setIsLoading(false); // Stop loading if publish fails
+      } else {
+        toast.info("Requesting Modbus TCP settings...");
+      }
+    });
+  }, []); // Dependancy array is empty as clientRef.current is a stable ref
 
+  /**
+   * Sends a command (restart, stop, start) to a specific service via MQTT.
+   * Includes a SweetAlert2 confirmation dialog.
+   * @param serviceName The name of the service to command (e.g., "protocol_out.service").
+   * @param action The action to perform ("restart", "stop", "start").
+   * @param confirmMessage Optional message for the confirmation dialog.
+   */
+  const sendCommandRestartService = useCallback(async (serviceName: string, action: string, confirmMessage?: string) => {
+    const client = clientRef.current; // Use the ref for the client
+    if (!client || !client.connected) {
+      toast.error("MQTT not connected. Please wait for connection or refresh.");
+      return;
+    }
+
+    let proceed = true;
+    if (confirmMessage) {
+      const result = await Swal.fire({
+        title: 'Are you sure?',
+        text: confirmMessage,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Yes, proceed!'
+      });
+
+      if (!result.isConfirmed) {
+        proceed = false;
+        toast.info("Action cancelled.");
+      }
+    }
+
+    if (proceed) {
+      // The backend expects an array of services
+      const payload = JSON.stringify({ services: [serviceName], action: action });
+
+      client.publish(SERVICE_COMMAND_TOPIC, payload, {}, (err) => {
+        if (err) {
+          toast.error(`Failed to send command: ${err.message}`);
+          console.error("Publish error (service command):", err);
+        } else {
+          toast.loading(`${action.toUpperCase()} ${serviceName} initiated...`, { id: "serviceCommand" });
+        }
+      });
+    }
+  }, []); // Dependancy array is empty as clientRef.current is a stable ref
+
+  // --- useEffect for MQTT Connection and Message Handling ---
   useEffect(() => {
     const mqttClientInstance = connectMQTT();
     clientRef.current = mqttClientInstance;
 
     const topicsToSubscribe = [
-      "IOT/Containment/modbustcp/setting/data",
-      "IOT/Containment/modbustcp/status",
+      MODBUS_SETTING_DATA_TOPIC,
+      MODBUS_STATUS_TOPIC,
+      SERVICE_RESPONSE_TOPIC, // Subscribe to service command responses
     ];
 
-    // Subscribe semua topik segera
+    // Initial subscription attempt for all topics
     topicsToSubscribe.forEach((topic) => {
       mqttClientInstance.subscribe(topic, (err) => {
         if (err) console.error(`Failed to subscribe to ${topic}:`, err);
       });
     });
 
-    // Jika klien sudah terhubung saat ini, langsung minta konfigurasi
+    // If client is already connected on mount, fetch settings
     if (mqttClientInstance.connected) {
       getCurrentSetting();
     }
 
-    // Listener untuk koneksi berhasil
+    // MQTT 'connect' event handler - re-subscribe and fetch data on reconnect
     const handleConnect = () => {
-      getCurrentSetting(); // Minta konfigurasi setiap kali koneksi berhasil
+      topicsToSubscribe.forEach((topic) => {
+        mqttClientInstance.subscribe(topic, (err) => {
+          if (err) console.error(`Failed to re-subscribe to ${topic} on connect:`, err);
+        });
+      });
+      getCurrentSetting(); // Request configuration every time connection succeeds
+      toast.success("MQTT Connected for Modbus TCP settings. Fetching data...");
     };
 
-    // Listener untuk pesan MQTT
+    // MQTT 'message' event handler - process incoming messages
     const handleMessage = (topic: string, message: Buffer) => {
       try {
         const payload = JSON.parse(message.toString());
 
-        if (topic === "IOT/Containment/modbustcp/setting/data") {
+        if (topic === MODBUS_SETTING_DATA_TOPIC) {
           const { modbus_tcp_ip, modbus_tcp_port } = payload;
           setModbusIP(modbus_tcp_ip || "");
           setModbusPort(String(modbus_tcp_port || ""));
-          setInputIP(modbus_tcp_ip || ""); // Set input field sesuai data yang diterima
-          setInputPort(String(modbus_tcp_port || "")); // Set input field sesuai data yang diterima
 
-          // Periksa apakah konfigurasi input cocok dengan yang diterima
-          setMatchConfig(
-            inputIP === modbus_tcp_ip && String(inputPort) === String(modbus_tcp_port)
-          );
+          // Only update input fields if they are empty or match the current displayed backend values.
+          // This allows the user to type without their input being constantly overwritten by MQTT updates.
+          if (inputIP === "" || inputIP === modbus_tcp_ip) {
+            setInputIP(modbus_tcp_ip || "");
+          }
+          if (inputPort === "" || String(inputPort) === String(modbus_tcp_port)) {
+            setInputPort(String(modbus_tcp_port || ""));
+          }
           toast.success("Modbus TCP settings loaded! 🎉");
-          setIsLoading(false); // Data berhasil dimuat, hentikan loading
-        } else if (topic === "IOT/Containment/modbustcp/status") {
+          setIsLoading(false); // Data successfully loaded, stop loading
+        } else if (topic === MODBUS_STATUS_TOPIC) {
           setModbusStatus(payload.modbusTCPStatus || "Unknown");
+        } else if (topic === SERVICE_RESPONSE_TOPIC) {
+          toast.dismiss("serviceCommand"); // Dismiss loading toast for service command
+
+          if (payload.result === "success") {
+            Swal.fire({
+              position: 'top-end',
+              icon: 'success',
+              title: payload.message || 'Command executed successfully.',
+              showConfirmButton: false,
+              timer: 3000,
+              toast: true
+            });
+            // If the restarted service is protocol_out.service, re-fetch settings and status
+            if (Array.isArray(payload.services) && payload.services.includes("protocol_out.service")) {
+              // Give a small delay before fetching current settings to allow backend to fully restart
+              setTimeout(() => {
+                getCurrentSetting(); // Refresh settings after service restart
+              }, 1000); // 1 second delay
+            }
+          } else {
+            Swal.fire({
+              position: 'top-end',
+              icon: 'error',
+              title: 'Error!',
+              text: payload.message || 'Command failed.',
+              showConfirmButton: false,
+              timer: 3000,
+              toast: true
+            });
+            console.error("Service command error response:", payload);
+          }
         }
       } catch (e) {
         toast.error("Invalid response from MQTT. Check backend payload.");
         console.error("Error parsing MQTT message:", message.toString(), e);
-        setIsLoading(false); // Hentikan loading jika ada error parsing
+        setIsLoading(false); // Stop loading if parsing error occurs
       }
     };
 
-    // Pasang event listener
+    // Attach event listeners
     mqttClientInstance.on("connect", handleConnect);
     mqttClientInstance.on("message", handleMessage);
+    mqttClientInstance.on("error", (err) => { // Add general error listener for MQTT client
+        console.error("MQTT Client connection error:", err);
+        toast.error("MQTT connection error. Please check broker settings.");
+        setIsLoading(false);
+    });
 
-    // Cleanup function
+    // Cleanup function for unmounting
     return () => {
       if (clientRef.current) {
         topicsToSubscribe.forEach((topic) => {
@@ -105,12 +214,17 @@ export default function ModbusTCPSettingsPage() {
         });
         clientRef.current.off("connect", handleConnect);
         clientRef.current.off("message", handleMessage);
+        clientRef.current.off("error", () => {}); // Clean up the error listener as well
       }
     };
-  }, [getCurrentSetting, inputIP, inputPort]); // Tambahkan dependensi inputIP dan inputPort untuk setMatchConfig
+  }, [getCurrentSetting, modbusIP, modbusPort, inputIP, inputPort]); // Dependencies include states used in handling logic
 
+  /**
+   * Handles saving the Modbus TCP configuration.
+   * Validates input, publishes to MQTT, and triggers a service restart.
+   */
   const writeSetting = () => {
-    const client = getMQTTClient();
+    const client = clientRef.current; // Use the ref for the client
     if (!client || !client.connected) {
       toast.error("MQTT client not connected. Cannot save configuration. 😔");
       return;
@@ -128,26 +242,28 @@ export default function ModbusTCPSettingsPage() {
       modbus_tcp_port: parsedPort,
     };
 
-    setIsLoading(true); // Set loading true saat mengirim perubahan
-    client.publish("IOT/Containment/modbustcp/setting/command", JSON.stringify(payload), {}, (err) => {
+    setIsLoading(true); // Set loading true when sending changes
+    client.publish(MODBUS_SETTING_COMMAND_TOPIC, JSON.stringify(payload), {}, (err) => {
       if (err) {
         toast.error(`Failed to send write command: ${err.message} 😭`);
-        setIsLoading(false); // Hentikan loading jika ada error
+        console.error("Publish error (write command):", err);
+        setIsLoading(false); // Stop loading if publish fails
       } else {
-        toast.success("Configuration sent. Verifying update...");
-        // getCurrentSetting(); // Dapatkan setting terbaru setelah menulis
-        // Tidak perlu panggil getCurrentSetting() di sini.
-        // Backend harus mengirim balasan ke IOT/Containment/modbustcp/setting/data
-        // secara otomatis setelah berhasil menulis, yang akan memicu update UI.
-        // Jika tidak, Anda perlu memanggilnya setelah jeda waktu.
-        setTimeout(() => {
-          getCurrentSetting(); // Panggil setelah jeda untuk memastikan backend punya waktu memproses dan mempublikasi
-        }, 1000); // Jeda 1 detik
+        toast.loading("Configuration sent. Verifying update...", { id: "writeConfigLoading" });
+        // After sending config, prompt user to restart service to apply changes.
+        // The service response will handle dismissing the loading toast and updating UI.
+        sendCommandRestartService("protocol_out.service", "restart", "Modbus TCP settings updated. Do you want to restart the Modbus TCP service to apply changes?");
       }
     });
   };
 
+  /**
+   * Renders the status message for configuration matching.
+   */
   const renderStatusConfig = () => {
+    // Check if the user's current input matches the configuration received from the backend
+    const currentInputMatchesBackend = inputIP === modbusIP && String(inputPort) === modbusPort;
+
     if (isLoading) {
       return (
         <div className="flex items-center gap-2 text-blue-600">
@@ -156,7 +272,9 @@ export default function ModbusTCPSettingsPage() {
         </div>
       );
     }
-    if (matchConfig && modbusIP && modbusPort) {
+    
+    // If backend data exists and matches current input
+    if (modbusIP && modbusPort && currentInputMatchesBackend) {
       return (
         <div className="flex items-center gap-2 text-green-600">
           <CheckCircle2 className="w-4 h-4" />
@@ -164,15 +282,20 @@ export default function ModbusTCPSettingsPage() {
         </div>
       );
     }
-    if (modbusIP || modbusPort) { // Jika ada data tapi belum match
-      return (
-        <div className="flex items-center gap-2 text-yellow-600">
-          <XCircle className="w-4 h-4" />
-          <span>Config mismatch. Save and get current setting again.</span>
-        </div>
-      );
+    
+    // If backend data exists but doesn't match current input (meaning changes are pending or a mismatch occurred)
+    if (modbusIP || modbusPort) { 
+        if (!currentInputMatchesBackend) {
+            return (
+                <div className="flex items-center gap-2 text-yellow-600">
+                  <XCircle className="w-4 h-4" />
+                  <span>Config mismatch. Save to apply changes.</span>
+                </div>
+              );
+        }
     }
-    // Jika tidak ada data dan tidak dalam proses loading
+
+    // If no backend data loaded and not in a loading state, or if input is empty
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
         <span>No configuration loaded yet.</span>
@@ -198,6 +321,7 @@ export default function ModbusTCPSettingsPage() {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+        {/* Current Configuration Card */}
         <Card>
           <CardHeader>
             <CardTitle>Current Configuration</CardTitle>
@@ -219,6 +343,7 @@ export default function ModbusTCPSettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Update Configuration Card */}
         <Card>
           <CardHeader>
             <CardTitle>Update Configuration</CardTitle>
@@ -230,12 +355,20 @@ export default function ModbusTCPSettingsPage() {
             </div>
             <div>
               <label className="text-sm font-medium">Modbus Port</label>
-              <Input value={inputPort} onChange={(e) => setInputPort(e.target.value)} placeholder="502" />
+              <Input value={inputPort} onChange={(e) => setInputPort(e.target.value)} placeholder="502" type="number" />
             </div>
             <Button className="mt-4 w-full" onClick={writeSetting} disabled={isLoading}>
               <Save className="w-4 h-4 mr-2" /> Save Configuration
             </Button>
-            {/* !matchConfig && inputIP && inputPort dihapus dari sini karena sudah ditangani di renderStatusConfig */}
+            {/* Restart Service Button */}
+            <Button
+              className="mt-2 w-full"
+              variant="secondary"
+              onClick={() => sendCommandRestartService("protocol_out.service", "restart", "This will restart the Modbus TCP service. Any ongoing communication will be interrupted. Are you sure?")}
+              disabled={isLoading || !modbusIP} // Disable if loading or no IP is set
+            >
+              <RefreshCw className="w-4 h-4 mr-2" /> Restart Modbus TCP Service
+            </Button>
           </CardContent>
         </Card>
       </div>

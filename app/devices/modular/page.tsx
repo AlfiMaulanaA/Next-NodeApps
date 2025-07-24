@@ -16,21 +16,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCw, Cpu, ArrowUpDown, Microchip, Unplug } from "lucide-react";
+import { RotateCw, Cpu, ArrowUpDown, Microchip, LayoutGrid } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import Swal from "sweetalert2";
 import { connectMQTT } from "@/lib/mqttClient";
-import { useMQTTStatus } from "@/hooks/useMQTTStatus";
 import { useSortableTable } from "@/hooks/use-sort-table";
 import { useSearchFilter } from "@/hooks/use-search-filter";
+import MqttStatus from "@/components/mqtt-status";
 import {
   Pagination,
   PaginationContent,
   PaginationItem,
   PaginationLink,
   PaginationNext,
-  PaginationPrevious,
+  PaginationPrevious
 } from "@/components/ui/pagination";
+
 import {
   Select,
   SelectContent,
@@ -39,14 +40,30 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import ScanAddressDialog from "@/components/ScanAddressDialog";
+
 const ITEMS_PER_PAGE = 5;
 
+// Define the type for a device to fix the 'any' implicit type error
+interface Device {
+  profile: {
+    name: string;
+    part_number: string;
+    topic: string;
+  };
+  protocol_setting: {
+    address: string;
+    device_bus: string;
+  };
+}
+
 export default function DeviceManagerPage() {
-  const [devices, setDevices] = useState<any[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]); // Use Device type
   const [showDialog, setShowDialog] = useState(false);
   const [isUpdateMode, setIsUpdateMode] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [newDevice, setNewDevice] = useState<any>({
+  const [deviceToUpdate, setDeviceToUpdate] = useState<string>("");
+  const [newDevice, setNewDevice] = useState<Device>({ // Use Device type
     profile: {
       name: "",
       part_number: "",
@@ -58,27 +75,39 @@ export default function DeviceManagerPage() {
     },
   });
 
-  const status = useMQTTStatus();
   const client = connectMQTT();
 
   useEffect(() => {
-    if (!client) return;
+    if (!client) {
+      console.warn("MQTT client not available.");
+      return;
+    }
 
     const handleMessage = (topic: string, message: Buffer) => {
       try {
-        const payload = JSON.parse(message.toString());
-        if (Array.isArray(payload)) {
-          console.log(payload);
-          setDevices(payload);
-          console.log(payload);
+        const messageString = message.toString();
+        const payload = JSON.parse(messageString);
+
+        if (topic === "response_device_i2c") {
+          if (Array.isArray(payload)) {
+            setDevices(payload);
+          } else {
+            console.warn("[MQTT] DeviceManagerPage (I2C): Payload from response_device_i2c is not an array, skipping update:", payload);
+          }
         }
       } catch (error) {
-        console.error("Invalid JSON from MQTT", error);
+        console.error(
+          `[MQTT] DeviceManagerPage (I2C): Invalid JSON from MQTT topic '${topic}' or processing error:`,
+          error,
+          "Raw message:",
+          message.toString()
+        );
       }
     };
 
     client.on("message", handleMessage);
     client.subscribe("response_device_i2c");
+
     client.publish("command_device_i2c", JSON.stringify({ command: "getDataI2C" }));
 
     return () => {
@@ -88,10 +117,10 @@ export default function DeviceManagerPage() {
   }, [client]);
 
   const handleSubmit = () => {
-    const topic = isUpdateMode ? "updateDevice" : "addDevice";
     const command = JSON.stringify({
-      command: topic,
+      command: isUpdateMode ? "updateDevice" : "addDevice",
       device: newDevice,
+      ...(isUpdateMode && deviceToUpdate && { old_name: deviceToUpdate }),
     });
     client?.publish("command_device_i2c", command);
     setShowDialog(false);
@@ -103,12 +132,26 @@ export default function DeviceManagerPage() {
       text: "You can't undo this!",
       icon: "warning",
       showCancelButton: true,
+      confirmButtonText: "Yes, delete it!",
+      cancelButtonText: "No, keep it",
     }).then((result) => {
       if (result.isConfirmed) {
         const command = JSON.stringify({ command: "deleteDevice", name });
         client?.publish("command_device_i2c", command);
+        Swal.fire("Deleted!", "Your device has been deleted.", "success");
       }
     });
+  };
+
+  // The fix is applied here: added type annotation for 'prev'
+  const handleSelectScannedAddress = (address: string) => {
+    setNewDevice((prev: Device) => ({ // Explicitly type 'prev' as Device
+      ...prev,
+      protocol_setting: {
+        ...prev.protocol_setting,
+        address: address,
+      },
+    }));
   };
 
   const { sorted, sortField, sortDirection, handleSort } = useSortableTable(devices);
@@ -117,6 +160,7 @@ export default function DeviceManagerPage() {
     "profile.part_number",
     "profile.topic",
     "protocol_setting.address",
+    "protocol_setting.device_bus",
   ]);
 
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
@@ -125,29 +169,23 @@ export default function DeviceManagerPage() {
     currentPage * ITEMS_PER_PAGE
   );
 
+  const deviceTypeBreakdown = devices.reduce((acc: { [key: string]: number }, device) => {
+    const type = device.profile?.part_number || "Unknown";
+    acc[type] = (acc[type] || 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <SidebarInset>
       <header className="flex h-16 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
-          <Cpu className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Modular Devices</h1>
+          <Cpu className="h-5 w-5" />
+          <h1 className="text-lg font-semibold">Modular Devices Management</h1>
         </div>
         <div className="flex items-center gap-2">
-          
-          <Badge
-            variant="outline"
-            className={`capitalize ${
-              status === "connected"
-                ? "text-green-600 border-green-600"
-                : status === "error"
-                ? "text-red-600 border-red-600"
-                : "text-yellow-600 border-yellow-600"
-            }`}
-          >
-            {status}
-          </Badge>
+          <MqttStatus />
           <Button
             variant="outline"
             size="icon"
@@ -169,6 +207,7 @@ export default function DeviceManagerPage() {
                 profile: { name: "", part_number: "", topic: "" },
                 protocol_setting: { address: "", device_bus: "" },
               });
+              setDeviceToUpdate("");
               setIsUpdateMode(false);
               setShowDialog(true);
             }}
@@ -178,106 +217,76 @@ export default function DeviceManagerPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-3 gap-4 p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 m-4">
+        <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Devices</CardTitle>
+            <Microchip className="h-5 w-5 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{devices.length}</div>
+            <p className="text-xs text-muted-foreground">Registered devices</p>
+          </CardContent>
+        </Card>
 
-{/* Total Devices */}
-<Card>
-  <CardHeader>
-    <CardTitle>
-      <div className="flex justify-between items-center">
-      <div className="flex items-center gap-2">
-          <span>Total Device</span>
-          <span className="bg-blue-100 text-blue-700 rounded px-2 py-0.5 text-xs font-medium">
-            Summary
-          </span>
-        </div>
-        <Microchip className="text-muted-foreground w-5 h-5" />
-      </div>
-    </CardTitle>
-  </CardHeader>
-  <CardContent>
-    <p className="text-sm text-muted-foreground">Registered Devices</p>
-    <p className="text-2xl font-bold">{devices.length}</p>
-  </CardContent>
-</Card>
+        <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Device Type Breakdown</CardTitle>
+            <LayoutGrid className="h-5 w-5 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            {Object.keys(deviceTypeBreakdown).length > 0 ? (
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {Object.entries(deviceTypeBreakdown).map(([type, count]) => (
+                  <div key={type} className="flex justify-between items-center">
+                    <span className="text-muted-foreground">{type}:</span>
+                    <Badge variant="outline" className="text-foreground">
+                      {String(count)}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No device types found.</p>
+            )}
+          </CardContent>
+        </Card>
 
-{/* Device Status */}
-<Card>
-  <CardHeader>
-    <CardTitle>
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <span>Device Status</span>
-          <span className="bg-green-100 text-green-700 rounded px-2 py-0.5 text-xs font-medium">
-            Online/Offline</span>
-        </div>
-        <Unplug className="text-muted-foreground w-5 h-5" />
+        <Card className="shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Most Common Type</CardTitle>
+            <Badge variant="secondary" className="text-xs">Analysis</Badge>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">Based on Part Number</p>
+            <div className="text-xl font-semibold">
+              {(() => {
+                const counts: { [key: string]: number } = {};
+                devices.forEach((d) => {
+                  const type = d.profile?.part_number || "Unknown";
+                  counts[type] = (counts[type] || 0) + 1;
+                });
+                const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+                return top ? `${top[0]} (${top[1]})` : "N/A";
+              })()}
+            </div>
+          </CardContent>
+        </Card>
       </div>
-    </CardTitle>
-  </CardHeader>
-  <CardContent>
-    <div className="flex items-center gap-6">
-      <div>
-        <p className="text-xs text-muted-foreground">Online</p>
-        <p className="text-xl font-semibold text-green-600">
-          {
-            devices.filter(
-              (device) => device.status?.toLowerCase() === "online"
-            ).length
-          }
-        </p>
-      </div>
-      <span className="text-muted-foreground text-lg font-light">/</span>
-      <div>
-        <p className="text-xs text-muted-foreground">Offline</p>
-        <p className="text-xl font-semibold text-red-600">
-          {
-            devices.filter(
-              (device) => device.status?.toLowerCase() === "offline"
-            ).length
-          }
-        </p>
-      </div>
-    </div>
-  </CardContent>
-</Card>
-
-{/* Top Device Type */}
-<Card>
-  <CardHeader>
-    <CardTitle>Top Device Type</CardTitle>
-  </CardHeader>
-  <CardContent>
-    <p className="text-sm text-muted-foreground">Most Common</p>
-    {
-      (() => {
-        const counts: { [key: string]: number } = {};
-        devices.forEach((d) => {
-          const type = d.profile?.part_number || "Unknown";
-          counts[type] = (counts[type] || 0) + 1;
-        });
-        const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-        return (
-          <p className="text-xl font-semibold">
-            {top?.[0]} ({top?.[1]})
-          </p>
-        );
-      })()
-    }
-  </CardContent>
-</Card>
-</div>
 
       <Card className="m-4">
         <CardHeader>
-          <div className="flex justify-between">
-          <CardTitle>Device List</CardTitle>
-          <Input
-            placeholder="Search devices..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-8 w-64"
-          />
+          <div className="flex justify-between items-center">
+            <div className="flex items-center">
+              <CardTitle>Device List</CardTitle>
+              <ScanAddressDialog onSelectAddress={handleSelectScannedAddress} />
+            </div>
+            <Input
+              placeholder="Search devices..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 w-64"
+            />
           </div>
         </CardHeader>
         <CardContent>
@@ -285,21 +294,48 @@ export default function DeviceManagerPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>#</TableHead>
-                <TableHead onClick={() => handleSort("profile")}>Device Name <ArrowUpDown className="inline mr-1 h-4 w-4" /></TableHead>
-                <TableHead onClick={() => handleSort("part_number")}>PN <ArrowUpDown className="inline mr-1 h-4 w-4" /></TableHead>
-                <TableHead onClick={() => handleSort("address")}>Address <ArrowUpDown className="inline mr-1 h-4 w-4" /></TableHead>
-                <TableHead onClick={() => handleSort("topic")}>Topic <ArrowUpDown className="inline mr-1 h-4 w-4" /></TableHead>
+                <TableHead
+                  className="cursor-pointer"
+                  onClick={() => handleSort("profile.name")}
+                >
+                  Device Name <ArrowUpDown className="inline ml-1 h-4 w-4" />
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer"
+                  onClick={() => handleSort("profile.part_number")}
+                >
+                  PN <ArrowUpDown className="inline ml-1 h-4 w-4" />
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer"
+                  onClick={() => handleSort("protocol_setting.address")}
+                >
+                  Address <ArrowUpDown className="inline ml-1 h-4 w-4" />
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer"
+                  onClick={() => handleSort("protocol_setting.device_bus")}
+                >
+                  Bus <ArrowUpDown className="inline ml-1 h-4 w-4" />
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer"
+                  onClick={() => handleSort("profile.topic")}
+                >
+                  Topic <ArrowUpDown className="inline ml-1 h-4 w-4" />
+                </TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paginatedDevices.length > 0 ? (
                 paginatedDevices.map((device, index) => (
-                  <TableRow key={device.profile?.name}>
+                  <TableRow key={device.profile?.name || `device-${index}`}>
                     <TableCell>{(currentPage - 1) * ITEMS_PER_PAGE + index + 1}</TableCell>
                     <TableCell>{device.profile?.name}</TableCell>
                     <TableCell>{device.profile?.part_number}</TableCell>
                     <TableCell>{device.protocol_setting?.address}</TableCell>
+                    <TableCell>{device.protocol_setting?.device_bus}</TableCell>
                     <TableCell>{device.profile?.topic}</TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button
@@ -307,6 +343,7 @@ export default function DeviceManagerPage() {
                         variant="outline"
                         onClick={() => {
                           setNewDevice(device);
+                          setDeviceToUpdate(device.profile?.name);
                           setIsUpdateMode(true);
                           setShowDialog(true);
                         }}
@@ -325,40 +362,47 @@ export default function DeviceManagerPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center">
-                    No devices found.
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    No devices found. Please add a new device or refresh the list.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
-          <Pagination className="mt-4">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                  href="#"
-                />
-              </PaginationItem>
-              {Array.from({ length: totalPages }, (_, i) => (
-                <PaginationItem key={i}>
-                  <PaginationLink
-                    isActive={currentPage === i + 1}
-                    onClick={() => setCurrentPage(i + 1)}
+
+          {totalPages > 1 && (
+            <Pagination className="mt-4">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                     href="#"
-                  >
-                    {i + 1}
-                  </PaginationLink>
+                    aria-disabled={currentPage === 1}
+                    className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                  />
                 </PaginationItem>
-              ))}
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-                  href="#"
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+                {Array.from({ length: totalPages }, (_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink
+                      isActive={currentPage === i + 1}
+                      onClick={() => setCurrentPage(i + 1)}
+                      href="#"
+                    >
+                      {i + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                    href="#"
+                    aria-disabled={currentPage === totalPages}
+                    className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
         </CardContent>
       </Card>
 
@@ -367,10 +411,11 @@ export default function DeviceManagerPage() {
           <DialogHeader>
             <DialogTitle>{isUpdateMode ? "Update Device" : "Add New Device"}</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label>Device Name</Label>
+              <Label htmlFor="deviceName">Device Name</Label>
               <Input
+                id="deviceName"
                 value={newDevice.profile.name}
                 onChange={(e) =>
                   setNewDevice({
@@ -381,7 +426,7 @@ export default function DeviceManagerPage() {
               />
             </div>
             <div>
-              <Label>Part Number</Label>
+              <Label htmlFor="partNumber">Part Number</Label>
               <Select
                 value={newDevice.profile.part_number}
                 onValueChange={(value) =>
@@ -391,7 +436,7 @@ export default function DeviceManagerPage() {
                   })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="partNumber">
                   <SelectValue placeholder="Select a part number" />
                 </SelectTrigger>
                 <SelectContent>
@@ -403,8 +448,9 @@ export default function DeviceManagerPage() {
               </Select>
             </div>
             <div>
-              <Label>Address</Label>
+              <Label htmlFor="address">Address</Label>
               <Input
+                id="address"
                 value={newDevice.protocol_setting.address}
                 onChange={(e) =>
                   setNewDevice({
@@ -418,8 +464,9 @@ export default function DeviceManagerPage() {
               />
             </div>
             <div>
-              <Label>Device Bus</Label>
+              <Label htmlFor="deviceBus">Device Bus</Label>
               <Input
+                id="deviceBus"
                 value={newDevice.protocol_setting.device_bus}
                 onChange={(e) =>
                   setNewDevice({
@@ -432,9 +479,10 @@ export default function DeviceManagerPage() {
                 }
               />
             </div>
-            <div className="col-span-2">
-              <Label>Topic</Label>
+            <div className="col-span-full">
+              <Label htmlFor="topic">Topic</Label>
               <Input
+                id="topic"
                 value={newDevice.profile.topic}
                 onChange={(e) =>
                   setNewDevice({
@@ -444,7 +492,7 @@ export default function DeviceManagerPage() {
                 }
               />
             </div>
-            <Button onClick={handleSubmit} className="col-span-2">
+            <Button onClick={handleSubmit} className="col-span-full mt-4">
               {isUpdateMode ? "Update Device" : "Add Device"}
             </Button>
           </div>

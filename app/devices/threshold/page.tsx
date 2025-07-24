@@ -20,15 +20,17 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { RotateCw, Network } from "lucide-react"
 import MQTTStatus from "@/components/mqtt-status"
+import Swal from 'sweetalert2' // Import SweetAlert2
+import { toast } from 'sonner' // Import toast from sonner
 
 // ✅ Schema validasi menggunakan zod
 const schema = z.object({
-  AC_INPUT_THRESHOLD: z.number(),
-  DC_BATTERY_VOLTAGE: z.number(),
-  DC_BATTERY_TOLERANCE: z.number(),
-  DC_OUTPUT_THRESHOLD: z.number(),
-  DC_OUTPUT_THRESHOLD_NORMAL: z.number(),
-  MIN_CURRENT_THRESHOLD: z.number(),
+  AC_INPUT_THRESHOLD: z.number().min(0, "Must be a non-negative number."),
+  DC_BATTERY_VOLTAGE: z.number().min(0, "Must be a non-negative number."),
+  DC_BATTERY_TOLERANCE: z.number().min(0, "Must be a non-negative number."),
+  DC_OUTPUT_THRESHOLD: z.number().min(0, "Must be a non-negative number."),
+  DC_OUTPUT_THRESHOLD_NORMAL: z.number().min(0, "Must be a non-negative number."),
+  MIN_CURRENT_THRESHOLD: z.number().min(0, "Must be a non-negative number."),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -40,7 +42,7 @@ export default function BatteryThresholdPage() {
   const {
     register,
     handleSubmit,
-    setValue,
+    setValue, // Keep setValue if needed elsewhere, though reset handles initial values
     reset,
     formState: { errors },
   } = useForm<FormValues>({
@@ -57,13 +59,48 @@ export default function BatteryThresholdPage() {
 
   useEffect(() => {
     const client = connectMQTT()
+    if (!client) {
+      toast.error("MQTT client not initialized.");
+      return;
+    }
+
     client.subscribe("batteryCharger/config/response")
+    client.subscribe("batteryCharger/config/update/response") // Subscribe to update response
 
     const handleMessage = (topic: string, message: Buffer) => {
-      if (topic === "batteryCharger/config/response") {
+      try {
         const data = JSON.parse(message.toString())
-        setCurrentConfig(data)
-        reset(data)
+        if (topic === "batteryCharger/config/response") {
+          setCurrentConfig(data)
+          reset(data) // Reset form with fetched data
+        } else if (topic === "batteryCharger/config/update/response") {
+          toast.dismiss("updateConfig"); // Dismiss loading toast
+
+          if (data.status === "success") {
+            Swal.fire({
+              position: 'top-end',
+              icon: 'success',
+              title: data.message || 'Configuration updated successfully!',
+              showConfirmButton: false,
+              timer: 3000,
+              toast: true
+            });
+            // Optionally, re-fetch config to ensure UI is in sync with device
+            client.publish("batteryCharger/config/get", "");
+          } else {
+            Swal.fire({
+              position: 'top-end',
+              icon: 'error',
+              title: data.message || 'Failed to update configuration.',
+              showConfirmButton: false,
+              timer: 3000,
+              toast: true
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Failed to parse MQTT message:", e);
+        toast.error("Received invalid data from MQTT.");
       }
     }
 
@@ -75,14 +112,29 @@ export default function BatteryThresholdPage() {
     return () => {
       client.off("message", handleMessage)
       client.unsubscribe("batteryCharger/config/response")
+      client.unsubscribe("batteryCharger/config/update/response")
     }
-  }, [reset])
+  }, [reset]) // Added reset to dependency array
 
   // ✅ Fungsi update konfigurasi
   const onSubmit = (data: FormValues) => {
     const client = connectMQTT()
-    client.publish("batteryCharger/config/update", JSON.stringify(data))
-    setOpen(false)
+    if (!client || !client.connected) {
+      toast.error("MQTT not connected. Please wait or refresh.");
+      return;
+    }
+    
+    // Convert numbers to strings if the device expects strings (common in MQTT configs)
+    // Or ensure your backend handles numbers directly. Assuming numbers for now.
+    client.publish("batteryCharger/config/update", JSON.stringify(data), (err) => {
+      if (err) {
+        toast.error(`Failed to send update command: ${err.message}`);
+        console.error("Publish error:", err);
+      } else {
+        toast.loading("Updating configuration...", { id: "updateConfig" });
+      }
+    });
+    setOpen(false) // Close dialog immediately after sending, response will handle feedback
   }
 
   return (
@@ -101,7 +153,12 @@ export default function BatteryThresholdPage() {
             size="icon"
             onClick={() => {
               const client = connectMQTT()
-              client.publish("batteryCharger/config/get", "")
+              if (client) {
+                client.publish("batteryCharger/config/get", "")
+                toast.info("Requesting latest configuration...");
+              } else {
+                toast.error("MQTT client not available.");
+              }
             }}
           >
             <RotateCw className="w-4 h-4" />
@@ -112,16 +169,15 @@ export default function BatteryThresholdPage() {
       <div className="p-6 space-y-4">
         <h1 className="text-2xl font-bold">Battery Threshold Configuration</h1>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 ">
-  {Object.entries(schema.shape).map(([key]) => (
-    <div key={key} className="flex flex-col bg-muted p-4 rounded-md border text-sm">
-      <span className="text-muted-foreground text-xs">{key}</span>
-      <span className="font-medium">
-        {currentConfig?.[key as keyof FormValues] ?? "—"}
-      </span>
-    </div>
-  ))}
-</div>
-
+          {Object.entries(schema.shape).map(([key]) => (
+            <div key={key} className="flex flex-col bg-muted p-4 rounded-md border text-sm">
+              <span className="text-muted-foreground text-xs">{key}</span>
+              <span className="font-medium">
+                {currentConfig?.[key as keyof FormValues] ?? "—"}
+              </span>
+            </div>
+          ))}
+        </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>

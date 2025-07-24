@@ -9,18 +9,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import MqttStatus from "@/components/mqtt-status";
 import { toast } from "sonner";
+import Swal from 'sweetalert2'; // Import SweetAlert2
 import {
   Trash2,
   Download,
   FileWarning,
-  RotateCw,
   ArrowUpDown,
   AlertTriangle,
   CircleAlert,
   Bug,
   BarChart3,
-  Hash,
-  Loader2,
+  CheckCircle,
+  MessageSquareOff,
+  RefreshCw
 } from "lucide-react";
 import {
   Table,
@@ -43,102 +44,85 @@ import { useSortableTable } from "@/hooks/use-sort-table";
 import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
 import type { MqttClient } from "mqtt";
 
+// --- UPDATED INTERFACE FOR NEW FIELDS (id, source, status, resolved_at) ---
 interface ErrorLog {
+  id: string; // Unique ID from backend
   data: string;
   type: string;
   Timestamp: string;
+  source?: string; // Optional: Source of the error
+  status?: "active" | "resolved"; // New: Status of the error
+  resolved_at?: string; // New: Timestamp when resolved
 }
 
 export default function ErrorLogPage() {
   const [logs, setLogs] = useState<ErrorLog[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isLoading, setIsLoading] = useState(true);
-  const logsPerPage = 10;
   const clientRef = useRef<MqttClient | null>(null);
+
+  const logsPerPage = 10;
 
   const { sorted, handleSort, sortField, sortDirection } = useSortableTable(logs);
 
-  // Function to request all logs from the device
-  const requestAllLogs = useCallback(() => {
+  const refreshLogs = useCallback(() => {
     const client = getMQTTClient();
     if (!client || !client.connected) {
-      toast.warning("MQTT not connected. Cannot request logs.");
-      setIsLoading(false);
+      toast.warning("MQTT not connected. Cannot refresh logs.");
       return;
     }
-    setIsLoading(true);
-    setTimeout(() => {
-      client.publish("subrack/error/data/request", JSON.stringify({ command: "get_all" }));
-      toast.info("Requesting error logs from device...");
-    }, 300);
+    // Asumsi: Backend akan mengirim ulang semua log saat ada koneksi atau permintaan,
+    // atau Anda perlu menambahkan topik/perintah spesifik untuk "refresh" jika diperlukan.
+    // Saat ini, log akan otomatis di-update saat MQTT connect atau backend publish data baru.
+    toast.info("Attempting to refresh error logs (data will update automatically)...");
   }, []);
 
   useEffect(() => {
     const mqttClientInstance = connectMQTT();
     clientRef.current = mqttClientInstance;
 
-    if (mqttClientInstance.connected) {
-      requestAllLogs();
-    }
+    const topicsToSubscribe = ["subrack/error/data", "subrack/error/log"];
 
-    mqttClientInstance.subscribe("subrack/error/data", (err) => {
-      if (err) console.error("Failed to subscribe to subrack/error/data:", err);
-    });
-    mqttClientInstance.subscribe("subrack/error/data/delete", (err) => {
-      if (err) console.error("Failed to subscribe to subrack/error/data/delete:", err);
+    topicsToSubscribe.forEach((topic) => {
+      mqttClientInstance.subscribe(topic, (err) => {
+        if (err) console.error(`Failed to subscribe to ${topic}:`, err);
+      });
     });
 
     const handleConnect = () => {
-      mqttClientInstance.subscribe("subrack/error/data");
-      mqttClientInstance.subscribe("subrack/error/data/delete");
-      requestAllLogs();
-      toast.success("MQTT Connected for Error Logs. Fetching data...");
+      toast.success("MQTT Connected for Error Logs. Data will update automatically.");
     };
 
     const handleError = (err: Error) => {
       console.error("MQTT Client Error:", err);
       toast.error(`MQTT Error: ${err.message}`);
-      setIsLoading(false);
     };
 
     const handleClose = () => {
       toast.warning("MQTT disconnected. Log data may be outdated.");
-      setIsLoading(false);
     };
 
     const handleMessage = (topic: string, payload: Buffer) => {
       try {
         const data = JSON.parse(payload.toString());
-        if (topic === "subrack/error/data/delete") {
-          if (data.command === "delete_success") {
-            setLogs([]);
-            toast.success("All logs deleted successfully. 🗑️");
-          } else {
-            toast.error(data.message || "Failed to delete logs.");
-          }
-          setIsLoading(false);
-        } else if (topic === "subrack/error/data") {
+        if (topic === "subrack/error/data") {
           if (Array.isArray(data)) {
-            // --- FILTERING LOGS START ---
+            const ignoredErrorPattern = "MODULAR I2C cannot connect to server broker mqtt";
             const filteredLogs = data.filter((logItem: ErrorLog) => {
-              // Contoh log yang ingin disembunyikan
-              const ignoredErrorPattern = "MODULAR I2C cannot connect to server broker mqtt";
-              return !logItem.data.includes(ignoredErrorPattern);
+              return logItem.data && !logItem.data.includes(ignoredErrorPattern);
             });
             setLogs(filteredLogs);
-            // --- FILTERING LOGS END ---
             toast.success("Error logs updated. ✔️");
           } else {
             toast.error("Received invalid log data format. ⚠️");
             console.warn("Expected array for logs, got:", data);
           }
-          setCurrentPage(1);
-          setIsLoading(false);
+          setCurrentPage(1); // Reset to first page on new data
+        } else if (topic === "subrack/error/log") {
+          console.log("Raw incoming error log:", data);
         }
       } catch (err) {
         toast.error("Invalid payload format received from MQTT. ❌");
         console.error("MQTT message parsing error:", err);
-        setIsLoading(false);
       }
     };
 
@@ -149,31 +133,132 @@ export default function ErrorLogPage() {
 
     return () => {
       if (clientRef.current?.connected) {
-        clientRef.current.unsubscribe("subrack/error/data");
-        clientRef.current.unsubscribe("subrack/error/data/delete");
+        topicsToSubscribe.forEach((topic) => {
+          clientRef.current?.unsubscribe(topic);
+        });
       }
       mqttClientInstance.off("connect", handleConnect);
       mqttClientInstance.off("error", handleError);
       mqttClientInstance.off("close", handleClose);
       mqttClientInstance.off("message", handleMessage);
     };
-  }, [requestAllLogs]);
+  }, []);
 
-  const deleteAll = () => {
-    if (clientRef.current?.connected) {
-      toast.info("Sending command to delete all logs...");
-      clientRef.current.publish("subrack/error/data/command", JSON.stringify({ command: "delete_all" }), (err) => {
-        if (err) {
-          toast.error(`Failed to send delete command: ${err.message} 🚫`);
-          console.error("Publish error:", err);
-        }
-      });
+  const deleteAllLogs = useCallback(async () => {
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: "You are about to delete ALL error logs. This action cannot be undone!",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Yes, delete all!',
+      reverseButtons: true, // Puts confirm button on the left
+    });
+
+    if (result.isConfirmed) {
+      if (clientRef.current?.connected) {
+        toast.info("Sending command to delete all logs...");
+        clientRef.current.publish(
+          "subrack/error/data/delete/all",
+          JSON.stringify({ command: "delete_all" }),
+          (err) => {
+            if (err) {
+              toast.error(`Failed to send delete all command: ${err.message} 🚫`);
+              console.error("Publish error:", err);
+              Swal.fire('Failed!', 'Could not send delete command.', 'error');
+            } else {
+              // Sukses toast akan muncul saat backend merespons dengan data baru (kosong)
+              Swal.fire('Initiated!', 'Delete all logs command sent. Table will refresh shortly.', 'success');
+            }
+          }
+        );
+      } else {
+        toast.error("MQTT not connected to send delete command. 🚨");
+        Swal.fire('Error!', 'MQTT not connected.', 'error');
+      }
     } else {
-      toast.error("MQTT not connected to send delete command. 🚨");
+        toast.info("Delete all logs cancelled.");
     }
-  };
+  }, []);
 
-  const exportExcel = () => {
+  const deleteErrorByMessage = useCallback(async (messageToDelete: string) => {
+    const result = await Swal.fire({
+      title: 'Delete specific logs?',
+      html: `You are about to delete all logs with the message:<br><strong>"${messageToDelete}"</strong>.<br>This action cannot be undone for these specific logs!`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Yes, delete them!',
+      reverseButtons: true,
+    });
+
+    if (result.isConfirmed) {
+      if (clientRef.current?.connected) {
+        toast.info(`Sending command to delete logs with message: "${messageToDelete}"`);
+        clientRef.current.publish(
+          "subrack/error/data/delete/by_message",
+          JSON.stringify({ message: messageToDelete }),
+          (err) => {
+            if (err) {
+              toast.error(`Failed to send delete by message command: ${err.message} 🚫`);
+              console.error("Publish error:", err);
+              Swal.fire('Failed!', 'Could not send delete by message command.', 'error');
+            } else {
+              // Sukses toast akan muncul saat backend merespons dengan data baru (tanpa log yang dihapus)
+              Swal.fire('Initiated!', 'Delete by message command sent. Table will refresh shortly.', 'success');
+            }
+          }
+        );
+      } else {
+        toast.error("MQTT not connected to send delete by message command. 🚨");
+        Swal.fire('Error!', 'MQTT not connected.', 'error');
+      }
+    } else {
+        toast.info("Delete by message cancelled.");
+    }
+  }, []);
+
+  const resolveError = useCallback(async (errorId: string) => {
+    const result = await Swal.fire({
+      title: 'Mark as Resolved?',
+      text: "This action will mark the error as resolved in the system.",
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Yes, resolve it!',
+      reverseButtons: true,
+    });
+
+    if (result.isConfirmed) {
+      if (clientRef.current?.connected) {
+        toast.info(`Sending command to resolve error ID: ${errorId}`);
+        clientRef.current.publish(
+          "subrack/error/data/resolve",
+          JSON.stringify({ id: errorId }),
+          (err) => {
+            if (err) {
+              toast.error(`Failed to send resolve command: ${err.message} 🚫`);
+              console.error("Publish error:", err);
+              Swal.fire('Failed!', 'Could not send resolve command.', 'error');
+            } else {
+              // Sukses toast akan muncul saat backend merespons dengan data baru
+              Swal.fire('Initiated!', 'Resolve command sent. Table will refresh shortly.', 'success');
+            }
+          }
+        );
+      } else {
+        toast.error("MQTT not connected to send resolve command. 🚨");
+        Swal.fire('Error!', 'MQTT not connected.', 'error');
+      }
+    } else {
+        toast.info("Resolve action cancelled.");
+    }
+  }, []);
+
+  const exportExcel = useCallback(() => {
     if (logs.length === 0) {
       toast.info("No logs to export. 📝");
       return;
@@ -183,13 +268,18 @@ export default function ErrorLogPage() {
     XLSX.utils.book_append_sheet(wb, ws, "Logs");
     XLSX.writeFile(wb, "ErrorLogs.xlsx");
     toast.success("Logs exported to Excel. 📊");
-  };
+  }, [logs]);
 
   const totalPages = Math.ceil(sorted.length / logsPerPage);
   const currentLogs = sorted.slice((currentPage - 1) * logsPerPage, currentPage * logsPerPage);
 
-  const getTypeBadge = (type: string) => {
+  const getTypeBadge = (type: string, status?: string) => {
     const t = type.toLowerCase();
+    const s = status?.toLowerCase();
+
+    if (s === "resolved") {
+      return <Badge variant="outline" className="bg-green-100 text-green-700 border-green-500">Resolved</Badge>;
+    }
     if (t === "critical") return <Badge variant="destructive">{type}</Badge>;
     if (t === "major")
       return (
@@ -200,8 +290,11 @@ export default function ErrorLogPage() {
     return <Badge variant="secondary">{type}</Badge>;
   };
 
-  const getTypeIcon = (type: string) => {
+  const getTypeIcon = (type: string, status?: string) => {
     const t = type.toLowerCase();
+    const s = status?.toLowerCase();
+
+    if (s === "resolved") return <CheckCircle className="text-green-500 w-4 h-4 mr-1" />;
     if (t === "critical") return <CircleAlert className="text-red-500 w-4 h-4 mr-1" />;
     if (t === "major") return <AlertTriangle className="text-orange-500 w-4 h-4 mr-1" />;
     return <Bug className="text-muted-foreground w-4 h-4 mr-1" />;
@@ -209,15 +302,27 @@ export default function ErrorLogPage() {
 
   const summary = useMemo(() => {
     const counts: Record<string, number> = {};
+    const activeCounts: Record<string, number> = {};
+    let activeTotal = 0;
+
     logs.forEach((log) => {
       const t = log.type.toLowerCase();
       counts[t] = (counts[t] || 0) + 1;
+
+      if (log.status !== "resolved") {
+        activeCounts[t] = (activeCounts[t] || 0) + 1;
+        activeTotal++;
+      }
     });
-    const mostCommon = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+
+    const mostCommonActive = Object.entries(activeCounts).sort((a, b) => b[1] - a[1])[0];
+
     return {
       total: logs.length,
+      activeTotal: activeTotal,
       counts,
-      mostCommon,
+      activeCounts,
+      mostCommonActive,
     };
   }, [logs]);
 
@@ -232,8 +337,8 @@ export default function ErrorLogPage() {
         </div>
         <div className="flex items-center gap-2">
           <MqttStatus />
-          <Button variant="outline" size="icon" onClick={requestAllLogs} title="Refresh Logs" disabled={isLoading}>
-            <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          <Button variant="outline" size="icon" onClick={refreshLogs} title="Refresh Logs">
+            <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
       </header>
@@ -241,53 +346,51 @@ export default function ErrorLogPage() {
       <div className="p-6 space-y-4">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* Card 1: Total Errors */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Errors</CardTitle>
-              <Hash className="h-5 w-5 text-green-600" />
+              <CardTitle className="text-sm font-medium">Total Active Errors</CardTitle>
+              <AlertTriangle className="h-5 w-5 text-red-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{summary.total}</div>
-              <p className="text-xs text-muted-foreground">System Logs</p>
+              <div className="text-3xl font-bold">{summary.activeTotal}</div>
+              <p className="text-xs text-muted-foreground">Currently unresolved system issues</p>
             </CardContent>
           </Card>
 
-          {/* Card 2: By Type */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">By Type</CardTitle>
-              <BarChart3 className="h-5 w-5 text-green-600" />
+              <CardTitle className="text-sm font-medium">Active By Type</CardTitle>
+              <BarChart3 className="h-5 w-5 text-blue-600" />
             </CardHeader>
             <CardContent className="space-y-1">
-              {Object.entries(summary.counts).map(([type, count]) => (
+              {Object.entries(summary.activeCounts).map(([type, count]) => (
                 <div key={type} className="flex items-center gap-2">
                   {getTypeIcon(type)}
                   <span className="capitalize">{type}</span>: {count}
                 </div>
               ))}
-              <p className="text-xs text-muted-foreground">All error types</p>
+              {summary.activeTotal === 0 && <span className="text-muted-foreground text-sm">No active errors</span>}
+              <p className="text-xs text-muted-foreground">Unresolved errors categorized</p>
             </CardContent>
           </Card>
 
-          {/* Card 3: Most Common */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Most Common</CardTitle>
-              <AlertTriangle className="h-5 w-5 text-green-600" />
+              <CardTitle className="text-sm font-medium">Most Common Active</CardTitle>
+              <Bug className="h-5 w-5 text-yellow-600" />
             </CardHeader>
             <CardContent>
-              {summary.mostCommon ? (
+              {summary.mostCommonActive ? (
                 <div className="flex items-center gap-2">
-                  {getTypeIcon(summary.mostCommon[0])}
+                  {getTypeIcon(summary.mostCommonActive[0])}
                   <span className="capitalize font-semibold">
-                    {summary.mostCommon[0]} ({summary.mostCommon[1]})
+                    {summary.mostCommonActive[0]} ({summary.mostCommonActive[1]})
                   </span>
                 </div>
               ) : (
-                <span className="text-muted-foreground">No data</span>
+                <span className="text-muted-foreground">No active errors</span>
               )}
-              <p className="text-xs text-muted-foreground">Most frequent errors</p>
+              <p className="text-xs text-muted-foreground">Most frequent unresolved error type</p>
             </CardContent>
           </Card>
         </div>
@@ -297,7 +400,7 @@ export default function ErrorLogPage() {
           <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <CardTitle className="text-base">Error Logs</CardTitle>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="destructive" onClick={deleteAll} title="Delete all logs" disabled={logs.length === 0 || isLoading}>
+              <Button size="sm" variant="destructive" onClick={deleteAllLogs} title="Delete all logs" disabled={logs.length === 0}>
                 <Trash2 className="w-4 h-4 mr-1" /> Delete All
               </Button>
               <Button size="sm" variant="secondary" onClick={exportExcel} title="Export logs to Excel" disabled={logs.length === 0}>
@@ -308,10 +411,13 @@ export default function ErrorLogPage() {
 
           <CardContent>
             <Table className="bg-background mt-4">
-              <TableCaption>Error logs from your devices. Export or clear as needed.</TableCaption>
+              <TableCaption>Error logs from your devices. Export, clear, or manage as needed.</TableCaption>
               <TableHeader>
                 <TableRow>
                   <TableHead>#</TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("source")}>
+                    Source <ArrowUpDown className="inline w-4 h-4 ml-1" />
+                  </TableHead>
                   <TableHead className="cursor-pointer" onClick={() => handleSort("data")}>
                     Data <ArrowUpDown className="inline w-4 h-4 ml-1" />
                   </TableHead>
@@ -321,36 +427,61 @@ export default function ErrorLogPage() {
                   <TableHead className="cursor-pointer" onClick={() => handleSort("Timestamp")}>
                     Timestamp <ArrowUpDown className="inline w-4 h-4 ml-1" />
                   </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("status")}>
+                    Status <ArrowUpDown className="inline w-4 h-4 ml-1" />
+                  </TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading ? (
+                {currentLogs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-6 text-blue-500">
-                      <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                      Fetching logs...
-                    </TableCell>
-                  </TableRow>
-                ) : currentLogs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                      <MessageSquareOff className="w-8 h-8 mx-auto mb-2" />
                       No logs available.
                     </TableCell>
                   </TableRow>
                 ) : (
                   currentLogs.map((log, i) => (
-                    <TableRow key={i}>
+                    <TableRow key={log.id || i}>
                       <TableCell>{(currentPage - 1) * logsPerPage + i + 1}</TableCell>
+                      <TableCell>{log.source || "N/A"}</TableCell>
                       <TableCell className="max-w-xs truncate" title={log.data}>{log.data}</TableCell>
-                      <TableCell>{getTypeBadge(log.type)}</TableCell>
+                      <TableCell>{getTypeBadge(log.type, log.status)}</TableCell>
                       <TableCell>{log.Timestamp}</TableCell>
+                      <TableCell>
+                        <Badge variant={log.status === "resolved" ? "outline" : "default"}
+                               className={log.status === "resolved" ? "bg-green-100 text-green-700 border-green-500" : "bg-red-100 text-red-700 border-red-500"}>
+                          {log.status || "active"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="space-x-2">
+                        {log.status !== "resolved" && (
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            onClick={() => resolveError(log.id)}
+                            title="Mark as Resolved"
+                          >
+                            <CheckCircle className="w-4 h-4 text-green-500" />
+                          </Button>
+                        )}
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => deleteErrorByMessage(log.data)}
+                          title="Delete all with this message"
+                        >
+                          <MessageSquareOff className="w-4 h-4 text-red-500" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
 
-            {totalPages > 1 && !isLoading && (
+            {totalPages > 1 && (
               <Pagination className="mt-4">
                 <PaginationContent>
                   <PaginationItem>
