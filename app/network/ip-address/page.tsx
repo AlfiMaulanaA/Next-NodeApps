@@ -481,88 +481,80 @@ export default function NetworkPage() {
             <CardTitle>IP Configuration (eth0)</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading && !config ? ( // Show loading only if config is not yet loaded
-              <p className="text-sm text-muted-foreground flex items-center justify-center py-8">
-                <Loader2 className="w-5 h-5 mr-2 animate-spin text-blue-500" />
-                Fetching network data...
-              </p>
-            ) : config ? (
-              <>
-                <table className="text-sm w-full">
-                  <tbody>
-                    <tr>
-                      <td className="font-medium pr-4 py-1">IP Address</td>
-                      <td className="py-1">{config.address}</td>
-                    </tr>
-                    <tr>
-                      <td className="font-medium pr-4 py-1">Netmask</td>
-                      <td className="py-1">{config.netmask}</td>
-                    </tr>
-                    <tr>
-                      <td className="font-medium pr-4 py-1">Gateway</td>
-                      <td className="py-1">{config.gateway}</td>
-                    </tr>
-                  </tbody>
-                </table>
-                <div className="flex flex-wrap gap-2 mt-4">
-                  <Dialog open={open} onOpenChange={setOpen}>
-                    <DialogTrigger asChild>
-                      <Button size="sm" variant="default" disabled={isLoading}>Edit IP</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Edit IP Configuration</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-3">
-                        <Input
-                          placeholder="IP Address"
-                          value={editConfig.address}
-                          onChange={e => handleInput("address", e.target.value)}
-                          className={!isValidIP(editConfig.address) && editConfig.address !== "" ? "border-red-500" : ""}
-                        />
-                        {!isValidIP(editConfig.address) && editConfig.address !== "" && (
-                          <p className="text-xs text-red-500">Invalid IP Address format (e.g., 192.168.1.1).</p>
-                        )}
-                        <Input
-                          placeholder="Netmask"
-                          value={editConfig.netmask}
-                          onChange={e => handleInput("netmask", e.target.value)}
-                          className={!isValidNetmask(editConfig.netmask) && editConfig.netmask !== "" ? "border-red-500" : ""}
-                        />
-                        {!isValidNetmask(editConfig.netmask) && editConfig.netmask !== "" && (
-                          <p className="text-xs text-red-500">Invalid Netmask format (e.g., 255.255.255.0).</p>
-                        )}
-                        <Input
-                          placeholder="Gateway"
-                          value={editConfig.gateway}
-                          onChange={e => handleInput("gateway", e.target.value)}
-                          className={!isValidIP(editConfig.gateway) && editConfig.gateway !== "" ? "border-red-500" : ""}
-                        />
-                        {!isValidIP(editConfig.gateway) && editConfig.gateway !== "" && (
-                          <p className="text-xs text-red-500">Invalid Gateway IP Address format (e.g., 192.168.1.254).</p>
-                        )}
-                        <Button
-                          onClick={updateConfig}
-                          disabled={isLoading || !isValidIP(editConfig.address) || !isValidIP(editConfig.gateway) || !isValidNetmask(editConfig.netmask)}
-                          className="w-full"
-                        >
-                          {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Save Changes
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+            <>
+              <table className="text-sm w-full">
+                <tbody>
+                  <tr>
+                    <td className="font-medium pr-4 py-1">IP Address</td>
+                    <td className="py-1">{config?.address || "not defined"}</td>
+                  </tr>
+                  <tr>
+                    <td className="font-medium pr-4 py-1">Netmask</td>
+                    <td className="py-1">{config?.netmask || "not defined"}</td>
+                  </tr>
+                  <tr>
+                    <td className="font-medium pr-4 py-1">Gateway</td>
+                    <td className="py-1">{config?.gateway || "not defined"}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div className="flex flex-wrap gap-2 mt-4">
+                <Dialog open={open} onOpenChange={setOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="default" disabled={isLoading}>
+                      {config ? "Edit IP" : "Configure IP"}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{config ? "Edit IP Configuration" : "Configure IP"}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <Input
+                        placeholder="IP Address"
+                        value={editConfig.address}
+                        onChange={e => handleInput("address", e.target.value)}
+                        className={!isValidIP(editConfig.address) && editConfig.address !== "" ? "border-red-500" : ""}
+                      />
+                      {!isValidIP(editConfig.address) && editConfig.address !== "" && (
+                        <p className="text-xs text-red-500">Invalid IP Address format (e.g., 192.168.1.1).</p>
+                      )}
+                      <Input
+                        placeholder="Netmask"
+                        value={editConfig.netmask}
+                        onChange={e => handleInput("netmask", e.target.value)}
+                        className={!isValidNetmask(editConfig.netmask) && editConfig.netmask !== "" ? "border-red-500" : ""}
+                      />
+                      {!isValidNetmask(editConfig.netmask) && editConfig.netmask !== "" && (
+                        <p className="text-xs text-red-500">Invalid Netmask format (e.g., 255.255.255.0).</p>
+                      )}
+                      <Input
+                        placeholder="Gateway"
+                        value={editConfig.gateway}
+                        onChange={e => handleInput("gateway", e.target.value)}
+                        className={!isValidIP(editConfig.gateway) && editConfig.gateway !== "" ? "border-red-500" : ""}
+                      />
+                      {!isValidIP(editConfig.gateway) && editConfig.gateway !== "" && (
+                        <p className="text-xs text-red-500">Invalid Gateway IP Address format (e.g., 192.168.1.254).</p>
+                      )}
+                      <Button
+                        onClick={updateConfig}
+                        disabled={isLoading || !isValidIP(editConfig.address) || !isValidIP(editConfig.gateway) || !isValidNetmask(editConfig.netmask)}
+                        className="w-full"
+                      >
+                        {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} 
+                        {config ? "Save Changes" : "Configure Network"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+                {config && (
                   <Button size="sm" variant="secondary" onClick={handleRestartNetworkButton} disabled={isLoading}>
                     {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wifi className="w-4 h-4 mr-2" />} Restart Networking
                   </Button>
-                </div>
-              </>
-            ) : (
-              // Case when config is null and not loading (e.g., initial load failed or MQTT not connected)
-              <p className="text-sm text-muted-foreground flex items-center justify-center py-8">
-                <Network className="w-5 h-5 mr-2" />
-                No network configuration loaded. Ensure MQTT is connected and try refreshing.
-              </p>
-            )}
+                )}
+              </div>
+            </>
           </CardContent>
         </Card>
       </div>

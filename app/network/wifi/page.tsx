@@ -83,12 +83,6 @@ export default function WifiScannerPage() {
     };
   }, []);
 
-  const renderIcon = () => {
-    if (status === "connected") return <Wifi className="w-4 h-4 text-green-500" />;
-    if (status === "error") return <WifiOff className="w-4 h-4 text-red-500" />;
-    return <Loader2 className="w-4 h-4 animate-spin text-yellow-500" />;
-  };
-
   const scanWifi = () => {
     clientRef.current?.publish("wifi/scan_request", "{}", (err) => {
       if (err) toast.error(`Failed to request scan: ${err.message}`);
