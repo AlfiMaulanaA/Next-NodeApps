@@ -84,7 +84,7 @@ export default function WifiScannerPage() {
   }, []);
 
   const scanWifi = () => {
-    clientRef.current?.publish("wifi/scan_request", "{}", (err) => {
+    clientRef.current?.publish("wifi/scan_request", "", (err) => {
       if (err) toast.error(`Failed to request scan: ${err.message}`);
     });
   };

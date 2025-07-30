@@ -75,35 +75,35 @@ const navigation = [
   {
     title: "Device Management",
     items: [
-      { title: "Modular Devices", url: "/devices/modular", icon: Cpu },
+      // { title: "Modular Devices", url: "/devices/modular", icon: Cpu },
       { title: "Modbus Devices", url: "/devices/modbus", icon: Server },
       { title: "Battery Threshold", url: "/devices/threshold", icon: ShieldAlert },
     ],
   },
-  {
-    title: "Control Center",
-    items: [
-      { title: "Manual Control", url: "/control/manual", icon: SlidersHorizontal },
-      { title: "Scheduled Control", url: "/control/schedule", icon: BarChart },
-      { title: "Logic Control", url: "/control/logic", icon: FileBarChart },
-      { title: "Voice Control", url: "/control/voice", icon: AudioLines },
-      { title: "Value-Based Control", url: "/control/value", icon: FileBarChart },
-    ],
-  },
-  {
-    title: "Payload Configuration",
-    items: [
-      { title: "Dynamic Payloads", url: "/payload/dynamic", icon: Code },
-      { title: "Static Payloads", url: "/payload/static", icon: Code },
-      { title: "MQTT Discovery", url: "/payload/discover", icon: Radar },
-    ],
-  },
+  // {
+  //   title: "Control Center",
+  //   items: [
+  //     { title: "Manual Control", url: "/control/manual", icon: SlidersHorizontal },
+  //     { title: "Scheduled Control", url: "/control/schedule", icon: BarChart },
+  //     { title: "Logic Control", url: "/control/logic", icon: FileBarChart },
+  //     { title: "Voice Control", url: "/control/voice", icon: AudioLines },
+  //     { title: "Value-Based Control", url: "/control/value", icon: FileBarChart },
+  //   ],
+  // },
+  // {
+  //   title: "Payload Configuration",
+  //   items: [
+  //     { title: "Dynamic Payloads", url: "/payload/dynamic", icon: Code },
+  //     { title: "Static Payloads", url: "/payload/static", icon: Code },
+  //     { title: "MQTT Discovery", url: "/payload/discover", icon: Radar },
+  //   ],
+  // },
   {
     title: "Network Settings",
     items: [
       { title: "WiFi Scanner", url: "/network/wifi", icon: Wifi },
       { title: "IP Configuration", url: "/network/ip-address", icon: Network },
-      { title: "MQTT Broker", url: "/network/mqtt", icon: Server },
+      // { title: "MQTT Broker", url: "/network/mqtt", icon: Server },
       { title: "Comm Out Modbus TCP", url: "/network/protocol/modbus", icon: HardDriveUpload },
       { title: "Comm Out SNMP", url: "/network/protocol/snmp", icon: HardDriveUpload },
     ],

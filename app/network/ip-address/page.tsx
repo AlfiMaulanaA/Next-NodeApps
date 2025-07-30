@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
-import { Network, RotateCw, Loader2, Save, Wifi } from "lucide-react";
+import { Network, RotateCw, Loader2, Save, Wifi, Search, RefreshCw } from "lucide-react";
 import type { MqttClient } from "mqtt";
 import MqttStatus from "@/components/mqtt-status";
 
@@ -174,11 +174,6 @@ export default function NetworkPage() {
     }
   }, []); // Empty dependency array as it only depends on clientRef.current, which is stable
 
-  /**
-   * Handles updating the network configuration.
-   * Sends 'changeIP' command to backend.
-   * AFTER successful sending of IP change, it also publishes the new IP to Modbus TCP and SNMP topics.
-   */
   const updateConfig = async () => {
     if (
       !isValidIP(editConfig.address) ||
@@ -287,14 +282,17 @@ export default function NetworkPage() {
   };
 
   /**
-   * Handles direct network service restart button.
+   * Handles Get IP Address button - fetches current network configuration
    */
-  const handleRestartNetworkButton = () => {
-    sendCommandToService(
-      "networking.service",
-      "restart",
-      "Are you sure you want to restart the networking service? This will temporarily disrupt network connectivity. If you've just changed IP, a full reboot is recommended."
-    );
+  const handleGetIPAddress = () => {
+    requestNetworkConfig();
+  };
+
+  /**
+   * Handles page refresh
+   */
+  const handleRefreshPage = () => {
+    window.location.reload();
   };
 
   // --- useEffect for MQTT Connection and Message Handling ---
@@ -468,8 +466,11 @@ export default function NetworkPage() {
         </div>
         <div className="flex items-center gap-2">
           <MqttStatus />
-          <Button variant="outline" size="icon" onClick={requestNetworkConfig} disabled={isLoading}>
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCw className="w-4 h-4" />}
+          <Button variant="outline" size="icon" onClick={handleGetIPAddress} disabled={isLoading}>
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+          </Button>
+          <Button variant="outline" size="icon" onClick={handleRefreshPage}>
+            <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
       </header>
@@ -482,6 +483,16 @@ export default function NetworkPage() {
           </CardHeader>
           <CardContent>
             <>
+              {!config && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
+                  <div className="flex items-center">
+                    <Network className="w-4 h-4 text-yellow-600 mr-2" />
+                    <p className="text-sm text-yellow-800">
+                      ETH0 network interface not detected or configured. You can configure a new IP address below.
+                    </p>
+                  </div>
+                </div>
+              )}
               <table className="text-sm w-full">
                 <tbody>
                   <tr>
@@ -499,6 +510,10 @@ export default function NetworkPage() {
                 </tbody>
               </table>
               <div className="flex flex-wrap gap-2 mt-4">
+                <Button size="sm" variant="outline" onClick={handleGetIPAddress} disabled={isLoading}>
+                  {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+                  Get IP Address
+                </Button>
                 <Dialog open={open} onOpenChange={setOpen}>
                   <DialogTrigger asChild>
                     <Button size="sm" variant="default" disabled={isLoading}>
@@ -510,6 +525,13 @@ export default function NetworkPage() {
                       <DialogTitle>{config ? "Edit IP Configuration" : "Configure IP"}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3">
+                      {!config && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-3">
+                          <p className="text-sm text-blue-800">
+                            <strong>Note:</strong> ETH0 interface not found. Please configure the network settings below to establish connectivity.
+                          </p>
+                        </div>
+                      )}
                       <Input
                         placeholder="IP Address"
                         value={editConfig.address}
@@ -548,11 +570,6 @@ export default function NetworkPage() {
                     </div>
                   </DialogContent>
                 </Dialog>
-                {config && (
-                  <Button size="sm" variant="secondary" onClick={handleRestartNetworkButton} disabled={isLoading}>
-                    {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wifi className="w-4 h-4 mr-2" />} Restart Networking
-                  </Button>
-                )}
               </div>
             </>
           </CardContent>
