@@ -1,0 +1,107 @@
+{
+    "groups": [
+        {
+            "summary_topic": "Temperature/1",
+            "interval": 10,
+            "qos": 0,
+            "retain": false,
+            "calculation_only": false,
+            "included_devices": [
+                {
+                    "name": "Temperature_1",
+                    "value_group": "Sensor Temp",
+                    "value_keys": {
+                        "temp": "Temp1"
+                    }
+                },
+                {
+                    "name": "Temperature_1",
+                    "value_group": "Sensor Temp",
+                    "value_keys": {
+                        "temp": "Temp2"
+                    }
+                },
+                {
+                    "name": "Temperature_1",
+                    "value_group": "Sensor Temp",
+                    "value_keys": {
+                        "temp": "Temp3"
+                    }
+                }
+            ],
+            "calculations": [
+                {
+                    "operation": "sum",
+                    "name": "Sum TH",
+                    "value_group_selected": "Sensor Temp"
+                }
+            ]
+        },
+        {
+            "summary_topic": "Temperature/2",
+            "interval": 5,
+            "qos": 0,
+            "retain": true,
+            "included_devices": [
+                {
+                    "name": "Temperature_1",
+                    "value_group": "Sensor",
+                    "value_keys": {
+                        "temp": "Temp1"
+                    }
+                },
+                {
+                    "name": "Temperature_1",
+                    "value_group": "Sensor",
+                    "value_keys": {
+                        "temp": "Temp2"
+                    }
+                }
+            ],
+            "calculations": [
+                {
+                    "operation": "sum",
+                    "name": "Summary",
+                    "value_group_selected": "Sensor"
+                }
+            ]
+        },
+        {
+            "summary_topic": "Sensor/TH/1",
+            "calculation_only": false,
+            "included_devices": [
+                {
+                    "name": "Temperature_1",
+                    "value_group": "Sensor TH",
+                    "value_keys": {
+                        "temp": "Temp"
+                    }
+                },
+                {
+                    "name": "Temperature_1",
+                    "value_group": "Sensor TH",
+                    "value_keys": {
+                        "hum": "Hum"
+                    }
+                },
+                {
+                    "name": "Relay 1",
+                    "value_group": null,
+                    "value_keys": {
+                        "relayOutput1": "Relay 1"
+                    }
+                }
+            ],
+            "calculations": [
+                {
+                    "operation": "sum",
+                    "name": "SUM TH",
+                    "value_group_selected": "Sensor TH"
+                }
+            ],
+            "qos": 0,
+            "retain": false,
+            "interval": 5
+        }
+    ]
+}

@@ -1,0 +1,48 @@
+[
+  {
+    "id": "ceb02ee1-7bc9-42c5-895d-95434d1b3c3e",
+    "customName": "Control Lampu",
+    "deviceName": "Relay1",
+    "name": "Relay1",
+    "mac": "02:81:0b:e9:6b:e3",
+    "address": 31,
+    "device_bus": 0,
+    "part_number": "RELAYMINI",
+    "startDay": "Mon",
+    "endDay": "Sun",
+    "controls": [
+      {
+        "pin": 1,
+        "customName": "Lampu Depan",
+        "onTime": "08:00",
+        "offTime": "17:00"
+      }
+    ]
+  },
+  {
+    "id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
+    "customName": "Control Kipas",
+    "deviceName": "Relay2", 
+    "name": "Relay2",
+    "mac": "02:81:0b:e9:6b:e4",
+    "address": 32,
+    "device_bus": 0,
+    "part_number": "RELAYMINI",
+    "startDay": "Mon",
+    "endDay": "Fri",
+    "controls": [
+      {
+        "pin": 1,
+        "customName": "Kipas Ruangan",
+        "onTime": "09:00",
+        "offTime": "18:00"
+      },
+      {
+        "pin": 2,
+        "customName": "Kipas Dapur",
+        "onTime": "07:00",
+        "offTime": "22:00"
+      }
+    ]
+  }
+]

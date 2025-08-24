@@ -5,13 +5,27 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Wifi, Power, Terminal, RotateCw, Settings, Thermometer, Cpu, MemoryStick, HardDrive, Clock, Moon, Sun, BatteryCharging } from "lucide-react";
+import {
+  Wifi,
+  Power,
+  Terminal,
+  RotateCw,
+  Settings,
+  Thermometer,
+  Cpu,
+  MemoryStick,
+  HardDrive,
+  Clock,
+  Moon,
+  Sun,
+  BatteryCharging,
+} from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useTheme } from "next-themes";
-import MqttStatus from '@/components/mqtt-status';
+import MqttStatus from "@/components/mqtt-status";
 
-import Swal from 'sweetalert2';
+import Swal from "sweetalert2";
 
 import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
 import type { MqttClient } from "mqtt";
@@ -105,52 +119,54 @@ export default function SettingsPage() {
 
           if (msg.result === "success") {
             Swal.fire({
-              position: 'top-end',
-              icon: 'success',
+              position: "top-end",
+              icon: "success",
               title: msg.message || "Command executed successfully.",
               showConfirmButton: false,
               timer: 3000,
-              toast: true
+              toast: true,
             });
           } else {
             Swal.fire({
-              position: 'top-end',
-              icon: 'error',
-              title: 'Error!',
-              text: msg.message || 'Command failed.',
+              position: "top-end",
+              icon: "error",
+              title: "Error!",
+              text: msg.message || "Command failed.",
               showConfirmButton: false,
               timer: 3000,
-              toast: true
+              toast: true,
             });
             console.error("Service command error response:", msg);
           }
         } else if (topic === "command/reset_config") {
           console.log("Received reset_config command from hardware:", msg);
           if (msg.action === "reset") {
-            toast.info("Hardware button initiated a configuration reset. System may reboot soon.");
+            toast.info(
+              "Hardware button initiated a configuration reset. System may reboot soon."
+            );
           }
         } else if (topic === "batteryCharger/reset/energy/response") {
           Swal.close(); // Close any active SweetAlert2 instance (e.g., loading spinner)
 
           if (msg.status === "reset") {
             Swal.fire({
-              position: 'top-end',
-              icon: 'success',
-              title: 'Success!',
-              text: msg.message || 'Energy counters reset successfully.',
+              position: "top-end",
+              icon: "success",
+              title: "Success!",
+              text: msg.message || "Energy counters reset successfully.",
               showConfirmButton: false,
               timer: 3000,
-              toast: true
+              toast: true,
             });
           } else if (msg.status === "error") {
             Swal.fire({
-              position: 'top-end',
-              icon: 'error',
-              title: 'Error!',
-              text: msg.message || 'Failed to reset energy counters.',
+              position: "top-end",
+              icon: "error",
+              title: "Error!",
+              text: msg.message || "Failed to reset energy counters.",
               showConfirmButton: false,
               timer: 3000,
-              toast: true
+              toast: true,
             });
             console.error("Energy reset error response:", msg);
           }
@@ -159,23 +175,23 @@ export default function SettingsPage() {
 
           if (msg.status === "reset") {
             Swal.fire({
-              position: 'top-end',
-              icon: 'success',
-              title: 'Success!',
-              text: msg.message || 'Cycle counters reset successfully.',
+              position: "top-end",
+              icon: "success",
+              title: "Success!",
+              text: msg.message || "Cycle counters reset successfully.",
               showConfirmButton: false,
               timer: 3000,
-              toast: true
+              toast: true,
             });
           } else if (msg.status === "error") {
             Swal.fire({
-              position: 'top-end',
-              icon: 'error',
-              title: 'Error!',
-              text: msg.message || 'Failed to reset cycle counters.',
+              position: "top-end",
+              icon: "error",
+              title: "Error!",
+              text: msg.message || "Failed to reset cycle counters.",
               showConfirmButton: false,
               timer: 3000,
-              toast: true
+              toast: true,
             });
             console.error("Cycle reset error response:", msg);
           }
@@ -196,7 +212,7 @@ export default function SettingsPage() {
       requestSystemStatus();
     }
 
-    const ipInterval = setInterval(() => setIpIndex(i => (i + 1) % 2), 3000);
+    const ipInterval = setInterval(() => setIpIndex((i) => (i + 1) % 2), 3000);
 
     return () => {
       clearInterval(ipInterval);
@@ -212,7 +228,11 @@ export default function SettingsPage() {
     };
   }, [requestSystemStatus]);
 
-  const sendCommand = async (services: string[], action: string, confirmMessage?: string) => {
+  const sendCommand = async (
+    services: string[],
+    action: string,
+    confirmMessage?: string
+  ) => {
     if (!clientRef.current || !clientRef.current.connected) {
       toast.error("MQTT not connected. Please wait for connection or refresh.");
       return;
@@ -221,13 +241,13 @@ export default function SettingsPage() {
     let proceed = true;
     if (confirmMessage) {
       const result = await Swal.fire({
-        title: 'Are you sure?',
+        title: "Are you sure?",
         text: confirmMessage,
-        icon: 'warning',
+        icon: "warning",
         showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: 'Yes, proceed!'
+        confirmButtonColor: "#3085d6",
+        cancelButtonColor: "#d33",
+        confirmButtonText: "Yes, proceed!",
       });
 
       if (!result.isConfirmed) {
@@ -244,14 +264,14 @@ export default function SettingsPage() {
           console.error("Publish error:", err);
         } else {
           Swal.fire({
-            title: 'Processing...',
+            title: "Processing...",
             text: `${action.toUpperCase()} initiated. Please wait for a response.`,
-            icon: 'info',
+            icon: "info",
             allowOutsideClick: false,
             showConfirmButton: false,
             didOpen: () => {
               Swal.showLoading();
-            }
+            },
           });
         }
       });
@@ -267,13 +287,13 @@ export default function SettingsPage() {
     let proceed = true;
     if (confirmMessage) {
       const result = await Swal.fire({
-        title: 'Are you sure?',
+        title: "Are you sure?",
         text: confirmMessage,
-        icon: 'warning',
+        icon: "warning",
         showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: 'Yes, proceed!'
+        confirmButtonColor: "#3085d6",
+        cancelButtonColor: "#d33",
+        confirmButtonText: "Yes, proceed!",
       });
 
       if (!result.isConfirmed) {
@@ -290,14 +310,14 @@ export default function SettingsPage() {
           console.error("Publish error for reset config:", err);
         } else {
           Swal.fire({
-            title: 'Resetting Configuration...',
-            text: 'This may take a moment. Please wait.',
-            icon: 'info',
+            title: "Resetting Configuration...",
+            text: "This may take a moment. Please wait.",
+            icon: "info",
             allowOutsideClick: false,
             showConfirmButton: false,
             didOpen: () => {
               Swal.showLoading();
-            }
+            },
           });
         }
       });
@@ -311,13 +331,13 @@ export default function SettingsPage() {
     }
 
     const result = await Swal.fire({
-      title: 'Reset Energy Counters?',
+      title: "Reset Energy Counters?",
       text: "This action will reset the energy measurement counters to zero. Are you sure?",
-      icon: 'warning',
+      icon: "warning",
       showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, reset it!'
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Yes, reset it!",
     });
 
     if (result.isConfirmed) {
@@ -327,20 +347,22 @@ export default function SettingsPage() {
           console.error("Publish error for energy reset:", err);
         } else {
           Swal.fire({
-            title: 'Resetting Energy...',
-            html: 'Please wait, this will take approximately <b></b> seconds.',
+            title: "Resetting Energy...",
+            html: "Please wait, this will take approximately <b></b> seconds.",
             timer: 10000,
             timerProgressBar: true,
             allowOutsideClick: false,
             showConfirmButton: false,
             didOpen: () => {
               Swal.showLoading();
-              const b = Swal.getHtmlContainer()?.querySelector('b');
+              const b = Swal.getHtmlContainer()?.querySelector("b");
               let timerInterval: NodeJS.Timeout | null = null; // Declare timerInterval with null
               if (b) {
                 timerInterval = setInterval(() => {
                   if (Swal.getTimerLeft()) {
-                    b.textContent = String(Math.ceil(Swal.getTimerLeft()! / 1000));
+                    b.textContent = String(
+                      Math.ceil(Swal.getTimerLeft()! / 1000)
+                    );
                   }
                 }, 100);
               }
@@ -355,7 +377,7 @@ export default function SettingsPage() {
             willClose: () => {
               // No change needed here, as the response handler will close Swal.
               // If Swal is still open after the timer, it means no response came.
-            }
+            },
           });
         }
       });
@@ -371,13 +393,13 @@ export default function SettingsPage() {
     }
 
     const result = await Swal.fire({
-      title: 'Reset Cycle Counters?',
+      title: "Reset Cycle Counters?",
       text: "This action will reset the battery cycle count to zero. Are you sure?",
-      icon: 'warning',
+      icon: "warning",
       showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, reset it!'
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Yes, reset it!",
     });
 
     if (result.isConfirmed) {
@@ -387,20 +409,22 @@ export default function SettingsPage() {
           console.error("Publish error for cycle reset:", err);
         } else {
           Swal.fire({
-            title: 'Resetting Cycle Count...',
-            html: 'Please wait, this will take approximately <b></b> seconds.',
+            title: "Resetting Cycle Count...",
+            html: "Please wait, this will take approximately <b></b> seconds.",
             timer: 10000,
             timerProgressBar: true,
             allowOutsideClick: false,
             showConfirmButton: false,
             didOpen: () => {
               Swal.showLoading();
-              const b = Swal.getHtmlContainer()?.querySelector('b');
+              const b = Swal.getHtmlContainer()?.querySelector("b");
               let timerInterval: NodeJS.Timeout | null = null; // Declare timerInterval with null
               if (b) {
                 timerInterval = setInterval(() => {
                   if (Swal.getTimerLeft()) {
-                    b.textContent = String(Math.ceil(Swal.getTimerLeft()! / 1000));
+                    b.textContent = String(
+                      Math.ceil(Swal.getTimerLeft()! / 1000)
+                    );
                   }
                 }, 100);
               }
@@ -414,7 +438,7 @@ export default function SettingsPage() {
             },
             willClose: () => {
               // No change needed here.
-            }
+            },
           });
         }
       });
@@ -424,7 +448,8 @@ export default function SettingsPage() {
   };
 
   const ipType = ipIndex === 0 ? "eth0" : "wlan0";
-  const ipAddress = ipIndex === 0 ? systemInfo.eth0_ip_address : systemInfo.wlan0_ip_address;
+  const ipAddress =
+    ipIndex === 0 ? systemInfo.eth0_ip_address : systemInfo.wlan0_ip_address;
 
   return (
     <SidebarInset>
@@ -477,22 +502,40 @@ export default function SettingsPage() {
               <div className="flex-1 min-w-[200px]">
                 <h6 className="text-sm font-semibold mb-2">Config</h6>
                 <Button
-                  onClick={() => sendCommand(["Multiprocesing.service"], "restart", "This will restart MQTT and IP configurations. Are you sure?")}
+                  onClick={() =>
+                    sendCommand(
+                      ["Multiprocesing.service"],
+                      "restart",
+                      "This will restart MQTT and IP configurations. Are you sure?"
+                    )
+                  }
                   className="w-full mb-2 flex justify-between items-center"
                   variant="secondary"
                   disabled={!clientRef.current || !clientRef.current.connected}
                 >
-                  <span className="flex items-center gap-2"><Settings className="h-4 w-4" />Restart MQTT + IP</span>
+                  <span className="flex items-center gap-2">
+                    <Settings className="h-4 w-4" />
+                    Restart MQTT + IP
+                  </span>
                 </Button>
                 <Button
-                  onClick={() => sendCommand(["Multiprocesing.service"], "restart", "This will restart Device Modbus configurations. Are you sure?")}
+                  onClick={() =>
+                    sendCommand(
+                      ["Multiprocesing.service"],
+                      "restart",
+                      "This will restart Device Modbus configurations. Are you sure?"
+                    )
+                  }
                   className="w-full flex justify-between items-center"
                   variant="secondary"
                   disabled={!clientRef.current || !clientRef.current.connected}
                 >
-                  <span className="flex items-center gap-2"><Settings className="h-4 w-4" />Restart Device Modbus</span>
+                  <span className="flex items-center gap-2">
+                    <Settings className="h-4 w-4" />
+                    Restart Device Modbus
+                  </span>
                 </Button>
-                <Button
+                {/* <Button
                   onClick={resetEnergyCounters}
                   className="w-full mt-2 flex justify-between items-center"
                   variant="secondary"
@@ -507,33 +550,58 @@ export default function SettingsPage() {
                   disabled={!clientRef.current || !clientRef.current.connected}
                 >
                   <span className="flex items-center gap-2"><BatteryCharging className="h-4 w-4" />Reset Cycle Counters</span>
-                </Button>
+                </Button> */}
               </div>
               <div className="flex-1 min-w-[200px]">
                 <h6 className="text-sm font-semibold mb-2">System</h6>
                 <Button
-                  onClick={() => resetConfig("This will reset specific configurations to their defaults. This action may cause a temporary service interruption. Are you sure?")}
+                  onClick={() =>
+                    resetConfig(
+                      "This will reset specific configurations to their defaults. This action may cause a temporary service interruption. Are you sure?"
+                    )
+                  }
                   className="w-full mb-2 flex justify-between items-center"
                   variant="destructive"
                   disabled={!clientRef.current || !clientRef.current.connected}
                 >
-                  <span className="flex items-center gap-2"><Terminal className="h-4 w-4" />Reset System to Default</span>
+                  <span className="flex items-center gap-2">
+                    <Terminal className="h-4 w-4" />
+                    Reset System to Default
+                  </span>
                 </Button>
                 <Button
-                  onClick={() => sendCommand([], "sudo reboot", "This will reboot the system. All current operations will be interrupted. Are you sure?")}
+                  onClick={() =>
+                    sendCommand(
+                      [],
+                      "sudo reboot",
+                      "This will reboot the system. All current operations will be interrupted. Are you sure?"
+                    )
+                  }
                   className="w-full mb-2 flex justify-between items-center"
                   variant="destructive"
                   disabled={!clientRef.current || !clientRef.current.connected}
                 >
-                  <span className="flex items-center gap-2"><RotateCw className="h-4 w-4" />Reboot System</span>
+                  <span className="flex items-center gap-2">
+                    <RotateCw className="h-4 w-4" />
+                    Reboot System
+                  </span>
                 </Button>
                 <Button
-                  onClick={() => sendCommand([], "sudo shutdown now", "This will shut down the system. You will need physical access to power it back on. Are you sure?")}
+                  onClick={() =>
+                    sendCommand(
+                      [],
+                      "sudo shutdown now",
+                      "This will shut down the system. You will need physical access to power it back on. Are you sure?"
+                    )
+                  }
                   className="w-full flex justify-between items-center"
                   variant="destructive"
                   disabled={!clientRef.current || !clientRef.current.connected}
                 >
-                  <span className="flex items-center gap-2"><Power className="h-4 w-4" />Shutdown System</span>
+                  <span className="flex items-center gap-2">
+                    <Power className="h-4 w-4" />
+                    Shutdown System
+                  </span>
                 </Button>
               </div>
             </div>
@@ -546,7 +614,9 @@ export default function SettingsPage() {
               <Wifi className="h-6 w-6 text-blue-500" />
               <div>
                 <h6 className="font-medium">IP Address</h6>
-                <p className="text-sm text-muted-foreground"><strong>{ipType}:</strong> {ipAddress}</p>
+                <p className="text-sm text-muted-foreground">
+                  <strong>{ipType}:</strong> {ipAddress}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -555,7 +625,9 @@ export default function SettingsPage() {
               <Thermometer className="h-6 w-6 text-red-500" />
               <div>
                 <h6 className="font-medium">CPU Temp</h6>
-                <p className="text-sm text-muted-foreground">{systemInfo.cpu_temp}°C</p>
+                <p className="text-sm text-muted-foreground">
+                  {systemInfo.cpu_temp}°C
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -564,7 +636,9 @@ export default function SettingsPage() {
               <Cpu className="h-6 w-6 text-green-700" />
               <div>
                 <h6 className="font-medium">CPU Usage</h6>
-                <p className="text-sm text-muted-foreground">{systemInfo.cpu_usage}%</p>
+                <p className="text-sm text-muted-foreground">
+                  {systemInfo.cpu_usage}%
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -574,7 +648,8 @@ export default function SettingsPage() {
               <div>
                 <h6 className="font-medium">Memory Usage</h6>
                 <p className="text-sm text-muted-foreground">
-                  {systemInfo.memory_usage}% ({systemInfo.used_memory}/{systemInfo.total_memory} MB)
+                  {systemInfo.memory_usage}% ({systemInfo.used_memory}/
+                  {systemInfo.total_memory} MB)
                 </p>
               </div>
             </CardContent>
@@ -585,7 +660,8 @@ export default function SettingsPage() {
               <div>
                 <h6 className="font-medium">Disk Usage</h6>
                 <p className="text-sm text-muted-foreground">
-                  {systemInfo.disk_usage}% ({systemInfo.used_disk}/{systemInfo.total_disk} MB)
+                  {systemInfo.disk_usage}% ({systemInfo.used_disk}/
+                  {systemInfo.total_disk} MB)
                 </p>
               </div>
             </CardContent>
@@ -595,7 +671,10 @@ export default function SettingsPage() {
               <Clock className="h-6 w-6 text-indigo-500" />
               <div>
                 <h6 className="font-medium">Uptime</h6>
-                <p className="text-sm text-muted-foreground">{Math.floor(systemInfo.uptime / 3600)}h {Math.floor((systemInfo.uptime % 3600) / 60)}m</p>
+                <p className="text-sm text-muted-foreground">
+                  {Math.floor(systemInfo.uptime / 3600)}h{" "}
+                  {Math.floor((systemInfo.uptime % 3600) / 60)}m
+                </p>
               </div>
             </CardContent>
           </Card>

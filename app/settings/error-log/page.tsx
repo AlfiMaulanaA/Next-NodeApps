@@ -7,9 +7,12 @@ import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MqttStatus from "@/components/mqtt-status";
 import { toast } from "sonner";
-import Swal from 'sweetalert2'; // Import SweetAlert2
+import Swal from 'sweetalert2';
 import {
   Trash2,
   Download,
@@ -21,7 +24,15 @@ import {
   BarChart3,
   CheckCircle,
   MessageSquareOff,
-  RefreshCw
+  RefreshCw,
+  PieChart,
+  TrendingUp,
+  Calendar,
+  Filter,
+  Search,
+  Activity,
+  Clock,
+  Target
 } from "lucide-react";
 import {
   Table,
@@ -58,11 +69,69 @@ interface ErrorLog {
 export default function ErrorLogPage() {
   const [logs, setLogs] = useState<ErrorLog[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<string>("all");
   const clientRef = useRef<MqttClient | null>(null);
 
   const logsPerPage = 10;
 
-  const { sorted, handleSort, sortField, sortDirection } = useSortableTable(logs);
+  // Filtered logs based on search and filters
+  const filteredLogs = useMemo(() => {
+    let filtered = logs;
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(log => 
+        log.data.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        log.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (log.source && log.source.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+
+    // Type filter
+    if (filterType !== "all") {
+      filtered = filtered.filter(log => log.type.toLowerCase() === filterType.toLowerCase());
+    }
+
+    // Status filter
+    if (filterStatus !== "all") {
+      filtered = filtered.filter(log => {
+        const status = log.status || "active";
+        return status === filterStatus;
+      });
+    }
+
+    // Date range filter
+    if (dateRange !== "all") {
+      const now = new Date();
+      const filterDate = new Date();
+
+      switch (dateRange) {
+        case "today":
+          filterDate.setHours(0, 0, 0, 0);
+          break;
+        case "week":
+          filterDate.setDate(now.getDate() - 7);
+          break;
+        case "month":
+          filterDate.setMonth(now.getMonth() - 1);
+          break;
+      }
+
+      if (dateRange !== "all") {
+        filtered = filtered.filter(log => {
+          const logDate = new Date(log.Timestamp);
+          return logDate >= filterDate;
+        });
+      }
+    }
+
+    return filtered;
+  }, [logs, searchTerm, filterType, filterStatus, dateRange]);
+
+  const { sorted, handleSort, sortField, sortDirection } = useSortableTable(filteredLogs);
 
   const refreshLogs = useCallback(() => {
     const client = getMQTTClient();
@@ -300,31 +369,70 @@ export default function ErrorLogPage() {
     return <Bug className="text-muted-foreground w-4 h-4 mr-1" />;
   };
 
-  const summary = useMemo(() => {
+  // Enhanced analytics
+  const analytics = useMemo(() => {
     const counts: Record<string, number> = {};
     const activeCounts: Record<string, number> = {};
+    const sourceCounts: Record<string, number> = {};
+    const hourlyDistribution: Record<number, number> = {};
+    const dailyTrends: Record<string, number> = {};
     let activeTotal = 0;
+    let resolvedTotal = 0;
 
-    logs.forEach((log) => {
+    // Initialize hourly distribution
+    for (let i = 0; i < 24; i++) {
+      hourlyDistribution[i] = 0;
+    }
+
+    filteredLogs.forEach((log) => {
       const t = log.type.toLowerCase();
+      const source = log.source || "unknown";
+      const logDate = new Date(log.Timestamp);
+      const hour = logDate.getHours();
+      const dayKey = logDate.toISOString().split('T')[0];
+
+      // Type counts
       counts[t] = (counts[t] || 0) + 1;
 
-      if (log.status !== "resolved") {
+      // Source counts
+      sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+
+      // Hourly distribution
+      hourlyDistribution[hour]++;
+
+      // Daily trends (last 7 days)
+      dailyTrends[dayKey] = (dailyTrends[dayKey] || 0) + 1;
+
+      // Status counts
+      if (log.status === "resolved") {
+        resolvedTotal++;
+      } else {
         activeCounts[t] = (activeCounts[t] || 0) + 1;
         activeTotal++;
       }
     });
 
     const mostCommonActive = Object.entries(activeCounts).sort((a, b) => b[1] - a[1])[0];
+    const mostActiveSource = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1])[0];
+
+    // Calculate resolution rate
+    const resolutionRate = logs.length > 0 ? (resolvedTotal / logs.length) * 100 : 0;
 
     return {
-      total: logs.length,
-      activeTotal: activeTotal,
+      total: filteredLogs.length,
+      totalAll: logs.length,
+      activeTotal,
+      resolvedTotal,
+      resolutionRate,
       counts,
       activeCounts,
+      sourceCounts,
+      hourlyDistribution,
+      dailyTrends,
       mostCommonActive,
+      mostActiveSource,
     };
-  }, [logs]);
+  }, [filteredLogs, logs]);
 
   return (
     <SidebarInset>
@@ -343,57 +451,362 @@ export default function ErrorLogPage() {
         </div>
       </header>
 
-      <div className="p-6 space-y-4">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="p-6 space-y-6">
+        {/* Quick Stats Overview */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Active Errors</CardTitle>
-              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <CardTitle className="text-sm font-medium">Total Errors</CardTitle>
+              <Activity className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{summary.activeTotal}</div>
-              <p className="text-xs text-muted-foreground">Currently unresolved system issues</p>
+              <div className="text-2xl font-bold">{analytics.totalAll}</div>
+              <p className="text-xs text-muted-foreground">All time errors</p>
             </CardContent>
           </Card>
 
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active By Type</CardTitle>
-              <BarChart3 className="h-5 w-5 text-blue-600" />
+              <CardTitle className="text-sm font-medium">Active Errors</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-red-500" />
             </CardHeader>
-            <CardContent className="space-y-1">
-              {Object.entries(summary.activeCounts).map(([type, count]) => (
-                <div key={type} className="flex items-center gap-2">
-                  {getTypeIcon(type)}
-                  <span className="capitalize">{type}</span>: {count}
-                </div>
-              ))}
-              {summary.activeTotal === 0 && <span className="text-muted-foreground text-sm">No active errors</span>}
-              <p className="text-xs text-muted-foreground">Unresolved errors categorized</p>
+            <CardContent>
+              <div className="text-2xl font-bold">{analytics.activeTotal}</div>
+              <p className="text-xs text-muted-foreground">Unresolved issues</p>
             </CardContent>
           </Card>
 
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Most Common Active</CardTitle>
-              <Bug className="h-5 w-5 text-yellow-600" />
+              <CardTitle className="text-sm font-medium">Resolved</CardTitle>
+              <CheckCircle className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              {summary.mostCommonActive ? (
-                <div className="flex items-center gap-2">
-                  {getTypeIcon(summary.mostCommonActive[0])}
-                  <span className="capitalize font-semibold">
-                    {summary.mostCommonActive[0]} ({summary.mostCommonActive[1]})
-                  </span>
-                </div>
-              ) : (
-                <span className="text-muted-foreground">No active errors</span>
-              )}
-              <p className="text-xs text-muted-foreground">Most frequent unresolved error type</p>
+              <div className="text-2xl font-bold">{analytics.resolvedTotal}</div>
+              <p className="text-xs text-muted-foreground">Successfully resolved</p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Resolution Rate</CardTitle>
+              <Target className="h-4 w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{analytics.resolutionRate.toFixed(1)}%</div>
+              <p className="text-xs text-muted-foreground">Success rate</p>
             </CardContent>
           </Card>
         </div>
+
+        {/* Tabs for different views */}
+        <Tabs defaultValue="overview" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="overview" className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="flex items-center gap-2">
+              <PieChart className="h-4 w-4" />
+              Analytics
+            </TabsTrigger>
+            <TabsTrigger value="trends" className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Trends
+            </TabsTrigger>
+            <TabsTrigger value="logs" className="flex items-center gap-2">
+              <FileWarning className="h-4 w-4" />
+              Logs
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <PieChart className="h-5 w-5" />
+                    Error Distribution by Type
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {Object.entries(analytics.counts).map(([type, count]) => (
+                      <div key={type} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {getTypeIcon(type)}
+                          <span className="capitalize font-medium">{type}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-32 bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${(count / analytics.total) * 100}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-sm font-semibold w-8 text-right">{count}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="h-5 w-5" />
+                    Error Sources
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {Object.entries(analytics.sourceCounts).slice(0, 6).map(([source, count]) => (
+                      <div key={source} className="flex items-center justify-between">
+                        <span className="font-medium truncate">{source}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-purple-500 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${(count / analytics.total) * 100}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-sm font-semibold w-8 text-right">{count}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5" />
+                    Active vs Resolved
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm text-red-600">Active</span>
+                        <span className="text-sm font-semibold">{analytics.activeTotal}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div 
+                          className="bg-red-500 h-3 rounded-full transition-all duration-500"
+                          style={{ width: `${analytics.totalAll > 0 ? (analytics.activeTotal / analytics.totalAll) * 100 : 0}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm text-green-600">Resolved</span>
+                        <span className="text-sm font-semibold">{analytics.resolvedTotal}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-3">
+                        <div 
+                          className="bg-green-500 h-3 rounded-full transition-all duration-500"
+                          style={{ width: `${analytics.totalAll > 0 ? (analytics.resolvedTotal / analytics.totalAll) * 100 : 0}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Bug className="h-5 w-5" />
+                    Most Critical Active
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {analytics.mostCommonActive ? (
+                    <div className="text-center space-y-2">
+                      <div className="text-3xl">
+                        {getTypeIcon(analytics.mostCommonActive[0], "active")}
+                      </div>
+                      <div className="font-semibold capitalize">{analytics.mostCommonActive[0]}</div>
+                      <div className="text-2xl font-bold">{analytics.mostCommonActive[1]}</div>
+                      <div className="text-sm text-muted-foreground">Active errors</div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted-foreground">
+                      No active errors
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5" />
+                    Most Active Source
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {analytics.mostActiveSource ? (
+                    <div className="text-center space-y-2">
+                      <div className="text-3xl">🔧</div>
+                      <div className="font-semibold truncate">{analytics.mostActiveSource[0]}</div>
+                      <div className="text-2xl font-bold">{analytics.mostActiveSource[1]}</div>
+                      <div className="text-sm text-muted-foreground">Total errors</div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted-foreground">
+                      No error sources
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Trends Tab */}
+          <TabsContent value="trends" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Error Distribution by Hour (24h)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {Object.entries(analytics.hourlyDistribution).map(([hour, count]) => (
+                    <div key={hour} className="flex items-center gap-3">
+                      <span className="text-xs w-8 text-right">{hour}:00</span>
+                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{ 
+                            width: `${Object.values(analytics.hourlyDistribution).length > 0 ? 
+                              (count / Math.max(...Object.values(analytics.hourlyDistribution))) * 100 : 0}%` 
+                          }}
+                        ></div>
+                      </div>
+                      <span className="text-xs w-6 text-left">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Daily Trends
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {Object.entries(analytics.dailyTrends)
+                    .sort(([a], [b]) => b.localeCompare(a))
+                    .slice(0, 7)
+                    .map(([date, count]) => (
+                    <div key={date} className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{new Date(date).toLocaleDateString()}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-32 bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full transition-all duration-300"
+                            style={{ 
+                              width: `${Object.values(analytics.dailyTrends).length > 0 ? 
+                                (count / Math.max(...Object.values(analytics.dailyTrends))) * 100 : 0}%` 
+                            }}
+                          ></div>
+                        </div>
+                        <span className="text-sm font-semibold w-8 text-right">{count}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Logs Tab */}
+          <TabsContent value="logs" className="space-y-4">
+            {/* Filters */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Filter className="h-5 w-5" />
+                  Filters & Search
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Search</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search errors..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Type</label>
+                    <Select value={filterType} onValueChange={setFilterType}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="critical">Critical</SelectItem>
+                        <SelectItem value="major">Major</SelectItem>
+                        <SelectItem value="minor">Minor</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Status</label>
+                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="resolved">Resolved</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Date Range</label>
+                    <Select value={dateRange} onValueChange={setDateRange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Time</SelectItem>
+                        <SelectItem value="today">Today</SelectItem>
+                        <SelectItem value="week">Last 7 Days</SelectItem>
+                        <SelectItem value="month">Last 30 Days</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
         {/* Table Card */}
         <Card>
@@ -502,6 +915,8 @@ export default function ErrorLogPage() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </SidebarInset>
   );

@@ -1,0 +1,1411 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent
+} from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
+import {
+  PlugZap,
+  WifiOff,
+  Wifi,
+  Loader2,
+  Inbox,
+  Rss,
+  Radar,
+  RotateCw,
+  List,
+  Search,
+  Download,
+  Play,
+  Pause,
+  Trash2,
+  Copy,
+  Filter,
+  RefreshCw,
+  Settings,
+  Send,
+  Plus,
+  X,
+  Edit,
+  Save,
+  Database,
+  Target
+} from "lucide-react";
+import mqtt, { MqttClient } from "mqtt";
+
+interface Message {
+  topic: string;
+  payload: string;
+  timestamp: string;
+  qos?: number;
+  retain?: boolean;
+}
+
+interface TopicData {
+  topic: string;
+  lastPayload: string;
+  lastUpdated: string;
+  messageCount: number;
+  qos?: number;
+  retain?: boolean;
+}
+
+interface BrokerConfig {
+  url: string;
+  username?: string;
+  password?: string;
+  clientId?: string;
+  clean?: boolean;
+  keepalive?: number;
+  connectTimeout?: number;
+  reconnectPeriod?: number;
+}
+
+interface SubscriptionConfig {
+  topic: string;
+  qos: 0 | 1 | 2;
+  enabled: boolean;
+  id: string;
+}
+
+interface PublishConfig {
+  topic: string;
+  payload: string;
+  qos: 0 | 1 | 2;
+  retain: boolean;
+}
+
+export default function MqttDiscoveryPage() {
+  // UI States
+  const [activeTab, setActiveTab] = useState("messages");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterTerm, setFilterTerm] = useState("");
+  const [maxMessages, setMaxMessages] = useState(100);
+  
+  // MQTT Client State
+  const [mqttClient, setMqttClient] = useState<MqttClient | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
+  const [isConnected, setIsConnected] = useState(false);
+  
+  // Data States
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [topicsData, setTopicsData] = useState<Map<string, TopicData>>(new Map());
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  
+  // Configuration States
+  const [brokerConfig, setBrokerConfig] = useState<BrokerConfig>({
+    url: "ws://localhost:9000",
+    clientId: `mqtt-discovery-${Date.now()}`,
+    clean: true,
+    keepalive: 60,
+    connectTimeout: 4000,
+    reconnectPeriod: 1000,
+  });
+  const [subscriptions, setSubscriptions] = useState<SubscriptionConfig[]>([
+    { id: "1", topic: "#", qos: 0, enabled: true }
+  ]);
+  const [publishConfig, setPublishConfig] = useState<PublishConfig>({
+    topic: "test/topic",
+    payload: '{"message": "Hello from MQTT Discovery"}',
+    qos: 0,
+    retain: false
+  });
+  
+  // Dialog States
+  const [brokerDialogOpen, setBrokerDialogOpen] = useState(false);
+  const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [addSubscriptionDialogOpen, setAddSubscriptionDialogOpen] = useState(false);
+  const [tempBrokerConfig, setTempBrokerConfig] = useState<BrokerConfig>(brokerConfig);
+  
+  // Reconnection states
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [maxReconnectAttempts] = useState(10);
+  const [reconnectInterval] = useState(10000); // 10 seconds
+  
+  // Add subscription form state
+  const [newSubscription, setNewSubscription] = useState({
+    topic: "",
+    qos: 0 as 0 | 1 | 2
+  });
+  
+  // Refs
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<Date | null>(null);
+  const messageHandlerRef = useRef<((topic: string, message: Buffer, packet: any) => void) | null>(null);
+  const reconnectionTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Reconnection with retry logic
+  const attemptReconnection = useCallback(() => {
+    if (reconnectAttempts >= maxReconnectAttempts) {
+      setIsReconnecting(false);
+      setConnectionStatus("failed");
+      toast.error(`Failed to reconnect after ${maxReconnectAttempts} attempts`);
+      return;
+    }
+
+    setReconnectAttempts(prev => prev + 1);
+    setConnectionStatus("reconnecting");
+    toast.info(`Reconnecting... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+
+    reconnectionTimerRef.current = setTimeout(() => {
+      // Call connect directly to avoid circular dependency
+      if (reconnectionTimerRef.current) {
+        clearTimeout(reconnectionTimerRef.current);
+        reconnectionTimerRef.current = null;
+      }
+
+      if (mqttClient) {
+        mqttClient.end();
+      }
+
+      setConnectionStatus("connecting");
+      
+      try {
+        const client = mqtt.connect(brokerConfig.url, {
+          clientId: brokerConfig.clientId,
+          clean: brokerConfig.clean,
+          keepalive: brokerConfig.keepalive,
+          connectTimeout: brokerConfig.connectTimeout,
+          reconnectPeriod: 0,
+          username: brokerConfig.username || undefined,
+          password: brokerConfig.password || undefined,
+        });
+
+        client.on("connect", () => {
+          setConnectionStatus("connected");
+          setIsConnected(true);
+          setMqttClient(client);
+          setReconnectAttempts(0);
+          setIsReconnecting(false);
+          toast.success(`Reconnected to broker: ${brokerConfig.url}`);
+          
+          // Auto-subscribe to enabled topics
+          subscriptions.filter(sub => sub.enabled).forEach(sub => {
+            client.subscribe(sub.topic, { qos: sub.qos }, (err) => {
+              if (err) {
+                toast.error(`Failed to subscribe to ${sub.topic}`);
+              } else {
+                console.log(`Subscribed to ${sub.topic}`);
+              }
+            });
+          });
+        });
+
+        client.on("error", () => {
+          if (reconnectAttempts < maxReconnectAttempts - 1) {
+            attemptReconnection();
+          } else {
+            setIsReconnecting(false);
+            setConnectionStatus("failed");
+            toast.error(`Failed to reconnect after ${maxReconnectAttempts} attempts`);
+          }
+        });
+
+        client.on("close", () => {
+          if (reconnectAttempts < maxReconnectAttempts - 1 && isReconnecting) {
+            attemptReconnection();
+          }
+        });
+
+        // Handle incoming messages
+        const messageHandler = (topic: string, message: Buffer, packet: any) => {
+          const payload = message.toString();
+          const timestamp = new Date().toLocaleString();
+          
+          const newMessage: Message = {
+            topic,
+            payload,
+            timestamp,
+            qos: packet.qos,
+            retain: packet.retain
+          };
+          
+          setMessages(prev => {
+            const updated = [newMessage, ...prev.slice(0, maxMessages - 1)];
+            return updated;
+          });
+          
+          setTopicsData(prev => {
+            const newMap = new Map(prev);
+            const existing = newMap.get(topic);
+            
+            newMap.set(topic, {
+              topic,
+              lastPayload: payload,
+              lastUpdated: timestamp,
+              messageCount: existing ? existing.messageCount + 1 : 1,
+              qos: packet.qos,
+              retain: packet.retain
+            });
+            
+            return newMap;
+          });
+        };
+
+        messageHandlerRef.current = messageHandler;
+        client.on('message', messageHandler);
+        
+      } catch (error) {
+        console.error("Reconnection failed:", error);
+        if (reconnectAttempts < maxReconnectAttempts - 1) {
+          attemptReconnection();
+        } else {
+          setIsReconnecting(false);
+          setConnectionStatus("failed");
+          toast.error(`Failed to reconnect after ${maxReconnectAttempts} attempts`);
+        }
+      }
+    }, reconnectInterval);
+  }, [reconnectAttempts, maxReconnectAttempts, reconnectInterval, brokerConfig, subscriptions, maxMessages, mqttClient, isReconnecting]);
+
+  // Connect to MQTT Broker
+  const connectToBroker = useCallback(() => {
+    // Clear any existing reconnection timer
+    if (reconnectionTimerRef.current) {
+      clearTimeout(reconnectionTimerRef.current);
+      reconnectionTimerRef.current = null;
+    }
+
+    if (mqttClient) {
+      mqttClient.end();
+    }
+
+    setConnectionStatus("connecting");
+    
+    try {
+      const client = mqtt.connect(brokerConfig.url, {
+        clientId: brokerConfig.clientId,
+        clean: brokerConfig.clean,
+        keepalive: brokerConfig.keepalive,
+        connectTimeout: brokerConfig.connectTimeout,
+        reconnectPeriod: 0, // Disable automatic reconnection, we handle it manually
+        username: brokerConfig.username || undefined,
+        password: brokerConfig.password || undefined,
+      });
+
+      client.on("connect", () => {
+        setConnectionStatus("connected");
+        setIsConnected(true);
+        setMqttClient(client);
+        setReconnectAttempts(0);
+        setIsReconnecting(false);
+        toast.success(`Connected to broker: ${brokerConfig.url}`);
+        
+        // Auto-subscribe to enabled topics
+        subscriptions.filter(sub => sub.enabled).forEach(sub => {
+          client.subscribe(sub.topic, { qos: sub.qos }, (err) => {
+            if (err) {
+              toast.error(`Failed to subscribe to ${sub.topic}`);
+            } else {
+              console.log(`Subscribed to ${sub.topic}`);
+            }
+          });
+        });
+      });
+
+      client.on("error", (error) => {
+        console.error("MQTT Error:", error);
+        setConnectionStatus("error");
+        setIsConnected(false);
+        
+        if (!isReconnecting && reconnectAttempts < maxReconnectAttempts) {
+          setIsReconnecting(true);
+          toast.error(`Connection error. Starting auto-reconnect...`);
+          attemptReconnection();
+        }
+      });
+
+      client.on("close", () => {
+        console.log("MQTT Connection closed");
+        setConnectionStatus("disconnected");
+        setIsConnected(false);
+        setMqttClient(null);
+        
+        // Start reconnection if not manually disconnected
+        if (!isReconnecting && reconnectAttempts < maxReconnectAttempts) {
+          setIsReconnecting(true);
+          toast.warning("Connection lost. Attempting to reconnect...");
+          attemptReconnection();
+        }
+      });
+
+      client.on("offline", () => {
+        setConnectionStatus("offline");
+        setIsConnected(false);
+        
+        if (!isReconnecting && reconnectAttempts < maxReconnectAttempts) {
+          setIsReconnecting(true);
+          toast.warning("Client offline. Attempting to reconnect...");
+          attemptReconnection();
+        }
+      });
+
+      // Handle incoming messages
+      const messageHandler = (topic: string, message: Buffer, packet: any) => {
+        const payload = message.toString();
+        const timestamp = new Date().toLocaleString();
+        
+        // Add to messages (limit to maxMessages)
+        const newMessage: Message = {
+          topic,
+          payload,
+          timestamp,
+          qos: packet.qos,
+          retain: packet.retain
+        };
+        
+        setMessages(prev => {
+          const updated = [newMessage, ...prev.slice(0, maxMessages - 1)];
+          return updated;
+        });
+        
+        // Update topics data
+        setTopicsData(prev => {
+          const newMap = new Map(prev);
+          const existing = newMap.get(topic);
+          
+          newMap.set(topic, {
+            topic,
+            lastPayload: payload,
+            lastUpdated: timestamp,
+            messageCount: existing ? existing.messageCount + 1 : 1,
+            qos: packet.qos,
+            retain: packet.retain
+          });
+          
+          return newMap;
+        });
+      };
+
+      messageHandlerRef.current = messageHandler;
+      client.on('message', messageHandler);
+      
+    } catch (error) {
+      console.error("Failed to connect:", error);
+      setConnectionStatus("error");
+      toast.error("Failed to connect to broker");
+    }
+  }, [brokerConfig, subscriptions, maxMessages]);
+
+  const disconnectFromBroker = useCallback(() => {
+    // Stop any reconnection attempts
+    setIsReconnecting(false);
+    setReconnectAttempts(0);
+    if (reconnectionTimerRef.current) {
+      clearTimeout(reconnectionTimerRef.current);
+      reconnectionTimerRef.current = null;
+    }
+
+    if (mqttClient) {
+      mqttClient.end();
+      setMqttClient(null);
+      setIsConnected(false);
+      setConnectionStatus("disconnected");
+      setIsDiscovering(false);
+      toast.info("Disconnected from broker");
+    }
+  }, [mqttClient]);
+
+  const startDiscovery = useCallback(() => {
+    if (!mqttClient || !isConnected) {
+      toast.error("MQTT client is not connected");
+      return;
+    }
+
+    setIsDiscovering(true);
+    startTimeRef.current = new Date();
+    toast.success("MQTT Discovery started - listening to all subscribed topics");
+  }, [mqttClient, isConnected]);
+
+  const stopDiscovery = useCallback(() => {
+    setIsDiscovering(false);
+    
+    if (startTimeRef.current) {
+      const duration = ((Date.now() - startTimeRef.current.getTime()) / 1000).toFixed(1);
+      toast.success(`Discovery stopped. Duration: ${duration}s`);
+    }
+  }, []);
+
+  // Subscription Management
+  const addSubscription = useCallback((topic: string, qos: 0 | 1 | 2) => {
+    // Check if subscription already exists
+    if (subscriptions.some(sub => sub.topic === topic)) {
+      toast.error(`Already subscribed to ${topic}`);
+      return;
+    }
+
+    const newSub: SubscriptionConfig = {
+      id: Date.now().toString(),
+      topic,
+      qos,
+      enabled: true
+    };
+    
+    setSubscriptions(prev => [...prev, newSub]);
+    
+    // Subscribe immediately if connected
+    if (mqttClient && isConnected) {
+      mqttClient.subscribe(topic, { qos }, (err) => {
+        if (err) {
+          toast.error(`Failed to subscribe to ${topic}`);
+        } else {
+          toast.success(`Subscribed to ${topic}`);
+        }
+      });
+    }
+  }, [mqttClient, isConnected, subscriptions]);
+
+  const handleAddSubscription = useCallback(() => {
+    if (!newSubscription.topic.trim()) {
+      toast.error("Please enter a topic");
+      return;
+    }
+
+    addSubscription(newSubscription.topic, newSubscription.qos);
+    setNewSubscription({ topic: "", qos: 0 });
+    setAddSubscriptionDialogOpen(false);
+  }, [newSubscription, addSubscription]);
+
+  const removeSubscription = useCallback((id: string) => {
+    const sub = subscriptions.find(s => s.id === id);
+    if (sub && mqttClient && isConnected) {
+      mqttClient.unsubscribe(sub.topic, (err) => {
+        if (err) {
+          console.error("Failed to unsubscribe:", err);
+        } else {
+          toast.success(`Unsubscribed from ${sub.topic}`);
+        }
+      });
+    }
+    
+    setSubscriptions(prev => prev.filter(s => s.id !== id));
+  }, [subscriptions, mqttClient, isConnected]);
+
+  const toggleSubscription = useCallback((id: string, enabled: boolean) => {
+    setSubscriptions(prev => prev.map(sub => 
+      sub.id === id ? { ...sub, enabled } : sub
+    ));
+    
+    const sub = subscriptions.find(s => s.id === id);
+    if (sub && mqttClient && isConnected) {
+      if (enabled) {
+        mqttClient.subscribe(sub.topic, { qos: sub.qos }, (err) => {
+          if (err) {
+            toast.error(`Failed to subscribe to ${sub.topic}`);
+          } else {
+            toast.success(`Subscribed to ${sub.topic}`);
+          }
+        });
+      } else {
+        mqttClient.unsubscribe(sub.topic, (err) => {
+          if (err) {
+            console.error("Failed to unsubscribe:", err);
+          } else {
+            toast.info(`Unsubscribed from ${sub.topic}`);
+          }
+        });
+      }
+    }
+  }, [subscriptions, mqttClient, isConnected]);
+
+  // Publish Message
+  const publishMessage = useCallback(() => {
+    if (!mqttClient || !isConnected) {
+      toast.error("MQTT client is not connected");
+      return;
+    }
+
+    mqttClient.publish(
+      publishConfig.topic, 
+      publishConfig.payload, 
+      { 
+        qos: publishConfig.qos, 
+        retain: publishConfig.retain 
+      }, 
+      (err) => {
+        if (err) {
+          toast.error("Failed to publish message");
+          console.error("Publish error:", err);
+        } else {
+          toast.success(`Message published to ${publishConfig.topic}`);
+          setPublishDialogOpen(false);
+        }
+      }
+    );
+  }, [mqttClient, isConnected, publishConfig]);
+
+  // Save broker configuration
+  const saveBrokerConfig = useCallback(() => {
+    setBrokerConfig(tempBrokerConfig);
+    setBrokerDialogOpen(false);
+    toast.success("Broker configuration saved");
+    
+    // Reconnect with new config
+    if (mqttClient) {
+      disconnectFromBroker();
+      setTimeout(() => {
+        connectToBroker();
+      }, 1000);
+    }
+  }, [tempBrokerConfig, mqttClient, disconnectFromBroker, connectToBroker]);
+
+  const clearData = useCallback(() => {
+    setMessages([]);
+    setTopicsData(new Map());
+    toast.info("Discovery data cleared");
+  }, []);
+
+  const exportData = useCallback(() => {
+    const data = {
+      discoverySession: {
+        startTime: startTimeRef.current?.toISOString(),
+        endTime: new Date().toISOString(),
+        totalTopics: topicsData.size,
+        totalMessages: messages.length
+      },
+      topics: Array.from(topicsData.values()),
+      messages: messages.slice(0, 50) // Export only latest 50 messages
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mqtt-discovery-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast.success("Discovery data exported");
+  }, [topicsData, messages]);
+
+  const copyTopic = useCallback((topic: string) => {
+    navigator.clipboard.writeText(topic);
+    toast.success(`Topic copied: ${topic}`);
+  }, []);
+
+  const renderStatusIcon = () => {
+    switch (connectionStatus) {
+      case "connected":
+        return <Wifi className="h-4 w-4 text-green-500" />;
+      case "connecting":
+        return <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />;
+      case "reconnecting":
+        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
+      case "error":
+        return <WifiOff className="h-4 w-4 text-red-500" />;
+      case "disconnected":
+        return <WifiOff className="h-4 w-4 text-gray-500" />;
+      case "offline":
+        return <WifiOff className="h-4 w-4 text-orange-500" />;
+      case "failed":
+        return <WifiOff className="h-4 w-4 text-red-600" />;
+      default:
+        return <PlugZap className="h-4 w-4 text-gray-400" />;
+    }
+  };
+
+  const filteredTopics = useMemo(() => {
+    const topics = Array.from(topicsData.values());
+    if (!filterTerm) return topics;
+    
+    return topics.filter(topicData => 
+      topicData.topic.toLowerCase().includes(filterTerm.toLowerCase()) ||
+      topicData.lastPayload.toLowerCase().includes(filterTerm.toLowerCase())
+    );
+  }, [topicsData, filterTerm]);
+
+  const filteredMessages = useMemo(() => {
+    if (!searchTerm) return messages;
+    
+    return messages.filter(message => 
+      message.topic.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      message.payload.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [messages, searchTerm]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (mqttClient) {
+        mqttClient.end();
+      }
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      if (reconnectionTimerRef.current) {
+        clearTimeout(reconnectionTimerRef.current);
+      }
+    };
+  }, [mqttClient]);
+
+  return (
+    <SidebarInset>
+      <header className="flex h-16 items-center justify-between border-b px-4">
+        <div className="flex items-center gap-2">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <Radar className="h-5 w-5 text-muted-foreground" />
+          <h1 className="text-lg font-semibold">MQTT Topic Discovery</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="flex items-center gap-2">
+            {renderStatusIcon()}
+            <span className="capitalize">{connectionStatus}</span>
+          </Badge>
+          <Dialog open={brokerDialogOpen} onOpenChange={setBrokerDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" onClick={() => {
+                setTempBrokerConfig(brokerConfig);
+                setBrokerDialogOpen(true);
+              }}>
+                <Settings className="h-4 w-4 mr-2" />
+                Configure Broker
+              </Button>
+            </DialogTrigger>
+          </Dialog>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => window.location.reload()}
+          >
+            <RotateCw className="h-4 w-4" />
+          </Button>
+        </div>
+      </header>
+
+      <div className="p-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-primary flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Radar className="h-5 w-5" /> MQTT Topic Discovery
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  {topicsData.size} topics • {messages.length} messages
+                </Badge>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-4 items-center justify-between">
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Broker:</span>
+                  <Badge variant={connectionStatus === 'connected' ? 'default' : 'secondary'} className="flex items-center gap-2">
+                    {renderStatusIcon()}
+                    <span className="capitalize">{connectionStatus}</span>
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">{brokerConfig.url}</Badge>
+                  {isReconnecting && (
+                    <Badge variant="secondary" className="text-xs animate-pulse">
+                      Reconnecting... ({reconnectAttempts}/{maxReconnectAttempts})
+                    </Badge>
+                  )}
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium">Max Messages:</label>
+                  <Input
+                    type="number"
+                    value={maxMessages}
+                    onChange={(e) => setMaxMessages(Math.max(10, Number(e.target.value)))}
+                    className="w-20 h-8"
+                    min="10"
+                    max="1000"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  {subscriptions.filter(s => s.enabled).length} active subscriptions
+                </Badge>
+                <Dialog open={subscriptionDialogOpen} onOpenChange={setSubscriptionDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Target className="h-4 w-4 mr-2" />
+                      Subscriptions
+                    </Button>
+                  </DialogTrigger>
+                </Dialog>
+                <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Send className="h-4 w-4 mr-2" />
+                      Publish
+                    </Button>
+                  </DialogTrigger>
+                </Dialog>
+              </div>
+            </div>
+            
+            <div className="flex flex-wrap gap-2">
+              {connectionStatus !== 'connected' ? (
+                <Button onClick={connectToBroker} className="flex items-center gap-2">
+                  <Wifi className="h-4 w-4" />
+                  Connect to Broker
+                </Button>
+              ) : (
+                <>
+                  <Button onClick={disconnectFromBroker} variant="outline" className="flex items-center gap-2">
+                    <WifiOff className="h-4 w-4" />
+                    Disconnect
+                  </Button>
+                  {!isDiscovering ? (
+                    <Button onClick={startDiscovery} className="flex items-center gap-2">
+                      <Play className="h-4 w-4" />
+                      Start Discovery
+                    </Button>
+                  ) : (
+                    <Button onClick={stopDiscovery} variant="destructive" className="flex items-center gap-2">
+                      <Pause className="h-4 w-4" />
+                      Stop Discovery
+                    </Button>
+                  )}
+                </>
+              )}
+              
+              <Button onClick={clearData} variant="outline" className="flex items-center gap-2">
+                <Trash2 className="h-4 w-4" />
+                Clear Data
+              </Button>
+              
+              <Button 
+                onClick={exportData} 
+                variant="outline" 
+                disabled={topicsData.size === 0}
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Export Data
+              </Button>
+            </div>
+            
+            {isDiscovering && startTimeRef.current && (
+              <div className="text-sm text-muted-foreground">
+                Discovery running for {Math.floor((Date.now() - startTimeRef.current.getTime()) / 1000)}s
+              </div>
+            )}
+            
+            {connectionStatus !== 'connected' && (
+              <div className="text-sm text-orange-600 bg-orange-50 dark:bg-orange-950 p-3 rounded-lg">
+                ⚠️ MQTT broker is not connected. Configure broker settings and click "Connect to Broker".
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="w-full justify-start">
+            <TabsTrigger value="messages">
+              <Inbox className="h-4 w-4 mr-1" /> Messages ({messages.length})
+            </TabsTrigger>
+            <TabsTrigger value="topics">
+              <Rss className="h-4 w-4 mr-1" /> Topics Discovery ({topicsData.size})
+            </TabsTrigger>
+            <TabsTrigger value="subscriptions">
+              <Target className="h-4 w-4 mr-1" /> Subscriptions ({subscriptions.length})
+            </TabsTrigger>
+            <TabsTrigger value="allTopics">
+              <List className="h-4 w-4 mr-1" /> All Topics
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="messages">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Inbox className="h-5 w-5" /> Received Messages
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Search className="h-4 w-4" />
+                    <Input
+                      placeholder="Search messages..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-48 h-8"
+                    />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[450px]">
+                  {filteredMessages.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      {messages.length === 0 ? "No messages received yet. Start discovery to see MQTT messages." : "No messages match your search."}
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {filteredMessages.map((m, i) => (
+                        <div key={i} className="border-b border-muted pb-3 last:border-b-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-primary truncate max-w-md" title={m.topic}>
+                                {m.topic}
+                              </span>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                onClick={() => copyTopic(m.topic)}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              {m.qos !== undefined && <Badge variant="outline">QoS {m.qos}</Badge>}
+                              {m.retain && <Badge variant="outline">Retain</Badge>}
+                              <span>{m.timestamp}</span>
+                            </div>
+                          </div>
+                          <div className="font-mono text-sm text-muted-foreground bg-muted/30 rounded p-2 break-all">
+                            {m.payload}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="topics">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Rss className="h-5 w-5" /> Discovered Topics
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4" />
+                    <Input
+                      placeholder="Filter topics..."
+                      value={filterTerm}
+                      onChange={(e) => setFilterTerm(e.target.value)}
+                      className="w-48 h-8"
+                    />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[450px]">
+                  {filteredTopics.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      {topicsData.size === 0 ? "No topics discovered yet. Start discovery to see MQTT topics." : "No topics match your filter."}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {filteredTopics.map((topicData, idx) => (
+                        <div key={idx} className="border rounded-lg p-3 hover:bg-muted/30 transition-colors">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-primary truncate max-w-md" title={topicData.topic}>
+                                {topicData.topic}
+                              </span>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                onClick={() => copyTopic(topicData.topic)}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">
+                                {topicData.messageCount} msgs
+                              </Badge>
+                              {topicData.qos !== undefined && (
+                                <Badge variant="outline" className="text-xs">QoS {topicData.qos}</Badge>
+                              )}
+                              {topicData.retain && (
+                                <Badge variant="outline" className="text-xs">Retain</Badge>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Last updated: {topicData.lastUpdated}
+                          </div>
+                          <div className="font-mono text-sm bg-muted/30 rounded p-2 break-all">
+                            {topicData.lastPayload}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="subscriptions">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="h-5 w-5" /> Subscription Management
+                  </CardTitle>
+                  <Button 
+                    size="sm" 
+                    onClick={() => setAddSubscriptionDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Subscription
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[450px]">
+                  {subscriptions.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">
+                      No subscriptions configured. Add a topic to start receiving messages.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {subscriptions.map((sub) => (
+                        <div key={sub.id} className="border rounded-lg p-4 hover:bg-muted/30 transition-colors">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                              <Switch
+                                checked={sub.enabled}
+                                onCheckedChange={(checked) => toggleSubscription(sub.id, checked)}
+                              />
+                              <span className="font-medium text-primary">
+                                {sub.topic}
+                              </span>
+                              <Badge variant="outline" className="text-xs">
+                                QoS {sub.qos}
+                              </Badge>
+                              <Badge variant={sub.enabled ? "default" : "secondary"} className="text-xs">
+                                {sub.enabled ? "Active" : "Disabled"}
+                              </Badge>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => removeSubscription(sub.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Messages received: {Array.from(topicsData.values()).filter(t => 
+                              sub.topic === "#" || 
+                              t.topic === sub.topic || 
+                              (sub.topic.includes("+") || sub.topic.includes("#"))
+                            ).reduce((sum, t) => sum + t.messageCount, 0)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="allTopics">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <List className="h-5 w-5" /> All Topic List
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[450px]">
+                  {topicsData.size === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">No topics received yet.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {Array.from(topicsData.keys())
+                        .sort()
+                        .filter(topic => !filterTerm || topic.toLowerCase().includes(filterTerm.toLowerCase()))
+                        .map((topic, i) => (
+                          <div key={i} className="flex items-center justify-between py-1 px-2 rounded hover:bg-muted/30">
+                            <span className="text-sm font-medium flex items-center gap-2">
+                              <span className="text-muted-foreground text-xs w-8">{i + 1}.</span>
+                              {topic}
+                            </span>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6"
+                              onClick={() => copyTopic(topic)}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Broker Configuration Dialog */}
+      <Dialog open={brokerDialogOpen} onOpenChange={setBrokerDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              MQTT Broker Configuration
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="brokerUrl">Broker URL *</Label>
+              <Input
+                id="brokerUrl"
+                placeholder="ws://localhost:9000 or wss://broker.example.com:8883"
+                value={tempBrokerConfig.url}
+                onChange={(e) => setTempBrokerConfig(prev => ({ ...prev, url: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="clientId">Client ID</Label>
+                <Input
+                  id="clientId"
+                  placeholder="Auto-generated"
+                  value={tempBrokerConfig.clientId}
+                  onChange={(e) => setTempBrokerConfig(prev => ({ ...prev, clientId: e.target.value }))}
+                />
+              </div>
+              <div className="flex items-center space-x-2 pt-6">
+                <Switch
+                  id="clean"
+                  checked={tempBrokerConfig.clean}
+                  onCheckedChange={(checked) => setTempBrokerConfig(prev => ({ ...prev, clean: checked }))}
+                />
+                <Label htmlFor="clean">Clean Session</Label>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="username">Username (Optional)</Label>
+                <Input
+                  id="username"
+                  placeholder="Username"
+                  value={tempBrokerConfig.username || ''}
+                  onChange={(e) => setTempBrokerConfig(prev => ({ ...prev, username: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="password">Password (Optional)</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Password"
+                  value={tempBrokerConfig.password || ''}
+                  onChange={(e) => setTempBrokerConfig(prev => ({ ...prev, password: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="keepalive">Keep Alive (s)</Label>
+                <Input
+                  id="keepalive"
+                  type="number"
+                  value={tempBrokerConfig.keepalive}
+                  onChange={(e) => setTempBrokerConfig(prev => ({ ...prev, keepalive: parseInt(e.target.value) || 60 }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="connectTimeout">Connect Timeout (ms)</Label>
+                <Input
+                  id="connectTimeout"
+                  type="number"
+                  value={tempBrokerConfig.connectTimeout}
+                  onChange={(e) => setTempBrokerConfig(prev => ({ ...prev, connectTimeout: parseInt(e.target.value) || 4000 }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="reconnectPeriod">Reconnect Period (ms)</Label>
+                <Input
+                  id="reconnectPeriod"
+                  type="number"
+                  value={tempBrokerConfig.reconnectPeriod}
+                  onChange={(e) => setTempBrokerConfig(prev => ({ ...prev, reconnectPeriod: parseInt(e.target.value) || 1000 }))}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBrokerDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={saveBrokerConfig}>
+              <Save className="h-4 w-4 mr-2" />
+              Save Configuration
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Subscription Management Dialog */}
+      <Dialog open={subscriptionDialogOpen} onOpenChange={setSubscriptionDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5" />
+              Manage Subscriptions
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter topic (e.g., sensor/+/data or #)"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    const topic = e.currentTarget.value;
+                    if (topic) {
+                      addSubscription(topic, 0);
+                      e.currentTarget.value = '';
+                    }
+                  }
+                }}
+              />
+              <Button onClick={() => {
+                const input = document.querySelector('input[placeholder*="Enter topic"]') as HTMLInputElement;
+                if (input?.value) {
+                  addSubscription(input.value, 0);
+                  input.value = '';
+                }
+              }}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add
+              </Button>
+            </div>
+            <ScrollArea className="h-[400px]">
+              <div className="space-y-2">
+                {subscriptions.map((sub) => (
+                  <div key={sub.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={sub.enabled}
+                        onCheckedChange={(checked) => toggleSubscription(sub.id, checked)}
+                      />
+                      <span className="font-mono">{sub.topic}</span>
+                      <Select value={sub.qos.toString()} onValueChange={(value) => {
+                        setSubscriptions(prev => prev.map(s => 
+                          s.id === sub.id ? { ...s, qos: parseInt(value) as 0 | 1 | 2 } : s
+                        ));
+                      }}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">QoS 0 - At most once</SelectItem>
+                          <SelectItem value="1">QoS 1 - At least once</SelectItem>
+                          <SelectItem value="2">QoS 2 - Exactly once</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => removeSubscription(sub.id)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setSubscriptionDialogOpen(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Publish Message Dialog */}
+      <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5" />
+              Publish MQTT Message
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="pubTopic">Topic *</Label>
+              <Input
+                id="pubTopic"
+                placeholder="sensor/device1/temperature"
+                value={publishConfig.topic}
+                onChange={(e) => setPublishConfig(prev => ({ ...prev, topic: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="payload">Payload *</Label>
+              <Textarea
+                id="payload"
+                placeholder='{"temperature": 25.6, "humidity": 60}'
+                value={publishConfig.payload}
+                onChange={(e) => setPublishConfig(prev => ({ ...prev, payload: e.target.value }))}
+                rows={4}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="pubQos">Quality of Service</Label>
+                <Select value={publishConfig.qos.toString()} onValueChange={(value) => 
+                  setPublishConfig(prev => ({ ...prev, qos: parseInt(value) as 0 | 1 | 2 }))
+                }>
+                  <SelectTrigger className="w-64">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">QoS 0 - At most once (Fire and forget)</SelectItem>
+                    <SelectItem value="1">QoS 1 - At least once (Acknowledged delivery)</SelectItem>
+                    <SelectItem value="2">QoS 2 - Exactly once (Assured delivery)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="retain"
+                  checked={publishConfig.retain}
+                  onCheckedChange={(checked) => setPublishConfig(prev => ({ ...prev, retain: checked }))}
+                />
+                <Label htmlFor="retain">Retain Message</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPublishDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={publishMessage}
+              disabled={!publishConfig.topic || !publishConfig.payload || !isConnected}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Publish Message
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Subscription Dialog */}
+      <Dialog open={addSubscriptionDialogOpen} onOpenChange={setAddSubscriptionDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Add New Subscription
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="newTopic">Topic *</Label>
+              <Input
+                id="newTopic"
+                placeholder="sensor/+/data or device/# or specific/topic"
+                value={newSubscription.topic}
+                onChange={(e) => setNewSubscription(prev => ({ ...prev, topic: e.target.value }))}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handleAddSubscription();
+                  }
+                }}
+              />
+              <div className="text-xs text-muted-foreground mt-1">
+                Use + for single level wildcard, # for multi-level wildcard
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="newQos">Quality of Service</Label>
+              <Select value={newSubscription.qos.toString()} onValueChange={(value) => 
+                setNewSubscription(prev => ({ ...prev, qos: parseInt(value) as 0 | 1 | 2 }))
+              }>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">QoS 0 - At most once (Fire and forget)</SelectItem>
+                  <SelectItem value="1">QoS 1 - At least once (Acknowledged delivery)</SelectItem>
+                  <SelectItem value="2">QoS 2 - Exactly once (Assured delivery)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="text-sm font-medium text-blue-900 mb-1">Topic Examples:</h4>
+              <ul className="text-xs text-blue-700 space-y-1">
+                <li>• <code>sensor/temperature</code> - Specific topic</li>
+                <li>• <code>sensor/+/data</code> - Any device in sensor group</li>
+                <li>• <code>device/#</code> - All subtopics under device</li>
+                <li>• <code>#</code> - All topics (use carefully)</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setNewSubscription({ topic: "", qos: 0 });
+              setAddSubscriptionDialogOpen(false);
+            }}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAddSubscription}
+              disabled={!newSubscription.topic.trim()}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Subscription
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SidebarInset>
+  );
+}

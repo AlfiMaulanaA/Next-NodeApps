@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Settings2, PlusCircle, Edit2, Trash2, ArrowUpDown, Eye } from "lucide-react";
+import { Settings2, PlusCircle, Edit2, Trash2, ArrowUpDown, Eye, RotateCw, Search, Database, Activity, Target, Zap } from "lucide-react";
 import MQTTConnectionBadge from "@/components/mqtt-status";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { useSearchFilter } from "@/hooks/use-search-filter";
@@ -112,6 +112,7 @@ export default function CustomPayloadPage() {
       clientRef.current.publish("config/device_info", JSON.stringify({ command: "getDeviceInfo" }));
     } else {
       console.warn("MQTT not connected, cannot publish getDeviceInfo.");
+      toast.error("MQTT not connected. Cannot fetch devices.");
     }
   }, []);
 
@@ -125,12 +126,24 @@ export default function CustomPayloadPage() {
     }
   }, []);
 
-  const sendCommand = useCallback((command: string, data: any) => {
+  const sendCommand = useCallback((command: string, data?: any) => {
     if (!clientRef.current?.connected) {
       toast.error("MQTT not connected. Please wait for connection or refresh.");
       return;
     }
-    clientRef.current.publish("config/summary_device", JSON.stringify({ command, data }), (err) => {
+    
+    let payload;
+    if (command === "getData") {
+      payload = { command };
+    } else if (command === "writeData") {
+      payload = { command, data };
+    } else if (command === "deleteData") {
+      payload = { command, data };
+    } else {
+      payload = { command, data };
+    }
+    
+    clientRef.current.publish("config/summary_device", JSON.stringify(payload), (err) => {
       if (err) {
         toast.error(`Failed to send command: ${err.message}`);
         console.error("Publish error:", err);
@@ -172,31 +185,44 @@ export default function CustomPayloadPage() {
       console.log(`[handleMessage] Topic: ${topic}, Payload:`, msg); // Crucial for debugging
 
       if (topic.endsWith("/device_info/response")) {
-        // Ensure msg is treated as an array of RawDeviceInfo
+        // Handle device info response from payloadDynamic.py
         if (Array.isArray(msg)) {
           setDevicesInfo(msg as RawDeviceInfo[]);
           console.log("Updated devicesInfo from MQTT:", msg);
+          toast.success(`Loaded ${msg.length} available devices`);
+        } else if (msg && msg.status === "error") {
+          toast.error(msg.message || "Failed to load device information");
+          console.warn("Device info error:", msg);
         } else {
-          console.warn("Received non-array for device_info/response:", msg);
+          console.warn("Received unexpected format for device_info/response:", msg);
         }
       } else if (topic.endsWith("/summary_device/response")) {
-        // Your middleware sends `{"groups": [...]}` for getData, or `{"status": "...", "message": "..."}` for others
-        if (msg && Array.isArray(msg.groups)) { // ✅ THIS IS THE CRITICAL CHECK
+        // Handle different response types from payloadDynamic.py middleware
+        if (msg && msg.groups && Array.isArray(msg.groups)) {
+          // getData response format: {"groups": [...]}
           setConfig(msg);
           console.log("Summary config data loaded successfully:", msg);
           toast.success("Custom payload configurations updated!");
         } else if (msg && (msg.status === "success" || msg.status === "error")) {
-          // This path handles responses from writeData, deleteData etc.
-          toast[msg.status === "success" ? "success" : "error"](msg.message || `Operation ${msg.status}.`);
+          // writeData/deleteData response format: {"status": "success/error", "message": "..."}
+          const isSuccess = msg.status === "success";
+          toast[isSuccess ? "success" : "error"](msg.message || `Operation ${msg.status}.`);
+          
           // Re-fetch data after a successful operation to update the UI
-          if (msg.status === "success") {
-              // Add a small delay to give the middleware time to save/process
+          if (isSuccess) {
               setTimeout(() => {
                   fetchSummaryData();
               }, 500);
           }
         } else {
-          console.warn("Unexpected summary_device/response format (not `groups` or `status`):", msg);
+          // Handle case where response is the full config object (fallback)
+          if (msg && typeof msg === 'object') {
+            setConfig(msg);
+            console.log("Summary config loaded (fallback):", msg);
+            toast.success("Custom payload configurations loaded!");
+          } else {
+            console.warn("Unexpected summary_device/response format:", msg);
+          }
         }
       }
     } catch (err) {
@@ -448,44 +474,97 @@ export default function CustomPayloadPage() {
     <SidebarInset>
       <header className="flex h-16 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
-          <SidebarTrigger />
-          <Separator orientation="vertical" className="h-4" />
-          <Settings2 className="w-5 h-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Custom Payload Data</h1>
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <Settings2 className="h-5 w-5" />
+          <h1 className="text-lg font-semibold">Dynamic Custom Payload</h1>
         </div>
-        <MQTTConnectionBadge  />
+        <div className="flex items-center gap-2">
+          <MQTTConnectionBadge />
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={fetchSummaryData}
+          >
+            <RotateCw className="h-4 w-4" />
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => openEditor()}
+          >
+            <PlusCircle className="h-4 w-4 mr-2" />
+            Create New Data
+          </Button>
+        </div>
       </header>
+      
+      {/* Search */}
+      <div className="px-4 py-2 border-b">
+        <Input
+          placeholder="Search by topic or device name..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="max-w-sm"
+        />
+      </div>
 
-      <div className="p-6 space-y-4">
-        <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
-          <div className="flex gap-2">
-            <Button size="sm" variant="secondary" onClick={fetchSummaryData}>Fetch Data</Button>
-            <Button size="sm" variant="default" onClick={() => openEditor()}>Create New Data</Button>
-          </div>
-          <Input
-            type="text"
-            placeholder="Search by topic or device name..."
-            className="w-full md:w-64"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
-        </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Summary Cards */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              <CardTitle>Dynamic Payload Summary</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <Zap className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <div className="text-2xl font-bold">{config?.groups?.length || 0}</div>
+                <div className="text-sm text-muted-foreground">Total Groups</div>
+              </div>
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <Activity className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <div className="text-2xl font-bold">{config?.groups?.reduce((sum, g) => sum + g.included_devices.length, 0) || 0}</div>
+                <div className="text-sm text-muted-foreground">Total Devices</div>
+              </div>
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <Target className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <div className="text-2xl font-bold">{config?.groups?.filter(g => g.retain).length || 0}</div>
+                <div className="text-sm text-muted-foreground">Retained</div>
+              </div>
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <Settings2 className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <div className="text-2xl font-bold">{config?.groups?.reduce((sum, g) => sum + (g.calculations?.length || 0), 0) || 0}</div>
+                <div className="text-sm text-muted-foreground">Calculations</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead onClick={() => handleSort('summary_topic' as keyof SummaryGroup)} className="cursor-pointer select-none">
-                Topic <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" />
-              </TableHead>
-              <TableHead>Devices</TableHead>
-              <TableHead onClick={() => handleSort('retain' as keyof SummaryGroup)} className="cursor-pointer select-none">Retain <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" /></TableHead>
-              <TableHead onClick={() => handleSort('qos' as keyof SummaryGroup)} className="cursor-pointer select-none">QoS <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" /></TableHead>
-              <TableHead onClick={() => handleSort('interval' as keyof SummaryGroup)} className="cursor-pointer select-none">Interval <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" /></TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
+        {/* Data Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Dynamic Payload Configurations</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead onClick={() => handleSort('summary_topic' as keyof SummaryGroup)} className="cursor-pointer select-none">
+                    Topic <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" />
+                  </TableHead>
+                  <TableHead>Devices</TableHead>
+                  <TableHead onClick={() => handleSort('retain' as keyof SummaryGroup)} className="cursor-pointer select-none">Retain <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" /></TableHead>
+                  <TableHead onClick={() => handleSort('qos' as keyof SummaryGroup)} className="cursor-pointer select-none">QoS <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" /></TableHead>
+                  <TableHead onClick={() => handleSort('interval' as keyof SummaryGroup)} className="cursor-pointer select-none">Interval <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" /></TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
           <TableBody>
-            {paginatedData.length > 0 ? paginatedData.map((g, i) => (
+              {paginatedData.length > 0 ? paginatedData.map((g, i) => (
               <TableRow key={g.summary_topic}>
                 <TableCell className="font-medium">{g.summary_topic}</TableCell>
                 <TableCell>
@@ -526,42 +605,66 @@ export default function CustomPayloadPage() {
                 <TableCell>{g.retain ? "✔️" : "❌"}</TableCell>
                 <TableCell>{g.qos}</TableCell>
                 <TableCell>{g.interval}s</TableCell>
-                <TableCell className="flex gap-2">
-                  <Button size="icon" variant="outline" onClick={() => openEditor(i)} title="Edit">
-                    <Edit2 className="w-4 h-4" />
-                  </Button>
-                  <Button size="icon" variant="destructive" onClick={() => handleDeleteGroup(i)} title="Delete">
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                <TableCell className="text-right">
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="outline" onClick={() => openEditor(i)} title="Edit">
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDeleteGroup(i)} title="Delete">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             )) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                  No custom payload configurations found. Click "Create New Data" to add a new configuration.
+                <TableCell colSpan={6} className="text-center py-12">
+                  <Settings2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No configurations found</h3>
+                  <p className="text-muted-foreground mb-4">
+                    No custom payload configurations found. Create your first configuration to get started.
+                  </p>
+                  <Button onClick={() => openEditor()}>
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Create New Data
+                  </Button>
                 </TableCell>
               </TableRow>
             )}
-          </TableBody>
-        </Table>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
         {totalPages > 1 && (
-          <Pagination className="mt-4">
-            <PaginationContent>
-              <PaginationPrevious onClick={() => setCurrentPage(p => Math.max(1, p - 1))} />
-              {Array.from({ length: totalPages }, (_, idx) => (
-                <PaginationItem key={idx}>
-                  <PaginationLink
-                    isActive={currentPage === idx + 1}
-                    onClick={() => setCurrentPage(idx + 1)}
-                  >
-                    {idx + 1}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
-              <PaginationNext onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} />
-            </PaginationContent>
-          </Pagination>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing {Math.min((currentPage - 1) * pageSize + 1, sorted.length)} to{" "}
+              {Math.min(currentPage * pageSize, sorted.length)} of {sorted.length} results
+            </p>
+            <Pagination>
+              <PaginationContent>
+                <PaginationPrevious 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                />
+                {Array.from({ length: totalPages }, (_, idx) => (
+                  <PaginationItem key={idx}>
+                    <PaginationLink
+                      isActive={currentPage === idx + 1}
+                      onClick={() => setCurrentPage(idx + 1)}
+                    >
+                      {idx + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationNext 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                />
+              </PaginationContent>
+            </Pagination>
+          </div>
         )}
 
         <Dialog open={modalOpen} onOpenChange={setModalOpen}>

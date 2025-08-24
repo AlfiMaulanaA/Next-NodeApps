@@ -1,0 +1,16 @@
+{
+    "gpioInputOutput1": false, 
+    "gpioInputOutput2": true, 
+    "gpioInputOutput3": false, 
+    "gpioInputOutput4": true, 
+    "gpioInputOutput5": false, 
+    "gpioInputOutput6": true, 
+    "gpioInputOutput7": false, 
+    "gpioInputOutput8": true, 
+    "gpioInputOutput9": false, 
+    "gpioInputOutput10": true, 
+    "gpioInputOutput11": false, 
+    "gpioInputOutput12": true, 
+    "gpioInputOutput13": false, 
+    "gpioInputOutput14": true
+}

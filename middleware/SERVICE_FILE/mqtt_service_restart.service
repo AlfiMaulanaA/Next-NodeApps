@@ -1,0 +1,10 @@
+[Unit]
+Description=MQTT Service Restart Script
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/pi/LV_Panel3_Rectifier_Addrax/MODULAR_I2C/mqtt_service_restart.py
+WorkingDirectory=/home/pi/LV_Panel3_Rectifier_Addrax/MODULAR_I2C
+
+[Install]
+WantedBy=multi-user.target

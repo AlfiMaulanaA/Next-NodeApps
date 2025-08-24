@@ -1,0 +1,303 @@
+[
+{
+  "profile": {
+    "name": "M4M30",
+    "device_type": "power_meter",
+    "manufacturer": "ABB",
+    "part_number" : "M4M30",
+    "topic" : "Smartrack/Schneider/M4M30"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":1,
+    "port": "/dev/ttyAMA0",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "Altivar 61",
+    "device_type": "Controller",
+    "manufacturer": "Schneider",
+    "part_number" : "Altivar71",
+    "topic" : "Smartrack/Schneider/Altivar71"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":2,
+    "port": "/dev/ttyAMA0",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "Deepsea",
+    "device_type": "Controller",
+    "manufacturer": "Deepsea_Electronic",
+    "part_number" : "DSE8610MKII",
+    "topic" : "Smartrack/Deepsea_Electronic/DSE8610MKII"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":3,
+    "port": "/dev/ttyAMA0",
+    "baudrate": 115200,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "ABB_RVT",
+    "device_type": "pfc",
+    "manufacturer": "ABB",
+    "part_number" : "RVT",
+    "topic" : "Smartrack/ABB/RVT"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":4,
+    "port": "/dev/ttyAMA0",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "ABB_ATS",
+    "device_type": "switch",
+    "manufacturer": "ABB",
+    "part_number" : "ATS022",
+    "topic" : "Smartrack/ABB/ATS022"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":5,
+    "port": "/dev/ttyAMA0",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "ABB_CMS7000",
+    "device_type": "power_meter",
+    "manufacturer": "ABB",
+    "part_number" : "CMS700",
+    "topic" : "Smartrack/ABB/CMS700"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":6,
+    "port": "/dev/ttyAMA0",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "Temperature_Sensor_Inside",
+    "device_type": "Sensor_RS485",
+    "manufacturer": "IOT",
+    "part_number" : "Temperature_Sensor",
+    "topic" : "Smartrack/IOT/Temp_Inside"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":199,
+    "port": "/dev/ttyAMA1",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "Temperature_Sensor_Outside",
+    "device_type": "Sensor_RS485",
+    "manufacturer": "IOT",
+    "part_number" : "Temperature_Sensor",
+    "topic" : "Smartrack/IOT/Temp_Outside"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":206,
+    "port": "/dev/ttyAMA1",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "Motion_Sensor",
+    "device_type": "Sensor_RS485",
+    "manufacturer": "IOT",
+    "part_number" : "Motion_Sensor",
+    "topic" : "Smartrack/IOT/IOT_Motion"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":201,
+    "port": "/dev/ttyAMA1",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "Dry_Contact",
+    "device_type": "Sensor_RS485",
+    "manufacturer": "IOT",
+    "part_number" : "Dry_Contact",
+    "topic" : "Smartrack/IOT/Dry_Contact"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":197,
+    "port": "/dev/ttyAMA1",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "Vibration_Sensor",
+    "device_type": "Sensor_RS485",
+    "manufacturer": "IOT",
+    "part_number" : "Vibration_Sensor",
+    "topic" : "Smartrack/IOT/Vibration_Sensor"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":202,
+    "port": "/dev/ttyAMA1",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "AirPressure_Sensor",
+    "device_type": "Sensor_RS485",
+    "manufacturer": "IOT",
+    "part_number" : "AirPressure_Sensor",
+    "topic" : "Smartrack/IOT/IOT_Air_Pressure"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":204,
+    "port": "/dev/ttyAMA1",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "AirFlow_Sensor",
+    "device_type": "Sensor_RS485",
+    "manufacturer": "IOT",
+    "part_number" : "AirFlow_Sensor",
+    "topic" : "IOT_AirFLow"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":198,
+    "port": "/dev/ttyAMA1",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "Water_Leak_Sensor",
+    "device_type": "Sensor_RS485",
+    "manufacturer": "IOT",
+    "part_number" : "Water_Leak_Sensor",
+    "topic" : "Smartrack/IOT/IOT_Water_Leak"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":200,
+    "port": "/dev/ttyAMA1",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+},
+{
+  "profile": {
+    "name": "Relay",
+    "device_type": "Sensor_RS485",
+    "manufacturer": "IOT",
+    "part_number" : "Relay",
+    "topic" : "Smartrack/IOT/IOT_Relay"
+    },
+  "protocol_setting" : {
+    "protocol": "Modbus RTU",
+    "address":205,
+    "port": "/dev/ttyAMA1",
+    "baudrate": 9600,
+    "parity": "NONE",
+    "bytesize": 8,
+    "stop_bit": 1,
+    "timeout": 1,
+    "endianness" : "Big Endian"
+  }
+}
+]
+

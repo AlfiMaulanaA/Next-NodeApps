@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import { useTotalErrorCount } from "@/hooks/useTotalErrorCount"
+import { useTotalErrorCount } from "@/hooks/useTotalErrorCount";
 import {
   Dialog,
   DialogTrigger,
@@ -8,8 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@/components/ui/dialog"
-import { useState } from "react"
+} from "@/components/ui/dialog";
+import { useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -39,11 +39,14 @@ import {
   ShieldAlert,
   HardDriveUpload,
   InfoIcon,
-  Mail, User2, MapPin, School
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+  Mail,
+  User2,
+  MapPin,
+  School,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Sidebar,
   SidebarContent,
@@ -57,55 +60,79 @@ import {
   SidebarRail,
   SidebarFooter,
   SidebarMenuBadge,
-} from "@/components/ui/sidebar"
-import { Separator } from "@radix-ui/react-separator"
-import { deleteCookie } from 'cookies-next';
-import { useRouter } from 'next/navigation'; // Keep the import here
-
+} from "@/components/ui/sidebar";
+import { Separator } from "@radix-ui/react-separator";
+import { deleteCookie } from "cookies-next";
+import { useRouter } from "next/navigation"; // Keep the import here
 
 const appName = process.env.NEXT_PUBLIC_APP_NAME || "MQTT Gateway Dashboard";
 
-const avatarIcon = process.env.NEXT_PUBLIC_APP_AVATAR_URL || "/images/avatar-user.png";
+const avatarIcon =
+  process.env.NEXT_PUBLIC_APP_AVATAR_URL || "/images/avatar-user.png";
 
 const navigation = [
   {
     title: "Main",
-    items: [{ title: "Dashboard Overview", url: "/", icon: LayoutDashboard }],
+    items: [
+      { title: "Dashboard Overview", url: "/", icon: LayoutDashboard },
+      { title: "System Dashboard", url: "/dashboard", icon: Activity }
+    ],
   },
   {
     title: "Device Management",
     items: [
-      // { title: "Modular Devices", url: "/devices/modular", icon: Cpu },
+      { title: "Modular Devices", url: "/devices/modular", icon: Cpu },
       { title: "Modbus Devices", url: "/devices/modbus", icon: Server },
-      { title: "Battery Threshold", url: "/devices/threshold", icon: ShieldAlert },
+      // { title: "Battery Threshold", url: "/devices/threshold", icon: ShieldAlert },
     ],
   },
-  // {
-  //   title: "Control Center",
-  //   items: [
-  //     { title: "Manual Control", url: "/control/manual", icon: SlidersHorizontal },
-  //     { title: "Scheduled Control", url: "/control/schedule", icon: BarChart },
-  //     { title: "Logic Control", url: "/control/logic", icon: FileBarChart },
-  //     { title: "Voice Control", url: "/control/voice", icon: AudioLines },
-  //     { title: "Value-Based Control", url: "/control/value", icon: FileBarChart },
-  //   ],
-  // },
-  // {
-  //   title: "Payload Configuration",
-  //   items: [
-  //     { title: "Dynamic Payloads", url: "/payload/dynamic", icon: Code },
-  //     { title: "Static Payloads", url: "/payload/static", icon: Code },
-  //     { title: "MQTT Discovery", url: "/payload/discover", icon: Radar },
-  //   ],
-  // },
+  {
+    title: "Control Center",
+    items: [
+      {
+        title: "Manual Control",
+        url: "/control/manual",
+        icon: SlidersHorizontal,
+      },
+      { title: "Scheduled Control", url: "/control/schedule", icon: BarChart },
+      { title: "Logic Control", url: "/control/logic", icon: FileBarChart },
+      { title: "Voice Control", url: "/control/voice", icon: AudioLines },
+      {
+        title: "Value-Based Control",
+        url: "/control/value",
+        icon: FileBarChart,
+      },
+      {
+        title: "Geofence Control",
+        url: "/control/geofence",
+        icon: MapPin,
+      },
+    ],
+  },
+  {
+    title: "Payload Configuration",
+    items: [
+      { title: "Dynamic Payloads", url: "/payload/dynamic", icon: Code },
+      { title: "Static Payloads", url: "/payload/static", icon: Code },
+      { title: "MQTT Discovery", url: "/payload/discover", icon: Radar },
+    ],
+  },
   {
     title: "Network Settings",
     items: [
       { title: "WiFi Scanner", url: "/network/wifi", icon: Wifi },
       { title: "IP Configuration", url: "/network/ip-address", icon: Network },
-      // { title: "MQTT Broker", url: "/network/mqtt", icon: Server },
-      { title: "Comm Out Modbus TCP", url: "/network/protocol/modbus", icon: HardDriveUpload },
-      { title: "Comm Out SNMP", url: "/network/protocol/snmp", icon: HardDriveUpload },
+      { title: "MQTT Broker", url: "/network/mqtt", icon: Server },
+      {
+        title: "Comm Out Modbus TCP",
+        url: "/network/protocol/modbus",
+        icon: HardDriveUpload,
+      },
+      {
+        title: "Comm Out SNMP",
+        url: "/network/protocol/snmp",
+        icon: HardDriveUpload,
+      },
     ],
   },
   {
@@ -118,11 +145,9 @@ const navigation = [
   },
   {
     title: "FAQ & About",
-    items:[
-      { title: "Information", url:"/info",icon: InfoIcon },
-    ]
-  }
-]
+    items: [{ title: "Information", url: "/info", icon: InfoIcon }],
+  },
+];
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -131,8 +156,8 @@ export function AppSidebar() {
   const router = useRouter();
 
   const handleLogout = () => {
-    deleteCookie('authToken', { path: '/' }); // Hapus cookie
-    router.replace('/auth/login'); // Arahkan ke halaman login
+    deleteCookie("authToken", { path: "/" }); // Hapus cookie
+    router.replace("/auth/login"); // Arahkan ke halaman login
   };
 
   return (
@@ -141,11 +166,17 @@ export function AppSidebar() {
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center border-gray-400 justify-center rounded-lg bg-primary text-primary-foreground">
             {/* Replaced Atom icon with an <img> tag */}
-            <img src="/images/gspe.jpg" alt="GSPE Logo" className="h-full w-full object-cover rounded-lg" />
+            <img
+              src="/images/gspe.jpg"
+              alt="GSPE Logo"
+              className="h-full w-full object-cover rounded-lg"
+            />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-sidebar-foreground">GSPE</h1>
-            <p className="text-xs text-sidebar-foreground/70">{appName }</p>
+            <h1 className="text-lg font-semibold text-sidebar-foreground">
+              GSPE
+            </h1>
+            <p className="text-xs text-sidebar-foreground/70">{appName}</p>
           </div>
         </div>
       </SidebarHeader>
@@ -153,7 +184,9 @@ export function AppSidebar() {
       <SidebarContent className="bg-background">
         {navigation.map((group) => (
           <SidebarGroup key={group.title}>
-            <SidebarGroupLabel className="text-sidebar-foreground/80">{group.title}</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-sidebar-foreground/80">
+              {group.title}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
@@ -246,14 +279,18 @@ export function AppSidebar() {
                 <p className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-primary" />
                   <span>
-                    <span className="font-medium text-foreground">Location:</span>{" "}
+                    <span className="font-medium text-foreground">
+                      Location:
+                    </span>{" "}
                     West Jakarta, Indonesia
                   </span>
                 </p>
                 <p className="flex items-center gap-2">
                   <School className="w-4 h-4 text-primary" />
                   <span>
-                    <span className="font-medium text-foreground">Company:</span>{" "}
+                    <span className="font-medium text-foreground">
+                      Company:
+                    </span>{" "}
                     PT Graha Sumber Prima Elektronik
                   </span>
                 </p>
@@ -262,7 +299,11 @@ export function AppSidebar() {
               <Separator className="mt-4" />
 
               <div className="flex justify-end gap-2 mt-4">
-                <Button variant="destructive" className="hover:scale-105 transition" onClick={handleLogout}>
+                <Button
+                  variant="destructive"
+                  className="hover:scale-105 transition"
+                  onClick={handleLogout}
+                >
                   Logout
                 </Button>
               </div>
@@ -276,7 +317,10 @@ export function AppSidebar() {
                 className="flex items-center gap-2 text-destructive bg-destructive/5 hover:bg-destructive/20 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 transition-colors px-3 py-3 rounded-md w-full border border-transparent hover:border-destructive/40"
                 asChild
               >
-                <span onClick={handleLogout} className="flex items-center gap-2">
+                <span
+                  onClick={handleLogout}
+                  className="flex items-center gap-2"
+                >
                   <LogOut className="h-4 w-4" />
                   <span className="text-sm font-medium">Logout</span>
                 </span>
@@ -287,7 +331,6 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarRail />
       <br />
-
     </Sidebar>
-  )
+  );
 }

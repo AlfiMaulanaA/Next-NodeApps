@@ -1,0 +1,10 @@
+[Unit]
+Description=MQTT Service Device I2C
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/npi/MODULAR_I2C/device.py
+WorkingDirectory=/home/npi/MODULAR_I2C
+
+[Install]
+WantedBy=multi-user.target

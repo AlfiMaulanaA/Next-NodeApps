@@ -5,11 +5,12 @@ import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, PlusCircle, Edit2, Eye, ArrowUpDown } from "lucide-react";
+import { FileText, PlusCircle, Edit2, Eye, ArrowUpDown, RotateCw, Search, Database, Activity, Target, Settings, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Alert } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption } from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSearchFilter } from "@/hooks/use-search-filter";
 import { useSortableTable } from "@/hooks/use-sort-table";
 import {
@@ -36,7 +37,7 @@ interface DataItem {
 interface PayloadFormProps {
   initialMeta: { topic: string; interval: number; qos: number; lwt: boolean; retain: boolean; };
   initialFields: PayloadField[];
-  onSubmit: (meta: typeof initialMeta, fields: { key: string; value: any }[]) => void;
+  onSubmit: (meta: { topic: string; interval: number; qos: number; lwt: boolean; retain: boolean; }, fields: { key: string; value: any }[]) => void;
   onClose: () => void;
   title: string;
 }
@@ -263,13 +264,13 @@ export default function StaticPayloadPage() {
     send("getData", {}, "response/data/payload");
   };
 
-  const handleCreateSubmit = (meta: typeof currentFormMeta, parsedFields: { key: string; value: any }[]) => {
+  const handleCreateSubmit = (meta: { topic: string; interval: number; qos: number; lwt: boolean; retain: boolean; }, parsedFields: { key: string; value: any }[]) => {
     const dataToSend = Object.fromEntries(parsedFields.map(f => [f.key, f.value]));
     send("writeData", { ...meta, data: dataToSend }, "response/data/write");
     setCreateOpen(false);
   };
 
-  const handleUpdateSubmit = (meta: typeof currentFormMeta, parsedFields: { key: string; value: any }[]) => {
+  const handleUpdateSubmit = (meta: { topic: string; interval: number; qos: number; lwt: boolean; retain: boolean; }, parsedFields: { key: string; value: any }[]) => {
     const dataToSend = Object.fromEntries(parsedFields.map(f => [f.key, f.value]));
     send("updateData", { ...meta, data: dataToSend, topic: meta.topic }, "response/data/update");
     setUpdateOpen(false);
@@ -317,46 +318,113 @@ export default function StaticPayloadPage() {
     <SidebarInset>
       <header className="flex h-16 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
-          <SidebarTrigger />
-          <Separator orientation="vertical" className="h-4" />
-          <FileText className="w-5 h-5 text-muted-foreground" />
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <FileText className="h-5 w-5" />
           <h1 className="text-lg font-semibold">Static Custom Payload</h1>
         </div>
         <div className="flex items-center gap-2">
           <MQTTConnectionBadge />
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            onClick={handleGet}
+          >
+            <RotateCw className="h-4 w-4" />
+          </Button>
+          <Button
+            size="sm"
+            onClick={openCreateModal}
+          >
+            <PlusCircle className="h-4 w-4 mr-2" />
+            Create New Data
+          </Button>
         </div>
       </header>
-      <div className="p-6">
-        {responseMessage && <Alert className="mb-4">{responseMessage}</Alert>}
-        <div className="flex flex-wrap justify-between items-center mb-4 gap-2">
-          <div className="flex gap-2">
-            <Button size="sm" variant="secondary" onClick={handleGet}>Get Data</Button>
-            <Button size="sm" variant="default" onClick={openCreateModal}>Create New Data</Button>
-          </div>
-          <input
-            type="text"
+      
+      {/* Search */}
+      <div className="px-4 py-2 border-b">
+        <div className="relative max-w-sm">
+          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
             placeholder="Search..."
-            className="border rounded px-2 py-1 w-64"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
+            className="pl-8"
           />
         </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>#</TableHead>
-              <TableHead onClick={() => handleSort('topic' as keyof DataItem)} className="cursor-pointer select-none">
-                Topic <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" />
-              </TableHead>
-              <TableHead>Data</TableHead>
-              <TableHead>Config</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {responseMessage && (
+          <Alert>
+            <AlertDescription>{responseMessage}</AlertDescription>
+          </Alert>
+        )}
+        
+        {/* Summary Cards */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              <CardTitle>Payload Summary</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <FileText className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <div className="text-2xl font-bold">{items.length}</div>
+                <div className="text-sm text-muted-foreground">Total Payloads</div>
+              </div>
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <Activity className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <div className="text-2xl font-bold">{items.filter(item => item.interval > 0).length}</div>
+                <div className="text-sm text-muted-foreground">Active</div>
+              </div>
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <Target className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <div className="text-2xl font-bold">{items.filter(item => item.retain).length}</div>
+                <div className="text-sm text-muted-foreground">Retained</div>
+              </div>
+              <div className="text-center p-4 bg-muted/50 rounded-lg">
+                <Settings className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <div className="text-2xl font-bold">{items.filter(item => item.qos > 0).length}</div>
+                <div className="text-sm text-muted-foreground">QoS > 0</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        {/* Data Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Static Payload Data</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead onClick={() => handleSort('topic' as keyof DataItem)} className="cursor-pointer select-none">
+                    Topic <ArrowUpDown className="inline w-4 h-4 ml-1 align-middle" />
+                  </TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Config</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
           <TableBody>
-            {paginatedData.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No data received yet. Click "Get Data" to fetch the data.</TableCell></TableRow>
-            ) : paginatedData.map((it, i) => (
+              {paginatedData.length === 0 ? (
+                <TableRow><TableCell colSpan={5} className="text-center py-12">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No data found</h3>
+                  <p className="text-muted-foreground mb-4">No payload data received yet. Click refresh to fetch the data.</p>
+                  <Button onClick={handleGet}>
+                    <RotateCw className="h-4 w-4 mr-2" />
+                    Get Data
+                  </Button>
+                </TableCell></TableRow>
+              ) : paginatedData.map((it, i) => (
               <TableRow key={it.topic}>
                 <TableCell>{(currentPage - 1) * pageSize + i + 1}</TableCell>
                 <TableCell>{it.topic}</TableCell>
@@ -377,31 +445,55 @@ export default function StaticPayloadPage() {
                     <li>Retain <Badge variant={it.retain ? "default" : "destructive"}>{String(it.retain)}</Badge></li>
                   </ul>
                 </TableCell>
-                <TableCell className="flex flex-col gap-1 items-start">
-                  <Button size="sm" variant="outline" onClick={() => openPreviewModal(it.data)}>Preview</Button>
-                  <Button size="sm" variant="default" onClick={() => openUpdateModal(i)}>Update</Button>
-                  <Button size="sm" variant="destructive" onClick={() => handleDelete(i)}>Delete</Button>
+                <TableCell className="text-right">
+                  <div className="flex gap-2 justify-end">
+                    <Button size="sm" variant="outline" onClick={() => openPreviewModal(it.data)}>
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => openUpdateModal(i)}>
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDelete(i)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
-          </TableBody>
-        </Table>
-        <Pagination className="mt-4">
-          <PaginationContent>
-            <PaginationPrevious onClick={() => setCurrentPage(p => Math.max(1, p - 1))} />
-            {Array.from({ length: totalPages }, (_, idx) => (
-              <PaginationItem key={idx}>
-                <PaginationLink
-                  isActive={currentPage === idx + 1}
-                  onClick={() => setCurrentPage(idx + 1)}
-                >
-                  {idx + 1}
-                </PaginationLink>
-              </PaginationItem>
-            ))}
-            <PaginationNext onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} />
-          </PaginationContent>
-        </Pagination>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing {Math.min((currentPage - 1) * pageSize + 1, sorted.length)} to{" "}
+              {Math.min(currentPage * pageSize, sorted.length)} of {sorted.length} results
+            </p>
+            <Pagination>
+              <PaginationContent>
+                <PaginationPrevious 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                />
+                {Array.from({ length: totalPages }, (_, idx) => (
+                  <PaginationItem key={idx}>
+                    <PaginationLink
+                      isActive={currentPage === idx + 1}
+                      onClick={() => setCurrentPage(idx + 1)}
+                    >
+                      {idx + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationNext 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                />
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
 
         {/* Create Modal */}
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>

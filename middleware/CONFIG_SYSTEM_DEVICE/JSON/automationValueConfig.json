@@ -1,0 +1,20 @@
+[
+    {
+        "name":"Temperature_1",
+        "topic":"sensor/data",
+        "config":{
+            "key_value":"temp",
+            "value":60,
+            "logic":">",
+            "auto":true
+        },
+        "relay":{
+            "name":"relay_1",
+            "pin":1,
+            "logic":true,
+            "address":32,
+            "bus":0
+        }
+    }
+
+]

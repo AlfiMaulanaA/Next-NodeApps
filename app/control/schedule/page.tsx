@@ -2,57 +2,130 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import Swal from 'sweetalert2';
-import Flatpickr from 'react-flatpickr';
-import 'flatpickr/dist/flatpickr.css';
-import { v4 as uuidv4 } from 'uuid';
-
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import Swal from "sweetalert2";
+import Flatpickr from "react-flatpickr";
+import "flatpickr/dist/flatpickr.css";
+import { v4 as uuidv4 } from "uuid";
+import MqttStatus from "@/components/mqtt-status";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
 // Import komponen UI yang diperlukan
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator"; // Asumsi Separator ada di ui/separator
-import { RotateCw, ClockFading } from "lucide-react";
-import { connectMQTT, getMQTTClient, disconnectMQTT } from '@/lib/mqttClient';
-import MqttStatus from '@/components/mqtt-status'; // Komponen status MQTT yang akan kita buat
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { RotateCw, ClockFading, Calendar, Users, Settings } from "lucide-react";
+import { connectMQTT, getMQTTClient, disconnectMQTT } from "@/lib/mqttClient";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
+// Type definitions
+interface Control {
+  pin: number;
+  customName: string;
+  onTime: string;
+  offTime: string;
+}
+
+interface Device {
+  id: string;
+  customName: string;
+  deviceName?: string;
+  name?: string;
+  mac: string;
+  address: number;
+  device_bus: number;
+  part_number: string;
+  startDay: string;
+  endDay: string;
+  controls: Control[];
+}
+
+interface AvailableDevice {
+  id: string;
+  name: string;
+  address: number;
+  device_bus: number;
+  part_number: string;
+  mac: string;
+  manufacturer: string;
+  device_type: string;
+  topic: string;
+}
+
+interface MQTTPayload {
+  result?: string;
+  message?: string;
+  devices?: Device[];
+  availableDevices?: AvailableDevice[];
+  mac?: string;
+}
+
+interface MQTTMessage {
+  action: string;
+  data?: any;
+}
 
 const DeviceSchedulerControl = () => {
   // Namun, kita tetap menyimpannya di sini untuk logging dan feedback SweetAlerts
-  const [mqttConnectionStatus, setMqttConnectionStatus] = useState('');
-  const [mqttConnectionStatusClass, setMqttConnectionStatusClass] = useState('text-warning'); // Mungkin tidak lagi digunakan untuk UI status di header
+  const [mqttConnectionStatus, setMqttConnectionStatus] = useState("");
+  const [mqttConnectionStatusClass, setMqttConnectionStatusClass] =
+    useState("text-warning"); // Mungkin tidak lagi digunakan untuk UI status di header
 
-  const [availableDevices, setAvailableDevices] = useState([]);
-  const [devices, setDevices] = useState([]);
-  const [autoControl, setAutoControl] = useState(false);
+  const [availableDevices, setAvailableDevices] = useState<AvailableDevice[]>(
+    []
+  );
+  const [devices, setDevices] = useState<Device[]>([]);
   const [editingDevice, setEditingDevice] = useState(false);
-  const [selectedDeviceName, setSelectedDeviceName] = useState('');
+  const [selectedDeviceName, setSelectedDeviceName] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const formRef = useRef(null);
 
   const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-  const initialDeviceForm = {
+  const initialDeviceForm: Device = {
     id: "",
     customName: "",
     deviceName: "",
+    name: "",
     mac: "",
-    address: "",
-    device_bus: "",
+    address: 0,
+    device_bus: 0,
     part_number: "",
     startDay: "Mon",
     endDay: "Sun",
     controls: [{ pin: 1, customName: "", onTime: "08:00", offTime: "17:00" }],
   };
-  const [deviceForm, setDeviceForm] = useState(initialDeviceForm);
+  const [deviceForm, setDeviceForm] = useState<Device>(initialDeviceForm);
 
   const timePickerConfig = {
     enableTime: true,
@@ -67,20 +140,37 @@ const DeviceSchedulerControl = () => {
   const topicResponse = "response_control_scheduler";
   const macAddressRequestTopic = "mqtt_config/get_mac_address";
   const macAddressResponseTopic = "mqtt_config/response_mac";
-  const commandDeviceI2cTopic = "command_device_i2c"; // Topik untuk perintah getDataI2C
+  const availableDevicesTopic = "MODULAR_DEVICE/AVAILABLES";
 
-  const publishMessage = useCallback((message, topic = topicCommand) => {
-    const currentClient = getMQTTClient();
-    if (currentClient && currentClient.connected) {
-      currentClient.publish(topic, JSON.stringify(message), (err) => {
-        if (err) {
-          console.error("Failed to publish message:", err);
+  const publishMessage = useCallback(
+    (message: MQTTMessage, topic = topicCommand) => {
+      const currentClient = getMQTTClient();
+      if (currentClient && currentClient.connected) {
+        // Validate message has action
+        if (!message.action) {
+          console.error(
+            "Attempted to publish message without action:",
+            message
+          );
+          return;
         }
-      });
-    } else {
-      console.error("MQTT client not connected for publishing.");
-    }
-  }, []);
+
+        currentClient.publish(
+          topic,
+          JSON.stringify(message),
+          {},
+          (err?: Error) => {
+            if (err) {
+              console.error("Failed to publish message:", err);
+            }
+          }
+        );
+      } else {
+        console.error("MQTT client not connected for publishing.");
+      }
+    },
+    []
+  );
 
   const getConfig = useCallback(() => {
     publishMessage({ action: "get" });
@@ -95,9 +185,9 @@ const DeviceSchedulerControl = () => {
   }, [publishMessage]);
 
   useEffect(() => {
-    let currentClient = null;
+    let currentClient: any = null;
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       try {
         currentClient = connectMQTT();
 
@@ -108,11 +198,17 @@ const DeviceSchedulerControl = () => {
           currentClient.subscribe("service/response", { qos: 0 });
           currentClient.subscribe(topicResponse);
           currentClient.subscribe(macAddressResponseTopic);
-          currentClient.subscribe(commandDeviceI2cTopic); // Subscribe untuk respon getDataI2C jika ada
-          getConfig();
+          currentClient.subscribe(availableDevicesTopic);
+          // Wait a moment before sending initial requests
+          setTimeout(() => {
+            console.log("[DEBUG] Sending initial config request");
+            getConfig();
+            console.log("[DEBUG] Requesting available devices");
+            getAvailableDevices();
+          }, 1000);
         });
 
-        currentClient.on("error", (err) => {
+        currentClient.on("error", (err: Error) => {
           console.error("MQTT Error (from component):", err.message);
           setMqttConnectionStatus("Error: " + err.message);
           setMqttConnectionStatusClass("text-danger");
@@ -124,17 +220,20 @@ const DeviceSchedulerControl = () => {
           setMqttConnectionStatusClass("text-danger");
         });
 
-        currentClient.on("message", (topic, message) => {
-          console.log("Message arrived:", message.toString());
+        currentClient.on("message", (topic: string, message: Buffer) => {
           try {
-            const payload = JSON.parse(message.toString());
+            const payload: MQTTPayload = JSON.parse(message.toString());
+            // Silent processing
 
             if (topic === macAddressResponseTopic && payload.mac) {
-              setDeviceForm(prev => ({ ...prev, mac: payload.mac }));
-            } else if (topic === commandDeviceI2cTopic && payload.availableDevices) { // Respon untuk getDataI2C
-                setAvailableDevices(payload.availableDevices);
-            }
-            else if (payload.result) {
+              setDeviceForm((prev) => ({ ...prev, mac: payload.mac || "" }));
+              console.log("MAC Address retrieved automatically:", payload.mac);
+            } else if (topic === availableDevicesTopic) {
+              // Handle available devices from dedicated topic (silent)
+              if (Array.isArray(payload)) {
+                setAvailableDevices(payload as AvailableDevice[]);
+              }
+            } else if (payload.result) {
               setMqttConnectionStatus(payload.result);
               if (payload.result === "success") {
                 Swal.fire({
@@ -146,30 +245,38 @@ const DeviceSchedulerControl = () => {
                 Swal.fire({
                   icon: "error",
                   title: "Error",
-                  text: payload.message || "There was an error processing the request.",
+                  text:
+                    payload.message ||
+                    "There was an error processing the request.",
                 });
               }
-            } else if (Array.isArray(payload.devices) && payload.devices.length > 0) {
-              setDevices(payload.devices);
-              setAutoControl(payload.autoControl);
-            } else if (payload.availableDevices && Array.isArray(payload.availableDevices)) {
-              setAvailableDevices(payload.availableDevices);
+            } else if (topic === topicResponse && Array.isArray(payload)) {
+              // Handle config response as array format
+              setDevices(payload as Device[]);
+            } else if (topic === topicResponse && payload.devices) {
+              // Handle config response with devices property (fallback)
+              setDevices(payload.devices || []);
             } else {
-              console.log("Received payload does not match expected structure or contains no relevant data.");
+              console.log(
+                "Received payload does not match expected structure or contains no relevant data."
+              );
             }
           } catch (error) {
             console.error("Error parsing message:", error);
             Swal.fire({
               icon: "error",
               title: "Error",
-              text: "There was an error parsing the MQTT message.",
+              text: `There was an error parsing the MQTT message: ${
+                error instanceof Error ? error.message : "Unknown error"
+              }`,
             });
           }
         });
-
       } catch (error) {
-        console.error("Error connecting MQTT:", error.message);
-        setMqttConnectionStatus("Connection failed: " + error.message);
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        console.error("Error connecting MQTT:", errorMessage);
+        setMqttConnectionStatus("Connection failed: " + errorMessage);
         setMqttConnectionStatusClass("text-danger");
       }
     }
@@ -182,29 +289,70 @@ const DeviceSchedulerControl = () => {
         currentClient.removeAllListeners("message");
       }
     };
-  }, [getConfig, macAddressResponseTopic, topicResponse, commandDeviceI2cTopic]); // Tambahkan commandDeviceI2cTopic ke dependensi
+  }, [getConfig, macAddressResponseTopic, topicResponse]);
 
   const uniqueDeviceNames = useMemo(() => {
-    return [...new Set(availableDevices.map((device) => device.name))];
-  }, [availableDevices]);
+    let names = [...new Set(availableDevices.map((device) => device.name))];
 
-  const onDeviceNameChange = (value) => {
+    // Fallback: if no available devices but we have existing scheduled devices, use those names
+    if (names.length === 0 && devices.length > 0) {
+      names = [
+        ...new Set(
+          devices
+            .map((device) => device.name || device.deviceName)
+            .filter((name): name is string => !!name)
+        ),
+      ];
+    }
+
+    return names;
+  }, [availableDevices, devices]);
+
+  const onDeviceNameChange = (value: string) => {
     setSelectedDeviceName(value);
-    const selectedDevice = availableDevices.find((device) => device.name === value);
+
+    // First try to find in availableDevices
+    let selectedDevice = availableDevices.find(
+      (device) => device.name === value
+    );
+
+    // Fallback: try to find in existing scheduled devices
+    if (!selectedDevice) {
+      const existingDevice = devices.find(
+        (device) => device.name === value || device.deviceName === value
+      );
+      if (existingDevice) {
+        selectedDevice = {
+          id: existingDevice.id,
+          name: existingDevice.name || existingDevice.deviceName || "",
+          mac: existingDevice.mac,
+          address: existingDevice.address,
+          device_bus: existingDevice.device_bus,
+          part_number: existingDevice.part_number,
+          manufacturer: "",
+          device_type: "",
+          topic: "",
+        };
+      }
+    }
+
     if (selectedDevice) {
-      setDeviceForm(prev => ({
+      setDeviceForm((prev) => ({
         ...prev,
         deviceName: value,
+        name: value, // Add name field as required by middleware
         address: selectedDevice.address,
         device_bus: selectedDevice.device_bus,
         part_number: selectedDevice.part_number,
+        mac: selectedDevice.mac || prev.mac, // Use device mac if available
       }));
     } else {
-      setDeviceForm(prev => ({
+      setDeviceForm((prev) => ({
         ...prev,
         deviceName: value,
-        address: "",
-        device_bus: "",
+        name: value,
+        address: 0,
+        device_bus: 0,
         part_number: "",
       }));
     }
@@ -213,30 +361,51 @@ const DeviceSchedulerControl = () => {
   const showAddDeviceModal = () => {
     setEditingDevice(false);
     setDeviceForm(initialDeviceForm);
-    setSelectedDeviceName('');
-    getAvailableDevices(); // Mungkin ini perlu diganti dengan command "getDataI2C"
+    setSelectedDeviceName("");
+    getAvailableDevices();
     requestMacAddress();
     setIsModalOpen(true);
   };
 
-  const showEditDeviceModal = (device) => {
+  const showEditDeviceModal = (device: Device) => {
     setEditingDevice(true);
-    setDeviceForm({ ...device, deviceName: device.deviceName || '' });
-    setSelectedDeviceName(device.deviceName || '');
-    getAvailableDevices(); // Mungkin ini perlu diganti dengan command "getDataI2C"
+    setDeviceForm({
+      ...device,
+      deviceName: device.deviceName || device.name || "",
+      name: device.name || device.deviceName || "",
+    });
+    setSelectedDeviceName(device.deviceName || device.name || "");
+    getAvailableDevices();
     setIsModalOpen(true);
   };
 
-  const saveDevice = (e) => {
+  const saveDevice = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate required fields
+    if (
+      !deviceForm.customName ||
+      !deviceForm.name ||
+      !deviceForm.mac ||
+      !deviceForm.address
+    ) {
+      Swal.fire({
+        icon: "error",
+        title: "Validation Error",
+        text: "Please fill in all required fields (Custom Name, Device Name, MAC Address, Address).",
+      });
+      return;
+    }
+
     const action = editingDevice ? "set" : "add";
     const dataToSend = { ...deviceForm };
 
+    // Ensure required fields are present for middleware
     if (!editingDevice) {
       dataToSend.id = uuidv4();
     }
 
-    publishMessage({ action, data: JSON.parse(JSON.stringify(dataToSend)) });
+    publishMessage({ action, data: dataToSend });
 
     setIsModalOpen(false);
     Swal.fire({
@@ -249,9 +418,9 @@ const DeviceSchedulerControl = () => {
     });
   };
 
-  const deleteDevice = (id) => {
+  const deleteDevice = (id: string) => {
     publishMessage({ action: "delete", data: { id } });
-    setDevices(prev => prev.filter((device) => device.id !== id));
+    setDevices((prev) => prev.filter((device) => device.id !== id));
 
     Swal.fire({
       icon: "success",
@@ -269,7 +438,7 @@ const DeviceSchedulerControl = () => {
     while (usedPins.has(nextPin)) {
       nextPin++;
     }
-    setDeviceForm(prev => ({
+    setDeviceForm((prev) => ({
       ...prev,
       controls: [
         ...prev.controls,
@@ -278,45 +447,24 @@ const DeviceSchedulerControl = () => {
     }));
   };
 
-  const removeControl = (controlToRemove) => {
-    setDeviceForm(prev => ({
+  const removeControl = (controlToRemove: Control) => {
+    setDeviceForm((prev) => ({
       ...prev,
       controls: prev.controls.filter((c) => c !== controlToRemove),
     }));
   };
 
-  const updateAutoControl = (checked) => {
-    setAutoControl(checked);
-    publishMessage({
-      action: "update_autoControl",
-      data: { autoControl: checked },
-    });
-  };
-
   const restartService = () => {
-    const services = ["modular_i2c.service", "scheduler_control.service"];
-
-    const command = JSON.stringify({
-      action: "restart",
-      services: services,
-    });
-
-    const client = getMQTTClient();
-    if (client && client.connected) {
-      client.publish("service/command", command);
-    } else {
-      console.error("MQTT client not connected to send restart command.");
-      Swal.fire({
-        title: "Connection Error",
-        text: "MQTT client is not connected. Cannot send restart command.",
-        icon: "error",
-      });
-      return;
-    }
+    // The middleware AutomationSchedule.py handles service restart internally
+    // after config modifications. We just need to wait and refresh config.
+    setTimeout(() => {
+      getConfig();
+      Swal.close();
+    }, 3000);
 
     Swal.fire({
-      title: "Restarting Services",
-      text: "Please wait while the services are being restarted...",
+      title: "Updating Configuration",
+      text: "Please wait while the scheduler is being updated...",
       icon: "info",
       allowOutsideClick: false,
       showConfirmButton: false,
@@ -326,274 +474,468 @@ const DeviceSchedulerControl = () => {
     });
   };
 
-  const handleControlChange = (index, field, value) => {
+  const handleControlChange = (
+    index: number,
+    field: keyof Control,
+    value: string | number
+  ) => {
     const newControls = [...deviceForm.controls];
-    newControls[index][field] = value;
-    setDeviceForm(prev => ({ ...prev, controls: newControls }));
+    (newControls[index] as any)[field] = value;
+    setDeviceForm((prev) => ({ ...prev, controls: newControls }));
   };
 
-  // Fungsi untuk memanggil getDataI2C
-  const requestGetDataI2C = useCallback(() => {
-    const client = getMQTTClient();
-    if (client && client.connected) {
-      client.publish(commandDeviceI2cTopic, JSON.stringify({ command: "getDataI2C" }));
-    } else {
-      console.error("MQTT client not connected to send getDataI2C command.");
-    }
-  }, [commandDeviceI2cTopic]);
+  // Refresh data and get latest config
+  const refreshData = useCallback(() => {
+    getConfig();
+    getAvailableDevices();
+  }, [getConfig, getAvailableDevices]);
+
+  // Calculate summary data
+  const totalDevices = devices.length;
+  const activeDevices = devices.filter(
+    (d) => d.controls && d.controls.length > 0
+  ).length;
+  const totalControls = devices.reduce(
+    (sum, device) => sum + (device.controls?.length || 0),
+    0
+  );
+
+  const summaryItems = [
+    { label: "Total Devices", value: totalDevices, icon: Calendar },
+    {
+      label: "Active",
+      value: activeDevices,
+      icon: Settings,
+      variant: "default" as const,
+    },
+    {
+      label: "Controls",
+      value: totalControls,
+      icon: Users,
+      variant: "secondary" as const,
+    },
+  ];
 
   return (
-    <SidebarInset>
-      <header className="flex h-16 items-center justify-between border-b px-4">
-        <div className="flex items-center gap-2">
-          <SidebarTrigger className="-ml-1" />
+    <div className="h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center gap-3">
+          <SidebarTrigger />
           <Separator orientation="vertical" className="mr-2 h-4" />
-          <ClockFading className="h-5 w-5" />
-          <h1 className="text-lg font-semibold">Device Scheduler Control</h1> {/* Judul diubah */}
+          <ClockFading className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl font-bold">Device Scheduler Control</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <MqttStatus /> {/* Komponen status MQTT */}
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={requestGetDataI2C} // Panggil fungsi yang diperbarui
-          >
-            <RotateCw />
+        <div className="flex gap-2">
+          <MqttStatus />
+          <Button variant="outline" onClick={refreshData}>
+            <RotateCw className="h-4 w-4 mr-2" />
+            Refresh
           </Button>
-          <Button
-            size="sm"
-            variant="default"
-            onClick={showAddDeviceModal} // Memanggil modal tambah perangkat
-          >
-            Add Device
-          </Button>
+          <Button onClick={showAddDeviceModal}>Add Device</Button>
         </div>
-      </header>
+      </div>
 
-      {/* Konten utama yang sebelumnya ada di CardContent */}
-      <div className="flex-1 overflow-y-auto p-4"> {/* Menambahkan padding dan scrollability */}
-        <div className="mb-4">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <Button size="sm" onClick={getConfig} className="mr-2">
-                Get Configuration
-              </Button>
-              {/* Tombol Add Device dipindahkan ke header */}
+      <div className="p-4 space-y-4 min-h-screen">
+        {/* Summary Cards */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              <CardTitle>Scheduler Summary</CardTitle>
             </div>
-            <div>
-              <div className="flex items-center">
-                <Switch
-                  checked={autoControl}
-                  onCheckedChange={updateAutoControl}
-                  id="auto-control"
-                />
-                <Label htmlFor="auto-control" className="ml-3 mt-2">Control State</Label>
-              </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {summaryItems.map((item, index) => (
+                <div
+                  key={index}
+                  className="text-center p-4 bg-muted/50 rounded-lg"
+                >
+                  <item.icon className="h-8 w-8 mx-auto mb-2 text-primary" />
+                  <div className="text-2xl font-bold">{item.value}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {item.label}
+                  </div>
+                </div>
+              ))}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Control Settings */}
+        <div className="flex justify-between items-center p-4 bg-muted/20 rounded-lg border">
+          <div className="space-y-1">
+            <h3 className="font-semibold">Scheduler Configuration</h3>
+            <p className="text-sm text-muted-foreground">
+              Manage scheduled device configurations
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <Button size="sm" onClick={getConfig} variant="outline">
+              Get Configuration
+            </Button>
+          </div>
+        </div>
+
+        {/* Devices Table */}
+        <div className="rounded-lg border bg-background shadow-sm">
+          <div className="p-4">
+            <h3 className="text-lg font-semibold mb-4">
+              Scheduled Devices ({devices.length})
+            </h3>
           </div>
 
-          <h5 className="text-lg font-semibold mb-3">Control Scheduler</h5>
-          {devices.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Custom Name</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Device Bus</TableHead>
-                  <TableHead>Days</TableHead>
-                  <TableHead>Controls</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {devices.map((device, index) => (
-                  <TableRow key={device.id}>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>{device.customName}</TableCell>
-                    <TableCell>{device.address}</TableCell>
-                    <TableCell>{device.device_bus}</TableCell>
-                    <TableCell>
-                      <strong>Active Days: </strong> {device.startDay} - {device.endDay}
-                    </TableCell>
-                    <TableCell>
-                      <ul>
-                        {device.controls.map((control) => (
-                          <li key={control.pin} className="flex justify-between text-sm">
-                            <span>
-                              Name: <span className="font-bold">{control.customName}</span> - Pin:{" "}
-                              <span className="font-bold">{control.pin}</span>
-                            </span>
-                            <span>
-                              Turn On: <span className="font-bold">{control.onTime} </span> - Turn Off:{" "}
-                              <span className="font-bold">{control.offTime}</span>
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </TableCell>
-                    <TableCell>
-                      <Button size="sm" variant="outline" onClick={() => showEditDeviceModal(device)} className="mr-2">
-                        Edit
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => deleteDevice(device.id)}>
-                        Delete
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          {devices.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <Calendar className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-semibold mb-2">
+                No scheduled devices found
+              </h3>
+              <p className="mb-4">
+                Create your first scheduled device to get started
+              </p>
+              <Button variant="outline" onClick={showAddDeviceModal}>
+                Add Device
+              </Button>
+            </div>
           ) : (
-            <div className="text-center py-4">
-              <p className="text-gray-500">No devices found. Click "Get Configuration" to load or "Add Device" to create one.</p>
-              <Button variant="link" onClick={getConfig}>Get Configuration</Button>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="p-4 text-left font-medium">#</th>
+                    <th className="p-4 text-left font-medium">Custom Name</th>
+                    <th className="p-4 text-left font-medium">Device Name</th>
+                    <th className="p-4 text-left font-medium">Address</th>
+                    <th className="p-4 text-left font-medium">Device Bus</th>
+                    <th className="p-4 text-left font-medium">Schedule</th>
+                    <th className="p-4 text-left font-medium">Controls</th>
+                    <th className="p-4 text-center font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {devices.map((device, index) => {
+                    return (
+                      <tr
+                        key={device.id || index}
+                        className="border-b hover:bg-muted/30 transition-colors"
+                      >
+                        <td className="p-4 text-center font-medium text-muted-foreground">
+                          {index + 1}
+                        </td>
+                        <td className="p-4 font-medium">{device.customName}</td>
+                        <td className="p-4">
+                          {device.name || device.deviceName}
+                        </td>
+                        <td className="p-4">{device.address}</td>
+                        <td className="p-4">{device.device_bus}</td>
+                        <td className="p-4">
+                          <Badge variant="outline">
+                            {device.startDay} - {device.endDay}
+                          </Badge>
+                        </td>
+                        <td className="p-4">
+                          <div className="space-y-1">
+                            {device.controls &&
+                              device.controls.map((control, idx) => (
+                                <div
+                                  key={idx}
+                                  className="text-xs bg-muted/50 p-2 rounded"
+                                >
+                                  <div className="font-semibold">
+                                    {control.customName || `Pin ${control.pin}`}
+                                  </div>
+                                  <div className="text-muted-foreground">
+                                    Pin: {control.pin} | {control.onTime} -{" "}
+                                    {control.offTime}
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex gap-1 justify-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => showEditDeviceModal(device)}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => deleteDevice(device.id)}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
       </div>
 
-
       {/* Add/Edit Device Dialog */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-md md:max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center">
-              {editingDevice ? "Edit Device" : "Add Device"}
-              <Badge variant="secondary" onClick={getAvailableDevices} className="ml-2 cursor-pointer">
-                Get Devices
-              </Badge>
-            </DialogTitle>
+            <div className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              <DialogTitle>
+                {editingDevice ? "Edit Device" : "Add Device"}
+              </DialogTitle>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Configure device scheduling settings and time controls
+            </p>
           </DialogHeader>
-          <form onSubmit={saveDevice} ref={formRef}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-              <div className="col-span-1">
-                <Label htmlFor="device_name">Device Name</Label>
-                <Select value={selectedDeviceName} onValueChange={onDeviceNameChange} required>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a device" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {uniqueDeviceNames.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-1">
-                <Label htmlFor="custom_name">Custom Name</Label>
-                <Input
-                  id="custom_name"
-                  value={deviceForm.customName}
-                  onChange={(e) => setDeviceForm(prev => ({ ...prev, customName: e.target.value }))}
-                  placeholder="Enter Custom Name"
-                  required
-                />
-              </div>
-              <div className="col-span-1">
-                <Label htmlFor="startDay">Start Day</Label>
-                <Select value={deviceForm.startDay} onValueChange={(value) => setDeviceForm(prev => ({ ...prev, startDay: value }))} required>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select start day" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {daysOfWeek.map((day) => (
-                      <SelectItem key={day} value={day}>
-                        {day}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-1">
-                <Label htmlFor="endDay">End Day</Label>
-                <Select value={deviceForm.endDay} onValueChange={(value) => setDeviceForm(prev => ({ ...prev, endDay: value }))} required>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select end day" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {daysOfWeek.map((day) => (
-                      <SelectItem key={day} value={day}>
-                        {day}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          <form onSubmit={saveDevice} ref={formRef} className="space-y-6">
+            {/* Device Configuration Section */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">
+                Device Configuration
+              </h4>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <Label htmlFor="deviceName">Device Name *</Label>
+                  <Select
+                    value={selectedDeviceName}
+                    onValueChange={onDeviceNameChange}
+                  >
+                    <SelectTrigger id="deviceName">
+                      <SelectValue placeholder="Select a device" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {uniqueDeviceNames.length > 0 ? (
+                        uniqueDeviceNames.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="loading" disabled>
+                          No devices available
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="customName">Custom Name *</Label>
+                  <Input
+                    id="customName"
+                    value={deviceForm.customName}
+                    onChange={(e) =>
+                      setDeviceForm((prev) => ({
+                        ...prev,
+                        customName: e.target.value,
+                      }))
+                    }
+                    placeholder="Enter custom name"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="macAddress">
+                    MAC Address (Auto-retrieved) *
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="macAddress"
+                      value={deviceForm.mac}
+                      onChange={(e) =>
+                        setDeviceForm((prev) => ({
+                          ...prev,
+                          mac: e.target.value,
+                        }))
+                      }
+                      placeholder="XX:XX:XX:XX:XX:XX"
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={requestMacAddress}
+                    >
+                      Get MAC
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    MAC address will be automatically retrieved from the system
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="mb-3">
-              <h5 className="text-md font-semibold mb-2">Controls</h5>
-              <div className="max-h-60 overflow-y-auto pr-2">
+            {/* Schedule Settings Section */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">
+                Schedule Settings
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="startDay">Start Day *</Label>
+                  <Select
+                    value={deviceForm.startDay}
+                    onValueChange={(value) =>
+                      setDeviceForm((prev) => ({ ...prev, startDay: value }))
+                    }
+                  >
+                    <SelectTrigger id="startDay">
+                      <SelectValue placeholder="Select start day" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {daysOfWeek.map((day) => (
+                        <SelectItem key={day} value={day}>
+                          {day}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="endDay">End Day *</Label>
+                  <Select
+                    value={deviceForm.endDay}
+                    onValueChange={(value) =>
+                      setDeviceForm((prev) => ({ ...prev, endDay: value }))
+                    }
+                  >
+                    <SelectTrigger id="endDay">
+                      <SelectValue placeholder="Select end day" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {daysOfWeek.map((day) => (
+                        <SelectItem key={day} value={day}>
+                          {day}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* Control Settings Section */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">
+                Control Settings
+              </h4>
+              <div className="space-y-4 max-h-60 overflow-y-auto">
                 {deviceForm.controls.map((control, index) => (
-                  <div key={index} className="mb-4 p-3 border rounded-md">
-                    <hr className="my-2" />
-                    <div className="grid grid-cols-12 gap-2 items-center mb-2">
-                      <div className="col-span-9">
+                  <div
+                    key={index}
+                    className="p-4 border rounded-lg bg-muted/20"
+                  >
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-medium">Control {index + 1}</h4>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => removeControl(control)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <Label>Custom Name</Label>
                         <Input
                           value={control.customName}
-                          onChange={(e) => handleControlChange(index, 'customName', e.target.value)}
-                          placeholder="Custom Name for control"
+                          onChange={(e) =>
+                            handleControlChange(
+                              index,
+                              "customName",
+                              e.target.value
+                            )
+                          }
+                          placeholder="Control name"
                         />
                       </div>
-                      <div className="col-span-3 text-right">
-                        <Button type="button" variant="destructive" size="sm" onClick={() => removeControl(control)}>
-                          Remove
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
                       <div>
                         <Label>Pin</Label>
                         <Input
                           type="number"
                           value={control.pin}
-                          onChange={(e) => handleControlChange(index, 'pin', parseInt(e.target.value))}
-                          placeholder="Pin"
+                          onChange={(e) =>
+                            handleControlChange(
+                              index,
+                              "pin",
+                              parseInt(e.target.value)
+                            )
+                          }
+                          placeholder="Pin number"
                           required
                         />
                       </div>
                       <div>
                         <Label>Start Time</Label>
-                        <Flatpickr
-                          options={timePickerConfig}
+                        <Input
+                          type="time"
                           value={control.onTime}
-                          onChange={([date]) => handleControlChange(index, 'onTime', date ? Flatpickr.formatDate(date, "H:i") : "")}
-                          className="w-full p-2 border rounded-md"
-                          placeholder="On Time"
+                          onChange={(e) =>
+                            handleControlChange(index, "onTime", e.target.value)
+                          }
+                          placeholder="HH:MM"
                         />
                       </div>
-                      <div>
+                      <div className="md:col-span-3">
                         <Label>End Time</Label>
-                        <Flatpickr
-                          options={timePickerConfig}
+                        <Input
+                          type="time"
                           value={control.offTime}
-                          onChange={([date]) => handleControlChange(index, 'offTime', date ? Flatpickr.formatDate(date, "H:i") : "")}
-                          className="w-full p-2 border rounded-md"
-                          placeholder="Off Time"
+                          onChange={(e) =>
+                            handleControlChange(
+                              index,
+                              "offTime",
+                              e.target.value
+                            )
+                          }
+                          placeholder="HH:MM"
                         />
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-
-            <div className="flex justify-end mt-4">
-              <Button type="button" variant="secondary" size="sm" onClick={addControl} className="mr-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={addControl}
+                className="mt-4 w-full"
+              >
                 Add Control
               </Button>
-              <Button type="submit" size="sm">
-                {editingDevice ? "Update" : "Add"} Device
+            </div>
+
+            {/* Submit Button */}
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">
+                {editingDevice ? "Update Device" : "Add Device"}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
-    </SidebarInset>
+    </div>
   );
 };
 

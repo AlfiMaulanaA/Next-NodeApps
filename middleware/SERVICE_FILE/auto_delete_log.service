@@ -1,0 +1,11 @@
+[Unit]
+Description=My Sample Service
+After=multi-user.target
+
+[Service]
+Type=idle
+ExecStart=/usr/bin/python3 /home/subrack/Subrack_Middleware/autoDeleteLog.py
+WorkingDirectory=/home/subrack/Subrack_Middleware/
+
+[Install]
+WantedBy=multi-user.target

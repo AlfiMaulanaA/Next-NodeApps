@@ -4,26 +4,29 @@ import { useEffect, useState, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCw, Cpu, Search, Server, CircleCheck, CircleX, Eye, EyeOff } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
+import { RotateCw, Cpu, Server, CircleCheck, CircleX, Eye, EyeOff, Activity } from "lucide-react";
 import { connectMQTT } from "@/lib/mqttClient";
 import { useSearchFilter } from "@/hooks/use-search-filter";
-import MqttStatus from "@/components/mqtt-status";
 import { Toggle } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
+import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
+import MqttStatus from "@/components/mqtt-status";
+import { Input } from "@/components/ui/input";
 
 // Define the type for a device
 interface Device {
   profile: {
     name: string;
+    device_type: string;
+    manufacturer: string;
     part_number: string;
     topic: string;
   };
   protocol_setting: {
-    address: string;
-    device_bus: string;
+    protocol: string;
+    address: number;
+    device_bus: number;
   };
 }
 
@@ -254,8 +257,30 @@ export default function DeviceManagerPage() {
     }));
   };
 
+  const refreshData = () => {
+    clientRef.current?.publish(
+      "command_device_i2c",
+      JSON.stringify({ command: "getDataI2C" })
+    );
+  };
+
+  // Calculate summary data
+  const totalDevices = devices.length;
+  const activeDevices = Object.keys(deviceTopicPayloads).length;
+  const relayDevices = devices.filter(d => ["RELAY", "RELAYMINI"].includes(d.profile.part_number)).length;
+  const sensorDevices = totalDevices - relayDevices;
+  
+
+  const summaryItems = [
+    { label: "Total", value: totalDevices, icon: Server },
+    { label: "Active", value: activeDevices, icon: Activity, variant: "default" as const },
+    { label: "Relays", value: relayDevices, icon: CircleCheck, variant: "secondary" as const },
+    { label: "Sensors", value: sensorDevices, icon: CircleX, variant: "outline" as const }
+  ];
+
   return (
     <SidebarInset>
+      {/* Header */}
       <header className="flex h-16 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
           <SidebarTrigger className="-ml-1" />
@@ -269,176 +294,205 @@ export default function DeviceManagerPage() {
             variant="outline"
             size="icon"
             className="h-8 w-8"
-            onClick={() => {
-              clientRef.current?.publish(
-                "command_device_i2c",
-                JSON.stringify({ command: "getDataI2C" })
-              );
-            }}
+            onClick={refreshData}
           >
-            <RotateCw />
+            <RotateCw className="h-4 w-4" />
           </Button>
         </div>
       </header>
+      
+      {/* Search */}
+      <div className="px-4 py-2 border-b">
+        <Input
+          placeholder="Search devices by name, part number, topic, or address..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="max-w-sm"
+        />
+      </div>
 
-      {/* Bagian untuk menampilkan data MQTT Broker Server */}
-      <Card className="m-4">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Server className="h-5 w-5" /> MQTT Broker Server Info
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {mqttBrokerData ? (
-            <div className="bg-card text-card-foreground rounded-lg shadow-sm p-4 border">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                <div className="col-span-2"><span className="font-medium">MAC:</span> {mqttBrokerData.mac_address}</div>
-                <div><span className="font-medium">Broker Address:</span> {mqttBrokerData.broker_address}</div>
-                <div><span className="font-medium">Broker Port:</span> {mqttBrokerData.broker_port}</div>
-                <div><span className="font-medium">Broker Username:</span> {mqttBrokerData.username || '-'}</div>
-                <div><span className="font-medium">Broker Password:</span> {mqttBrokerData.password ? '********' : '-'}</div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Summary Cards */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Server className="h-5 w-5" />
+              <CardTitle>Device Summary</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {summaryItems.map((item, index) => (
+                <div
+                  key={index}
+                  className="text-center p-4 bg-muted/50 rounded-lg"
+                >
+                  <item.icon className="h-8 w-8 mx-auto mb-2 text-primary" />
+                  <div className="text-2xl font-bold">{item.value}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {item.label}
+                  </div>
+                  {item.variant && (
+                    <Badge variant={item.variant} className="mt-1">
+                      {item.label}
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* MQTT Broker Info Card */}
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Server className="h-5 w-5 text-blue-500" /> MQTT Broker Server Info
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {mqttBrokerData ? (
+              <div className="bg-card text-card-foreground rounded-lg shadow-sm p-4 border">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                  <div className="col-span-2"><span className="font-medium">MAC:</span> {mqttBrokerData.mac_address}</div>
+                  <div><span className="font-medium">Broker Address:</span> {mqttBrokerData.broker_address}</div>
+                  <div><span className="font-medium">Broker Port:</span> {mqttBrokerData.broker_port}</div>
+                  <div><span className="font-medium">Broker Username:</span> {mqttBrokerData.username || '-'}</div>
+                  <div><span className="font-medium">Broker Password:</span> {mqttBrokerData.password ? '********' : '-'}</div>
+                </div>
               </div>
-            </div>
-          ) : (
-            <p className="text-muted-foreground text-center py-4">No broker server data received yet.</p>
-          )}
-        </CardContent>
-      </Card>
+            ) : (
+              <div className="text-muted-foreground text-center py-4">No broker server data received yet.</div>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card className="m-4">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Connected Devices</CardTitle>
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search devices by name, part number, topic, or address..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-8 w-64"
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {filteredData.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredData.map((device: Device) => { // Hapus 'index' karena tidak digunakan sebagai key lagi
-                const fullDevicePayload = deviceTopicPayloads[device.profile.topic];
-                const showLiveData = showLiveDataState[device.profile.topic];
+        {/* Devices Grid */}
+        <Card className="border-l-4 border-l-green-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="h-5 w-5 text-green-500" /> Connected Devices
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {filteredData.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredData.map((device: Device) => {
+                  const fullDevicePayload = deviceTopicPayloads[device.profile.topic];
+                  const showLiveData = showLiveDataState[device.profile.topic];
 
-                let parsedValue: ParsedValueData | null = null;
-                if (fullDevicePayload && typeof fullDevicePayload.value === 'string') {
-                  try {
-                    parsedValue = JSON.parse(fullDevicePayload.value);
-                  } catch (e) {
-                    console.error(`Error parsing value for topic ${device.profile.topic}:`, e);
+                  let parsedValue: ParsedValueData | null = null;
+                  if (fullDevicePayload && typeof fullDevicePayload.value === 'string') {
+                    try {
+                      parsedValue = JSON.parse(fullDevicePayload.value);
+                    } catch (e) {
+                      console.error(`Error parsing value for topic ${device.profile.topic}:`, e);
+                    }
                   }
-                }
 
-                // Tentukan apakah toggle harus dinonaktifkan
-                const isControlDisabled = !(device.profile.part_number === "RELAY" || device.profile.part_number === "RELAYMINI");
+                  const isControlDisabled = !(device.profile.part_number === "RELAY" || device.profile.part_number === "RELAYMINI");
 
-                return (
-                  // Gunakan device.profile.topic sebagai key yang lebih stabil
-                  <Card key={device.profile.topic} className="border-l-4 border-green-500 shadow-sm">
-                    <CardHeader className="pb-2">
-                      <div className="flex justify-between items-center">
-                        <CardTitle className="text-lg font-semibold truncate">
-                          {device.profile.name}
-                        </CardTitle>
-                        {/* Tombol Toggle Live Data */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => toggleLiveDataVisibility(device.profile.topic)}
-                          className="h-7 w-7"
-                        >
-                          {showLiveData ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                      <p className="text-sm text-muted-foreground">PN: {device.profile.part_number}</p>
-                    </CardHeader>
-                    <CardContent className="text-sm">
-                      <p className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Address:</span>
-                        <Badge variant="secondary">{device.protocol_setting.address}</Badge>
-                      </p>
-                      <p className="flex justify-between items-center mt-1">
-                        <span className="text-muted-foreground">Bus:</span>
-                        <Badge variant="secondary">{device.protocol_setting.device_bus}</Badge>
-                      </p>
-                      <p className="flex justify-between items-center mt-1">
-                        <span className="text-muted-foreground">Topic:</span>
-                        <Badge variant="secondary" className="max-w-[150px] truncate">{device.profile.topic}</Badge>
-                      </p>
+                  return (
+                    <Card key={device.profile.topic} className="border-l-4 border-green-500 shadow-sm">
+                      <CardHeader className="pb-2">
+                        <div className="flex justify-between items-center">
+                          <CardTitle className="text-lg font-semibold truncate">
+                            {device.profile.name}
+                          </CardTitle>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => toggleLiveDataVisibility(device.profile.topic)}
+                            className="h-7 w-7"
+                          >
+                            {showLiveData ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                        <div className="text-sm text-muted-foreground">PN: {device.profile.part_number}</div>
+                      </CardHeader>
+                      <CardContent className="text-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Address:</span>
+                          <Badge variant="secondary">{device.protocol_setting.address}</Badge>
+                        </div>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-muted-foreground">Bus:</span>
+                          <Badge variant="secondary">{device.protocol_setting.device_bus}</Badge>
+                        </div>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="text-muted-foreground">Topic:</span>
+                          <Badge variant="secondary" className="max-w-[150px] truncate">{device.profile.topic}</Badge>
+                        </div>
 
-                      {/* Konten Live Data, ditampilkan berdasarkan showLiveData */}
-                      {showLiveData && (
-                        <>
-                          <Separator className="my-2" />
-                          <div className="text-xs text-muted-foreground mb-1">Live Data:</div>
-                          {fullDevicePayload ? (
-                            <>
-                              <div className="flex justify-between items-center col-span-2 text-sm">
-                                <span className="font-medium">Timestamp:</span>
-                                <Badge variant="outline" className="text-foreground">{fullDevicePayload.Timestamp}</Badge>
-                              </div>
-                              {parsedValue ? (
-                                <div className="grid grid-cols-2 gap-1 text-sm mt-2">
-                                  {Object.entries(parsedValue).map(([key, value]) => {
-                                    // Ekstrak nomor dari key, e.g., "drycontactInput1" -> "1"
-                                    const inputNumberMatch = key.match(/\d+/);
-                                    const displayKey = inputNumberMatch ? `Input ${inputNumberMatch[0]}` : key;
+                        {showLiveData && (
+                          <>
+                            <div className="border-t mt-2 pt-2">
+                              <div className="text-xs text-muted-foreground mb-1">Live Data:</div>
+                              {fullDevicePayload ? (
+                                <>
+                                  <div className="flex justify-between items-center text-sm mb-2">
+                                    <span className="font-medium">Timestamp:</span>
+                                    <Badge variant="outline" className="text-xs">{fullDevicePayload.Timestamp}</Badge>
+                                  </div>
+                                  {parsedValue ? (
+                                    <div className="space-y-1">
+                                      {Object.entries(parsedValue).map(([key, value]) => {
+                                        const inputNumberMatch = key.match(/\d+/);
+                                        const displayKey = inputNumberMatch ? `Input ${inputNumberMatch[0]}` : key;
 
-                                    // Hanya tampilkan jika key adalah drycontactInputX dan valuenya boolean
-                                    if (key.startsWith('drycontactInput') && typeof value === 'boolean') {
-                                      return (
-                                        <div key={key} className="flex justify-between items-center col-span-2">
-                                          <span className="font-medium">{displayKey}:</span>
-                                          <Toggle
-                                            pressed={value}
-                                            aria-label={`Toggle ${displayKey} status`}
-                                            onPressedChange={(newState) => handleToggleChange(device, key, newState)}
-                                            size="sm"
-                                            className={cn(
-                                              "data-[state=on]:bg-green-500 data-[state=off]:bg-red-500",
-                                              "data-[state=on]:text-white data-[state=off]:text-white",
-                                              "w-20 h-7 flex items-center justify-center text-xs gap-1"
-                                            )}
-                                            disabled={isControlDisabled}
-                                          >
-                                            {value ? (
-                                                <>ON <CircleCheck className="h-4 w-4" /></>
-                                            ) : (
-                                                <>OFF <CircleX className="h-4 w-4" /></>
-                                            )}
-                                          </Toggle>
-                                        </div>
-                                      );
-                                    }
-                                    return null;
-                                  })}
-                                </div>
+                                        if (key.startsWith('drycontactInput') && typeof value === 'boolean') {
+                                          return (
+                                            <div key={key} className="flex justify-between items-center">
+                                              <span className="font-medium text-xs">{displayKey}:</span>
+                                              <Toggle
+                                                pressed={value}
+                                                aria-label={`Toggle ${displayKey} status`}
+                                                onPressedChange={(newState) => handleToggleChange(device, key, newState)}
+                                                size="sm"
+                                                className={cn(
+                                                  "data-[state=on]:bg-green-500 data-[state=off]:bg-red-500",
+                                                  "data-[state=on]:text-white data-[state=off]:text-white",
+                                                  "w-16 h-6 flex items-center justify-center text-xs"
+                                                )}
+                                                disabled={isControlDisabled}
+                                              >
+                                                {value ? (
+                                                  <>ON <CircleCheck className="h-3 w-3" /></>
+                                                ) : (
+                                                  <>OFF <CircleX className="h-3 w-3" /></>
+                                                )}
+                                              </Toggle>
+                                            </div>
+                                          );
+                                        }
+                                        return null;
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs text-muted-foreground text-center">Value data not available.</div>
+                                  )}
+                                </>
                               ) : (
-                                <p className="text-xs text-muted-foreground text-center">Value data not available or malformed.</p>
+                                <div className="text-xs text-muted-foreground text-center">No live data yet.</div>
                               )}
-                            </>
-                          ) : (
-                            <p className="text-xs text-muted-foreground text-center">No live data yet.</p>
-                          )}
-                        </>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              No devices found matching your search.
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                            </div>
+                          </>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Cpu className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
+                <div className="text-lg mb-2">No devices found</div>
+                <div className="text-sm">Try adjusting your search criteria or refresh the data.</div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </SidebarInset>
   );
 }

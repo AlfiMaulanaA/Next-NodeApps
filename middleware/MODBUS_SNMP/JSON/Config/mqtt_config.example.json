@@ -1,0 +1,11 @@
+{
+  "enable": true,
+  "pub_interval": 10,
+  "broker_address" : "54.151.197.127",
+  "broker_port" : 1883,
+  "username": "dcim_modular_mqtt",
+  "password": "Pws212121",
+  "qos": 1,
+  "retain": true,
+  "pub_topic": ["/modular/dcim/device/"]
+}

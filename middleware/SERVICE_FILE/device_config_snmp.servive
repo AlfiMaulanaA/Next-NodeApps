@@ -1,0 +1,10 @@
+[Unit]
+Description=MQTT Service Device SNMP
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/npi/MODBUS_SNMP/device.py
+WorkingDirectory=/home/npi/MODBUS_SNMP
+
+[Install]
+WantedBy=multi-user.target

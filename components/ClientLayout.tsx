@@ -5,6 +5,7 @@ import React from "react";
 import { SidebarProvider } from "@/components/ui/sidebar"; // Pastikan path ini benar
 import { AppSidebar } from "@/components/app-sidebar";   // Pastikan path ini benar
 import { usePathname } from "next/navigation";
+import { Toaster } from "sonner";
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -18,6 +19,12 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       {/* Sidebar hanya ditampilkan jika hideSidebar adalah false */}
       {!hideSidebar && <AppSidebar />}
       <main className="flex-1 overflow-auto">{children}</main>
+      <Toaster 
+        position="top-right"
+        richColors
+        closeButton
+        duration={4000}
+      />
     </SidebarProvider>
   );
 }

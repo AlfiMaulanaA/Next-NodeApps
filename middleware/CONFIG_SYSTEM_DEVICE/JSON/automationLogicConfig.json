@@ -1,0 +1,93 @@
+{
+  "enabled": true,
+  "logic_rules": [
+    {
+      "id": "b0126d21-9ed5-4a79-88da-c31b6639aeca",
+      "name": "Temperature Control Rule",
+      "description": "Control relay based on temperature sensor readings",
+      "enabled": true,
+      "created_at": "2024-01-01 12:00:00",
+      "logic_groups": [
+        {
+          "name": "Temperature Check",
+          "logic_operator": "AND",
+          "conditions": [
+            {
+              "device_name": "temperature_sensor_1",
+              "field_name": "temperature",
+              "operator": ">",
+              "value": 25.0,
+              "unit": "°C"
+            },
+            {
+              "device_name": "humidity_sensor_1", 
+              "field_name": "humidity",
+              "operator": "<",
+              "value": 80.0,
+              "unit": "%"
+            }
+          ]
+        }
+      ],
+      "rule_logic_operator": "AND",
+      "actions": [
+        {
+          "action_type": "control_relay",
+          "target_device": "relay_module_1",
+          "relay_pin": 1,
+          "relay_state": 1,
+          "description": "Turn on cooling fan"
+        },
+        {
+          "action_type": "send_notification",
+          "message": "Cooling system activated due to high temperature",
+          "level": "info"
+        }
+      ]
+    },
+    {
+      "id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
+      "name": "Emergency Button Response",
+      "description": "Emergency button press triggers multiple relays",
+      "enabled": true,
+      "created_at": "2024-01-01 12:15:00",
+      "logic_groups": [
+        {
+          "name": "Emergency Button Check",
+          "logic_operator": "OR",
+          "conditions": [
+            {
+              "device_name": "emergency_button_1",
+              "field_name": "drycontactInput10",
+              "operator": "==",
+              "value": 1,
+              "unit": "digital"
+            }
+          ]
+        }
+      ],
+      "rule_logic_operator": "OR",
+      "actions": [
+        {
+          "action_type": "control_relay",
+          "target_device": "relay_module_1",
+          "relay_pin": 1,
+          "relay_state": 1,
+          "description": "Activate door lock"
+        },
+        {
+          "action_type": "control_relay",
+          "target_device": "relay_module_1",
+          "relay_pin": 2,
+          "relay_state": 1,
+          "description": "Activate alarm buzzer"
+        },
+        {
+          "action_type": "send_notification",
+          "message": "EMERGENCY BUTTON PRESSED - Security protocol activated",
+          "level": "error"
+        }
+      ]
+    }
+  ]
+}

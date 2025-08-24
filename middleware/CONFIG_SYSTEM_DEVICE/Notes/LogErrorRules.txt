@@ -1,0 +1,94 @@
+# ERROR LOG SENDER EXAMPLE (THIS WOULD BE IN A SEPARATE FILE/SERVICE)
+
+import paho.mqtt.client as mqtt
+import json
+import time
+from datetime import datetime
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Configuration for Sender ---
+SENDER_MQTT_BROKER_ADDRESS = "localhost" # Should match your broker
+SENDER_MQTT_BROKER_PORT = 1883           # Should match your broker
+ERROR_LOG_TOPIC = "subrack/error/log"    # Topic to send error logs to ErrorLogService
+
+# Function to connect to MQTT broker
+def connect_mqtt_sender():
+    client = mqtt.Client(client_id="ErrorLogSenderClient", protocol=mqtt.MQTTv311)
+    
+    def on_connect(c, userdata, flags, rc):
+        if rc == 0:
+            logging.info("Sender connected to MQTT broker successfully!")
+        else:
+            logging.error(f"Sender failed to connect, return code {rc}")
+
+    client.on_connect = on_connect
+    try:
+        client.connect(SENDER_MQTT_BROKER_ADDRESS, SENDER_MQTT_BROKER_PORT, 60)
+        client.loop_start() # Start the loop to handle connections and disconnections
+        return client
+    except Exception as e:
+        logging.error(f"Sender failed to connect to MQTT broker: {e}")
+        return None
+
+# Function to send an error log
+def send_error_log(mqtt_client, message, error_type="ERROR", source="UnknownService", error_code=None):
+    if not mqtt_client or not mqtt_client.is_connected():
+        logging.warning("MQTT client not connected, cannot send error log. Attempting reconnect...")
+        # Optional: Add reconnect logic here if loop_start() is not sufficient for your use case
+        return
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    error_payload = {
+        "data": message,
+        "type": error_type.upper(), # Ensure type is uppercase
+        "source": source,
+        "Timestamp": timestamp
+    }
+    if error_code is not None:
+        error_payload["error_code"] = error_code
+
+    try:
+        mqtt_client.publish(ERROR_LOG_TOPIC, json.dumps(error_payload), qos=1)
+        logging.info(f"Sent error: '{message}' (Type: {error_type}, Source: {source})")
+    except Exception as e:
+        logging.error(f"Failed to publish error message: {e}")
+
+# --- Example Usage for Sender ---
+if __name__ == "__main__":
+    sender_client = connect_mqtt_sender()
+    if sender_client:
+        # Give a moment for connection to establish
+        time.sleep(2) 
+
+        # Simulate different types of errors from different sources
+        send_error_log(sender_client, "Modbus connection timed out on RTU_1", "CRITICAL", "ModbusPoller", 5001)
+        time.sleep(1)
+        send_error_log(sender_client, "SNMP agent not responding on Device_A", "ERROR", "SNMPAgent", 6002)
+        time.sleep(1)
+        send_error_log(sender_client, "Invalid configuration file detected.", "WARNING", "ConfigLoader")
+        time.sleep(1)
+        send_error_log(sender_client, "Modbus connection timed out on RTU_1", "CRITICAL", "ModbusPoller", 5001) # Duplicate, should be filtered by ErrorLogService
+        time.sleep(1)
+        send_error_log(sender_client, "Disk space low on DataServer", "WARNING", "SystemMonitor", 1001)
+        
+        # Example of sending a resolve command (from frontend or admin tool)
+        # Note: This requires knowing the 'id' of the error you want to resolve.
+        # In a real scenario, the frontend would get this 'id' from the published error data.
+        # For this example, let's assume we know an ID, or we need to query first.
+        # For simplicity, I'll show the publish call structure:
+        # Assuming an error with ID 'ModbusPoller-CRITICAL-2894101140938368593-1721808000.0' exists
+        # send_resolve_command(sender_client, 'ModbusPoller-CRITICAL-2894101140938368593-1721808000.0')
+
+        try:
+            while True:
+                time.sleep(5) # Keep sender alive
+        except KeyboardInterrupt:
+            logging.info("Sender stopped by user.")
+        finally:
+            sender_client.loop_stop()
+            sender_client.disconnect()
+            logging.info("Sender MQTT client disconnected.")
+    else:
+        logging.error("Failed to start sender, MQTT client could not connect.")

@@ -33,27 +33,36 @@ export function useTotalErrorCount() {
 
         const topic = "subrack/error/data";
 
+        let hasSubscribed = false;
+
         // Function to subscribe and handle reconnects
         const subscribeToTopic = () => {
-            if (client.connected) {
+            if (client.connected && !hasSubscribed) {
                 client.subscribe(topic, (err) => {
                     if (err) {
                         console.error(`Failed to subscribe to ${topic}:`, err);
                     } else {
+                        hasSubscribed = true;
+                        // Only log first successful subscription
                         console.log(`Subscribed to ${topic} for error count.`);
                     }
                 });
-            } else {
+            } else if (!client.connected && !hasSubscribed) {
                 // If not connected, wait for 'connect' event to subscribe
-                client.once("connect", () => {
-                    client.subscribe(topic, (err) => {
-                        if (err) {
-                            console.error(`Failed to subscribe to ${topic} on reconnect:`, err);
-                        } else {
-                            console.log(`Subscribed to ${topic} on reconnect for error count.`);
-                        }
-                    });
-                });
+                const onConnect = () => {
+                    if (!hasSubscribed) {
+                        client.subscribe(topic, (err) => {
+                            if (err) {
+                                console.error(`Failed to subscribe to ${topic}:`, err);
+                            } else {
+                                hasSubscribed = true;
+                                // Suppress reconnect subscription logs
+                            }
+                        });
+                    }
+                };
+                
+                client.once("connect", onConnect);
             }
         };
 
