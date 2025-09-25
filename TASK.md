@@ -8,4 +8,5 @@ Modifikasi file deploy.sh untuk fitur deploy aplikasi ini ke server
 3. buat konfigurasi agar frontend ini menggunakan proxy reverve nginx dari port 3000 ke 8080
 4. Buat konfigurasi untuk pindahkan file dari /middleware/SERVICE_FILE/multiprocessing.service ke /etc/systemd/system dan aktifkan servicenya.
 5. Buat resume apa saja yang berhasil berapa portnya dll, dan buat handling jika gagal disalah satu stepnya maka skip dan lanjutkan ke step berikutnya.
-6. Buat kan fitur tersebut dan modifikasi file deploy.sh
+6. Lakukan juga untuk install requirment.txt pada /middleware/CONFIG_SYSTEM_DEVICE
+7. Buat kan fitur tersebut dan modifikasi file deploy.sh

@@ -14,7 +14,7 @@ BACKUP_DIR="/opt/nextjs_backups/$(date +%Y%m%d_%H%M%S)"
 APP_NAME="nextjs-mqtt-dashboard"
 FRONTEND_PORT=3000
 PROXY_PORT=8080
-SERVICE_NAME="subrack-controller"
+SERVICE_NAME="multiprocessing"
 
 # Colors for output
 RED='\033[0;31m'
@@ -26,6 +26,7 @@ NC='\033[0m' # No Color
 # Deployment status tracking
 declare -A DEPLOYMENT_STATUS
 DEPLOYMENT_STATUS[packages]=0
+DEPLOYMENT_STATUS[python_deps]=0
 DEPLOYMENT_STATUS[frontend]=0
 DEPLOYMENT_STATUS[nginx]=0
 DEPLOYMENT_STATUS[service]=0
@@ -76,6 +77,9 @@ check_and_install_packages() {
         "nginx:nginx:Nginx Web Server"
         "nodejs:node:Node.js Runtime"
         "npm:npm:Node Package Manager"
+        "python3:python3:Python 3 Runtime"
+        "python3-pip:pip3:Python Package Manager"
+        "python3-venv:python3:Python Virtual Environment"
         "curl:curl:HTTP Client"
         "wget:wget:File Downloader"
     )
@@ -140,9 +144,159 @@ check_and_install_packages() {
     print_info "Package check completed"
 }
 
-# Step 2: Build and Deploy Frontend
+# Step 1.5: Install Python Dependencies
+install_python_dependencies() {
+    print_step "1.5" "Installing Python Dependencies from requirements.txt"
+
+    local python_success=true
+    local requirements_file="$PROJECT_DIR/middleware/CONFIG_SYSTEM_DEVICE/requirements.txt"
+
+    # Check if requirements.txt exists
+    if [[ ! -f "$requirements_file" ]]; then
+        print_error "Requirements file not found at $requirements_file"
+        print_warning "Skipping Python dependencies installation"
+        return
+    fi
+
+    # Check if Python 3 and pip are available
+    if ! command -v python3 &> /dev/null; then
+        print_error "Python 3 is not installed - skipping Python dependencies"
+        return
+    fi
+
+    if ! command -v pip3 &> /dev/null; then
+        print_error "pip3 is not installed - skipping Python dependencies"
+        return
+    fi
+
+    print_info "Python 3 version: $(python3 --version)"
+    print_info "pip3 version: $(pip3 --version)"
+
+    # Upgrade pip to latest version
+    print_info "Upgrading pip to latest version..."
+    if python3 -m pip install --upgrade pip >> "$LOG_FILE" 2>&1; then
+        print_success "pip upgraded successfully"
+    else
+        print_warning "Failed to upgrade pip - continuing with current version"
+    fi
+
+    # Install wheel for better package installation
+    print_info "Installing wheel package..."
+    if python3 -m pip install wheel >> "$LOG_FILE" 2>&1; then
+        print_success "wheel package installed"
+    else
+        print_warning "Failed to install wheel - continuing without it"
+    fi
+
+    # Create virtual environment directory if it doesn't exist
+    local venv_dir="$PROJECT_DIR/middleware/CONFIG_SYSTEM_DEVICE/venv"
+    if [[ ! -d "$venv_dir" ]]; then
+        print_info "Creating Python virtual environment..."
+        if python3 -m venv "$venv_dir" >> "$LOG_FILE" 2>&1; then
+            print_success "Virtual environment created at $venv_dir"
+        else
+            print_warning "Failed to create virtual environment, installing globally"
+            venv_dir=""
+        fi
+    else
+        print_info "Using existing virtual environment at $venv_dir"
+    fi
+
+    # Activate virtual environment if available
+    if [[ -n "$venv_dir" && -f "$venv_dir/bin/activate" ]]; then
+        print_info "Activating virtual environment..."
+        source "$venv_dir/bin/activate"
+        print_success "Virtual environment activated"
+    fi
+
+    # Install requirements from file
+    print_info "Installing Python packages from requirements.txt..."
+    print_info "Requirements file: $requirements_file"
+
+    # Show what will be installed
+    print_info "Packages to be installed:"
+    while IFS= read -r line; do
+        if [[ ! "$line" =~ ^# && -n "$line" ]]; then
+            echo "  - $line"
+        fi
+    done < "$requirements_file"
+
+    # Install with timeout and error handling
+    if timeout 300 python3 -m pip install -r "$requirements_file" --upgrade >> "$LOG_FILE" 2>&1; then
+        print_success "Python packages installed successfully"
+        DEPLOYMENT_STATUS[python_deps]=1
+
+        # Verify critical packages
+        print_info "Verifying critical Python packages..."
+        local critical_packages=("flask" "paho-mqtt" "psutil" "requests")
+        local verification_success=true
+
+        for package in "${critical_packages[@]}"; do
+            if python3 -c "import $package" >> "$LOG_FILE" 2>&1; then
+                print_success "$package is available"
+            else
+                print_warning "$package verification failed"
+                verification_success=false
+            fi
+        done
+
+        if $verification_success; then
+            print_success "All critical packages verified"
+        else
+            print_warning "Some packages failed verification but installation completed"
+        fi
+
+    else
+        print_error "Failed to install Python packages"
+        python_success=false
+
+        # Try installing critical packages individually
+        print_info "Attempting to install critical packages individually..."
+        local essential_packages=("flask>=1.1.0" "paho-mqtt>=1.5.0" "psutil>=5.6.0" "requests>=2.20.0")
+        local individual_success=false
+
+        for package in "${essential_packages[@]}"; do
+            print_info "Installing $package..."
+            if python3 -m pip install "$package" >> "$LOG_FILE" 2>&1; then
+                print_success "$package installed"
+                individual_success=true
+            else
+                print_warning "Failed to install $package"
+            fi
+        done
+
+        if $individual_success; then
+            print_warning "Some Python packages installed individually"
+            DEPLOYMENT_STATUS[python_deps]=1
+        fi
+    fi
+
+    # Deactivate virtual environment if it was activated
+    if [[ -n "$venv_dir" && -f "$venv_dir/bin/activate" ]]; then
+        deactivate 2>/dev/null || true
+        print_info "Virtual environment deactivated"
+    fi
+
+    # Show installed packages summary
+    print_info "Installed Python packages summary:"
+    if [[ -n "$venv_dir" && -f "$venv_dir/bin/activate" ]]; then
+        source "$venv_dir/bin/activate"
+        python3 -m pip list | head -20 >> "$LOG_FILE" 2>&1
+        deactivate 2>/dev/null || true
+    else
+        python3 -m pip list | head -20 >> "$LOG_FILE" 2>&1
+    fi
+
+    if ! $python_success && [[ ${DEPLOYMENT_STATUS[python_deps]} -eq 0 ]]; then
+        print_warning "Python dependencies installation failed but continuing with deployment"
+    fi
+
+    print_info "Python dependencies installation completed"
+}
+
+# Step 3: Build and Deploy Frontend
 build_and_deploy_frontend() {
-    print_step "2" "Building and Deploying Frontend"
+    print_step "3" "Building and Deploying Frontend"
 
     local frontend_success=true
 
@@ -249,9 +403,9 @@ EOF
     print_info "Frontend deployment step completed"
 }
 
-# Step 3: Configure Nginx Reverse Proxy
+# Step 4: Configure Nginx Reverse Proxy
 configure_nginx_proxy() {
-    print_step "3" "Configuring Nginx Reverse Proxy"
+    print_step "4" "Configuring Nginx Reverse Proxy"
 
     local nginx_success=true
 
@@ -352,12 +506,12 @@ EOF
     print_info "Nginx configuration step completed"
 }
 
-# Step 4: Install and Configure Systemd Service
+# Step 5: Install and Configure Systemd Service
 setup_systemd_service() {
-    print_step "4" "Setting up Systemd Service"
+    print_step "5" "Setting up Systemd Service"
 
     local service_success=true
-    local service_source="$PROJECT_DIR/middleware/SERVICE_FILE/subrack-controller.service"
+    local service_source="$PROJECT_DIR/middleware/SERVICE_FILE/multiprocessing.service"
     local service_target="/etc/systemd/system/$SERVICE_NAME.service"
 
     # Check if service file exists
@@ -438,9 +592,9 @@ setup_systemd_service() {
     print_info "Systemd service setup completed"
 }
 
-# Step 5: Generate Deployment Summary
+# Step 6: Generate Deployment Summary
 generate_deployment_summary() {
-    print_step "5" "Deployment Summary and Status Report"
+    print_step "6" "Deployment Summary and Status Report"
 
     echo ""
     echo -e "${BLUE}========================================${NC}"
@@ -460,9 +614,18 @@ generate_deployment_summary() {
     echo -e "${YELLOW}Deployment Status:${NC}"
 
     if [[ ${DEPLOYMENT_STATUS[packages]} -eq 1 ]]; then
-        echo -e "  ${GREEN}✓ Packages Installation: SUCCESS${NC}"
+        echo -e "  ${GREEN}✓ System Packages Installation: SUCCESS${NC}"
     else
-        echo -e "  ${RED}✗ Packages Installation: FAILED/PARTIAL${NC}"
+        echo -e "  ${RED}✗ System Packages Installation: FAILED/PARTIAL${NC}"
+    fi
+
+    if [[ ${DEPLOYMENT_STATUS[python_deps]} -eq 1 ]]; then
+        echo -e "  ${GREEN}✓ Python Dependencies: SUCCESS${NC}"
+        echo "    - Requirements file: middleware/CONFIG_SYSTEM_DEVICE/requirements.txt"
+        echo "    - Virtual environment: middleware/CONFIG_SYSTEM_DEVICE/venv/"
+        echo "    - Critical packages: flask, paho-mqtt, psutil, requests"
+    else
+        echo -e "  ${RED}✗ Python Dependencies: FAILED${NC}"
     fi
 
     if [[ ${DEPLOYMENT_STATUS[frontend]} -eq 1 ]]; then
@@ -534,7 +697,7 @@ generate_deployment_summary() {
     echo ""
 
     # Calculate success rate
-    local total_steps=4
+    local total_steps=5
     local successful_steps=0
     for status in "${DEPLOYMENT_STATUS[@]}"; do
         successful_steps=$((successful_steps + status))
@@ -600,6 +763,7 @@ main() {
     case "${1:-deploy}" in
         "deploy")
             check_and_install_packages
+            install_python_dependencies
             build_and_deploy_frontend
             configure_nginx_proxy
             setup_systemd_service
@@ -608,6 +772,9 @@ main() {
             ;;
         "packages")
             check_and_install_packages
+            ;;
+        "python")
+            install_python_dependencies
             ;;
         "frontend")
             build_and_deploy_frontend
@@ -629,11 +796,12 @@ main() {
             print_success "All available services restarted"
             ;;
         *)
-            echo "Usage: $0 {deploy|packages|frontend|nginx|service|status|restart-all}"
+            echo "Usage: $0 {deploy|packages|python|frontend|nginx|service|status|restart-all}"
             echo ""
             echo "Commands:"
             echo "  deploy      - Full deployment (all steps)"
-            echo "  packages    - Check and install required packages only"
+            echo "  packages    - Check and install system packages only"
+            echo "  python      - Install Python dependencies only"
             echo "  frontend    - Build and deploy frontend only"
             echo "  nginx       - Configure nginx reverse proxy only"
             echo "  service     - Setup systemd service only"
