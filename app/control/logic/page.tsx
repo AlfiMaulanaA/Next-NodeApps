@@ -21,59 +21,67 @@ import { Textarea } from "@/components/ui/textarea";
 import { RotateCw, Zap, PlusCircle, Trash2, Edit2, Play, Pause, Settings2, AlertTriangle, Brain, Activity, Code } from "lucide-react";
 import MqttStatus from "@/components/mqtt-status";
 
-// Type definitions matching backend AutomationLogic.py structure
-interface LogicCondition {
+// Type definitions for updated requirements
+interface TriggerCondition {
   device_name: string;
-  field_name: string;
-  operator: ">" | "<" | ">=" | "<=" | "==" | "!=";
-  value: number;
-  unit?: string;
+  device_mac: string;
+  device_address: number;
+  device_bus: number;
+  trigger_type: "drycontact";
+  pin_number: number;
+  condition_operator: "is" | "and" | "or";
+  target_value: boolean;
+  expected_value: boolean;
+  delay_on?: number;  // delay in seconds before trigger activates
+  delay_off?: number; // delay in seconds before trigger deactivates
 }
 
-interface LogicGroup {
-  name: string;
-  logic_operator: "AND" | "OR";
-  conditions: LogicCondition[];
+interface TriggerGroup {
+  group_name: string;
+  triggers: TriggerCondition[];
+  group_operator: "AND" | "OR";
 }
 
-interface AutomationAction {
-  action_type: "control_relay" | "send_notification";
+interface ControlAction {
+  action_type: "control_relay" | "send_message";
   target_device?: string;
+  target_mac?: string;
+  target_address?: number;
+  target_bus?: number;
   relay_pin?: number;
-  relay_state?: number;
+  target_value?: boolean;
   message?: string;
-  level?: "info" | "warning" | "error";
   description?: string;
 }
 
 interface AutomationLogicRule {
   id: string;
-  name: string;
-  description?: string;
-  enabled: boolean;
+  rule_name: string;
+  description: string;
+  group_rule_name: string;
   created_at?: string;
   updated_at?: string;
-  logic_groups: LogicGroup[];
-  rule_logic_operator: "AND" | "OR";
-  actions: AutomationAction[];
+  trigger_groups: TriggerGroup[];
+  actions: ControlAction[];
 }
 
 interface AutomationLogicConfig {
-  enabled: boolean;
   logic_rules: AutomationLogicRule[];
 }
 
-interface DeviceProfile {
+interface ModularDevice {
   profile: {
     name: string;
     part_number: string;
+    device_type: string;
+    manufacturer: string;
     topic?: string;
   };
   protocol_setting: {
     address: number;
     device_bus: number;
   };
-  data?: any[];
+  mac?: string;
 }
 
 interface MQTTResponse {
@@ -86,7 +94,7 @@ interface MQTTResponse {
 }
 
 const AutomationLogicControl = () => {
-  // MQTT Topics - matching backend AutomationLogic.py
+  // MQTT Topics - updated for new requirements
   const TOPICS = useMemo(() => ({
     // CRUD Topics
     CREATE: "automation_logic/create",
@@ -100,9 +108,8 @@ const AutomationLogicControl = () => {
     RESPONSE_GET: "response_get_data",
     
     // Device Topics
-    INSTALLED_DEVICES: "response_installed_device",
-    MODULAR_DEVICES: "modular_device/data",
-    MODBUS_DEVICES: "modbus_device/data"
+    MODULAR_AVAILABLES: "MODULAR_DEVICE/AVAILABLES",
+    RESULT_MESSAGE: "result/message/logic/control"
   }), []);
 
   // Connection Status
@@ -110,10 +117,9 @@ const AutomationLogicControl = () => {
   
   // Data States
   const [automationConfig, setAutomationConfig] = useState<AutomationLogicConfig>({
-    enabled: true,
     logic_rules: []
   });
-  const [installedDevices, setInstalledDevices] = useState<DeviceProfile[]>([]);
+  const [modularDevices, setModularDevices] = useState<ModularDevice[]>([]);
   const [loading, setLoading] = useState(false);
   
   // Modal States
@@ -124,11 +130,10 @@ const AutomationLogicControl = () => {
   // Form States
   const [currentRule, setCurrentRule] = useState<AutomationLogicRule>({
     id: '',
-    name: '',
+    rule_name: '',
     description: '',
-    enabled: true,
-    logic_groups: [],
-    rule_logic_operator: 'AND',
+    group_rule_name: '',
+    trigger_groups: [],
     actions: []
   });
 
@@ -136,35 +141,24 @@ const AutomationLogicControl = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   
-  // Available operators
-  const operators = [
-    { value: ">", label: "Greater than (>)" },
-    { value: "<", label: "Less than (<)" },
-    { value: ">=", label: "Greater or equal (≥)" },
-    { value: "<=", label: "Less or equal (≤)" },
-    { value: "==", label: "Equal to (=)" },
-    { value: "!=", label: "Not equal (≠)" }
+  // Available condition operators for updated logic
+  const conditionOperators = [
+    { value: "is", label: "Is" },
+    { value: "and", label: "And" },
+    { value: "or", label: "Or" }
   ];
 
-  // Available device fields (common sensor fields)
-  const deviceFields = [
-    { value: "temperature", label: "Temperature" },
-    { value: "humidity", label: "Humidity" },
-    { value: "pressure", label: "Pressure" },
-    { value: "voltage", label: "Voltage" },
-    { value: "current", label: "Current" },
-    { value: "power", label: "Power" },
-    { value: "drycontactInput1", label: "Dry Contact 1" },
-    { value: "drycontactInput2", label: "Dry Contact 2" },
-    { value: "drycontactInput3", label: "Dry Contact 3" },
-    { value: "drycontactInput4", label: "Dry Contact 4" },
-    { value: "drycontactInput5", label: "Dry Contact 5" },
-    { value: "drycontactInput6", label: "Dry Contact 6" },
-    { value: "drycontactInput7", label: "Dry Contact 7" },
-    { value: "drycontactInput8", label: "Dry Contact 8" },
-    { value: "drycontactInput9", label: "Dry Contact 9" },
-    { value: "drycontactInput10", label: "Dry Contact 10" },
-  ];
+  // Available dry contact pins (1-10 based on modular devices)
+  const dryContactPins = Array.from({ length: 10 }, (_, i) => ({
+    value: i + 1,
+    label: `Pin ${i + 1}`
+  }));
+
+  // Available relay pins (1-8 based on relay modules)  
+  const relayPins = Array.from({ length: 8 }, (_, i) => ({
+    value: i + 1,
+    label: `Relay Pin ${i + 1}`
+  }));
 
   // MQTT Publishing Function
   const publishMQTT = useCallback((topic: string, message: any) => {
@@ -213,9 +207,9 @@ const AutomationLogicControl = () => {
     publishMQTT(TOPICS.GET, "get_data");
   }, [publishMQTT, TOPICS.GET]);
 
-  // Load installed devices
-  const loadDevices = useCallback(() => {
-    publishMQTT("command_installed_device", "read_device");
+  // Load modular devices from MODULAR_DEVICE/AVAILABLES
+  const loadModularDevices = useCallback(() => {
+    publishMQTT("command_available_device", "get_modular_devices");
   }, [publishMQTT]);
 
   // MQTT Connection and Message Handling
@@ -234,9 +228,7 @@ const AutomationLogicControl = () => {
           currentClient.subscribe([
             TOPICS.RESPONSE,
             TOPICS.RESPONSE_GET,
-            TOPICS.INSTALLED_DEVICES,
-            TOPICS.MODULAR_DEVICES,
-            TOPICS.MODBUS_DEVICES
+            TOPICS.MODULAR_AVAILABLES
           ]);
           
           console.log("Subscribed to automation logic topics");
@@ -244,7 +236,7 @@ const AutomationLogicControl = () => {
           // Load initial data
           setTimeout(() => {
             refreshData();
-            loadDevices();
+            loadModularDevices();
           }, 1000);
         });
 
@@ -276,10 +268,21 @@ const AutomationLogicControl = () => {
                 setLoading(false);
                 break;
                 
-              case TOPICS.INSTALLED_DEVICES:
+              case TOPICS.MODULAR_AVAILABLES:
                 if (payload.status === "success" && payload.data) {
-                  setInstalledDevices(payload.data);
-                  console.log("Installed devices loaded:", payload.data.length);
+                  setModularDevices(payload.data);
+                  console.log("Modular devices loaded:", payload.data.length);
+                } else {
+                  // Try parsing as direct array if no status wrapper
+                  try {
+                    const devices = JSON.parse(message.toString());
+                    if (Array.isArray(devices)) {
+                      setModularDevices(devices);
+                      console.log("Modular devices loaded (direct):", devices.length);
+                    }
+                  } catch (e) {
+                    console.error("Error parsing modular devices:", e);
+                  }
                 }
                 break;
                 
@@ -312,7 +315,7 @@ const AutomationLogicControl = () => {
         currentClient.removeAllListeners("message");
       }
     };
-  }, [TOPICS, refreshData, loadDevices]);
+  }, [TOPICS, refreshData, loadModularDevices]);
 
   // Handle CRUD Response
   const handleCRUDResponse = (payload: MQTTResponse) => {
@@ -356,25 +359,34 @@ const AutomationLogicControl = () => {
       setSelectedRuleId(null);
       setCurrentRule({
         id: '',
-        name: '',
+        rule_name: '',
         description: '',
-        enabled: true,
-        logic_groups: [{
-          name: 'Condition Group 1',
-          logic_operator: 'AND',
-          conditions: [{
+        group_rule_name: '',
+        trigger_groups: [{
+          group_name: 'Trigger Group 1',
+          group_operator: 'AND',
+          triggers: [{
             device_name: '',
-            field_name: '',
-            operator: '>',
-            value: 0
+            device_mac: '',
+            device_address: 0,
+            device_bus: 0,
+            trigger_type: 'drycontact',
+            pin_number: 1,
+            condition_operator: 'is',
+            target_value: true,
+            expected_value: true,
+            delay_on: 0,
+            delay_off: 0
           }]
         }],
-        rule_logic_operator: 'AND',
         actions: [{
           action_type: 'control_relay',
           target_device: '',
+          target_mac: '',
+          target_address: 0,
+          target_bus: 0,
           relay_pin: 1,
-          relay_state: 1
+          target_value: true
         }]
       });
     }
@@ -387,11 +399,10 @@ const AutomationLogicControl = () => {
     setSelectedRuleId(null);
     setCurrentRule({
       id: '',
-      name: '',
+      rule_name: '',
       description: '',
-      enabled: true,
-      logic_groups: [],
-      rule_logic_operator: 'AND',
+      group_rule_name: '',
+      trigger_groups: [],
       actions: []
     });
   };
@@ -401,7 +412,7 @@ const AutomationLogicControl = () => {
     e.preventDefault();
     
     // Validation
-    if (!currentRule.name.trim()) {
+    if (!currentRule.rule_name.trim()) {
       Swal.fire({
         icon: "error",
         title: "Validation Error",
@@ -410,11 +421,20 @@ const AutomationLogicControl = () => {
       return;
     }
 
-    if (currentRule.logic_groups.length === 0) {
+    if (!currentRule.group_rule_name.trim()) {
+      Swal.fire({
+        icon: "error",
+        title: "Validation Error",
+        text: "Please enter a group rule name.",
+      });
+      return;
+    }
+
+    if (currentRule.trigger_groups.length === 0) {
       Swal.fire({
         icon: "error",
         title: "Validation Error", 
-        text: "Please add at least one logic group with conditions.",
+        text: "Please add at least one trigger group.",
       });
       return;
     }
@@ -428,23 +448,23 @@ const AutomationLogicControl = () => {
       return;
     }
 
-    // Validate logic groups
-    for (const group of currentRule.logic_groups) {
-      if (group.conditions.length === 0) {
+    // Validate trigger groups
+    for (const group of currentRule.trigger_groups) {
+      if (group.triggers.length === 0) {
         Swal.fire({
           icon: "error",
           title: "Validation Error",
-          text: `Logic group "${group.name}" must have at least one condition.`,
+          text: `Trigger group "${group.group_name}" must have at least one trigger.`,
         });
         return;
       }
       
-      for (const condition of group.conditions) {
-        if (!condition.device_name || !condition.field_name) {
+      for (const trigger of group.triggers) {
+        if (!trigger.device_name) {
           Swal.fire({
             icon: "error",
             title: "Validation Error",
-            text: "All conditions must have device name and field name.",
+            text: "All triggers must have a device name.",
           });
           return;
         }
@@ -462,7 +482,7 @@ const AutomationLogicControl = () => {
   const confirmDelete = (rule: AutomationLogicRule) => {
     Swal.fire({
       title: 'Delete Automation Rule',
-      text: `Are you sure you want to delete "${rule.name}"? This action cannot be undone.`,
+      text: `Are you sure you want to delete "${rule.rule_name}"? This action cannot be undone.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
@@ -475,74 +495,88 @@ const AutomationLogicControl = () => {
     });
   };
 
-  // Helper functions for form management
-  const addLogicGroup = () => {
+  // Helper functions for trigger group management
+  const addTriggerGroup = () => {
     setCurrentRule(prev => ({
       ...prev,
-      logic_groups: [
-        ...prev.logic_groups,
+      trigger_groups: [
+        ...prev.trigger_groups,
         {
-          name: `Condition Group ${prev.logic_groups.length + 1}`,
-          logic_operator: 'AND',
-          conditions: [{
+          group_name: `Trigger Group ${prev.trigger_groups.length + 1}`,
+          group_operator: 'AND',
+          triggers: [{
             device_name: '',
-            field_name: '',
-            operator: '>',
-            value: 0
+            device_mac: '',
+            device_address: 0,
+            device_bus: 0,
+            trigger_type: 'drycontact',
+            pin_number: 1,
+            condition_operator: 'is',
+            target_value: true,
+            expected_value: true,
+            delay_on: 0,
+            delay_off: 0
           }]
         }
       ]
     }));
   };
 
-  const removeLogicGroup = (index: number) => {
+  const removeTriggerGroup = (index: number) => {
     setCurrentRule(prev => ({
       ...prev,
-      logic_groups: prev.logic_groups.filter((_, i) => i !== index)
+      trigger_groups: prev.trigger_groups.filter((_, i) => i !== index)
     }));
   };
 
-  const updateLogicGroup = (index: number, updatedGroup: LogicGroup) => {
+  const updateTriggerGroup = (index: number, updatedGroup: TriggerGroup) => {
     setCurrentRule(prev => ({
       ...prev,
-      logic_groups: prev.logic_groups.map((group, i) => 
+      trigger_groups: prev.trigger_groups.map((group, i) => 
         i === index ? updatedGroup : group
       )
     }));
   };
 
-  const addCondition = (groupIndex: number) => {
+  const addTrigger = (groupIndex: number) => {
     const updatedGroup = {
-      ...currentRule.logic_groups[groupIndex],
-      conditions: [
-        ...currentRule.logic_groups[groupIndex].conditions,
+      ...currentRule.trigger_groups[groupIndex],
+      triggers: [
+        ...currentRule.trigger_groups[groupIndex].triggers,
         {
           device_name: '',
-          field_name: '',
-          operator: '>' as const,
-          value: 0
+          device_mac: '',
+          device_address: 0,
+          device_bus: 0,
+          trigger_type: 'drycontact' as const,
+          pin_number: 1,
+          condition_operator: 'is' as const,
+          target_value: true,
+          expected_value: true,
+          delay_on: 0,
+          delay_off: 0
         }
       ]
     };
-    updateLogicGroup(groupIndex, updatedGroup);
+    updateTriggerGroup(groupIndex, updatedGroup);
   };
 
-  const removeCondition = (groupIndex: number, conditionIndex: number) => {
+  const removeTrigger = (groupIndex: number, triggerIndex: number) => {
     const updatedGroup = {
-      ...currentRule.logic_groups[groupIndex],
-      conditions: currentRule.logic_groups[groupIndex].conditions.filter((_, i) => i !== conditionIndex)
+      ...currentRule.trigger_groups[groupIndex],
+      triggers: currentRule.trigger_groups[groupIndex].triggers.filter((_, i) => i !== triggerIndex)
     };
-    updateLogicGroup(groupIndex, updatedGroup);
+    updateTriggerGroup(groupIndex, updatedGroup);
   };
 
-  const updateCondition = (groupIndex: number, conditionIndex: number, updatedCondition: LogicCondition) => {
+  const updateTrigger = (groupIndex: number, triggerIndex: number, updatedTrigger: TriggerCondition) => {
     const updatedGroup = {
-      ...currentRule.logic_groups[groupIndex],
-      conditions: currentRule.logic_groups[groupIndex].conditions.map((condition, i) => 
-        i === conditionIndex ? updatedCondition : condition
+      ...currentRule.trigger_groups[groupIndex],
+      triggers: currentRule.trigger_groups[groupIndex].triggers.map((trigger, i) => 
+        i === triggerIndex ? updatedTrigger : trigger
       )
     };
-    updateLogicGroup(groupIndex, updatedGroup);
+    updateTriggerGroup(groupIndex, updatedGroup);
   };
 
   const addAction = () => {
@@ -553,8 +587,11 @@ const AutomationLogicControl = () => {
         {
           action_type: 'control_relay',
           target_device: '',
+          target_mac: '',
+          target_address: 0,
+          target_bus: 0,
           relay_pin: 1,
-          relay_state: 1
+          target_value: true
         }
       ]
     }));
@@ -567,7 +604,7 @@ const AutomationLogicControl = () => {
     }));
   };
 
-  const updateAction = (index: number, updatedAction: AutomationAction) => {
+  const updateAction = (index: number, updatedAction: ControlAction) => {
     setCurrentRule(prev => ({
       ...prev,
       actions: prev.actions.map((action, i) => 
@@ -578,36 +615,50 @@ const AutomationLogicControl = () => {
 
   // Get device names for dropdowns
   const deviceNames = useMemo(() => {
-    return installedDevices.map(device => ({
-      value: device.profile.name,
-      label: device.profile.name
-    }));
-  }, [installedDevices]);
+    if (!modularDevices || modularDevices.length === 0) return [];
+    
+    return modularDevices
+      .filter(device => device?.profile?.name)
+      .map(device => ({
+        value: device.profile.name,
+        label: device.profile.name,
+        address: device.protocol_setting?.address || 0,
+        device_bus: device.protocol_setting?.device_bus || 0,
+        mac: device.mac || '00:00:00:00:00:00'
+      }));
+  }, [modularDevices]);
 
   // Get relay devices for actions
   const relayDevices = useMemo(() => {
-    return installedDevices.filter(device => 
-      device.profile.part_number === 'RELAY' || 
-      device.profile.part_number === 'RELAYMINI'
-    ).map(device => ({
-      value: device.profile.name,
-      label: device.profile.name
-    }));
-  }, [installedDevices]);
+    if (!modularDevices || modularDevices.length === 0) return [];
+    
+    return modularDevices
+      .filter(device => 
+        device?.profile?.part_number === 'RELAY' || 
+        device?.profile?.part_number === 'RELAYMINI'
+      )
+      .filter(device => device?.profile?.name)
+      .map(device => ({
+        value: device.profile.name,
+        label: device.profile.name,
+        address: device.protocol_setting?.address || 0,
+        device_bus: device.protocol_setting?.device_bus || 0,
+        mac: device.mac || '00:00:00:00:00:00'
+      }));
+  }, [modularDevices]);
 
   // Calculate summary data
-  const totalRules = automationConfig.logic_rules.length;
-  const enabledRules = automationConfig.logic_rules.filter((rule: AutomationLogicRule) => rule.enabled).length;
-  const totalConditions = automationConfig.logic_rules.reduce((sum: number, rule: AutomationLogicRule) => 
-    sum + rule.logic_groups.reduce((groupSum: number, group) => groupSum + group.conditions.length, 0), 0
-  );
-  const totalActions = automationConfig.logic_rules.reduce((sum: number, rule: AutomationLogicRule) => sum + rule.actions.length, 0);
-  const totalPages = Math.ceil(automationConfig.logic_rules.length / itemsPerPage);
+  const totalRules = automationConfig?.logic_rules?.length || 0;
+  const totalTriggers = automationConfig?.logic_rules?.reduce((sum: number, rule: AutomationLogicRule) => 
+    sum + (rule.trigger_groups?.reduce((groupSum: number, group) => groupSum + (group.triggers?.length || 0), 0) || 0), 0
+  ) || 0;
+  const totalActions = automationConfig?.logic_rules?.reduce((sum: number, rule: AutomationLogicRule) => sum + (rule.actions?.length || 0), 0) || 0;
+  const totalPages = Math.ceil((automationConfig?.logic_rules?.length || 0) / itemsPerPage);
 
   const summaryItems = [
     { label: "Total Rules", value: totalRules, icon: Brain },
-    { label: "Enabled", value: enabledRules, icon: Activity, variant: "default" as const },
-    { label: "Conditions", value: totalConditions, icon: Code, variant: "secondary" as const },
+    { label: "Trigger Groups", value: automationConfig?.logic_rules?.reduce((sum, rule) => sum + (rule.trigger_groups?.length || 0), 0) || 0, icon: Activity, variant: "default" as const },
+    { label: "Triggers", value: totalTriggers, icon: Code, variant: "secondary" as const },
     { label: "Actions", value: totalActions, icon: Zap, variant: "outline" as const }
   ];
 
@@ -629,7 +680,7 @@ const AutomationLogicControl = () => {
       label: 'Logic Groups', 
       className: 'text-center', 
       render: (value: any, item: any) => (
-        <Badge variant="outline">{item.logic_groups.length} Groups</Badge>
+        <Badge variant="outline">{item.trigger_groups.length} Groups</Badge>
       )
     },
     { 
@@ -725,12 +776,12 @@ const AutomationLogicControl = () => {
           <div className="flex items-center gap-2">
             <Settings2 className="h-5 w-5 text-primary" />
             <span className="font-semibold">Automation Logic System</span>
-            <Badge variant={automationConfig.enabled ? "default" : "secondary"}>
-              {automationConfig.enabled ? "Enabled" : "Disabled"}
+            <Badge variant="default">
+              Running
             </Badge>
           </div>
           <div className="text-sm text-muted-foreground">
-            Total Devices: {installedDevices.length}
+            Total Devices: {modularDevices.length}
           </div>
         </div>
 
@@ -758,11 +809,10 @@ const AutomationLogicControl = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Rule Name</TableHead>
+                      <TableHead>Group Rule Name</TableHead>
                       <TableHead>Description</TableHead>
-                      <TableHead className="text-center">Status</TableHead>
-                      <TableHead className="text-center">Logic Groups</TableHead>
+                      <TableHead className="text-center">Trigger Groups</TableHead>
                       <TableHead className="text-center">Actions</TableHead>
-                      <TableHead className="text-center">Logic</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -771,23 +821,14 @@ const AutomationLogicControl = () => {
                       .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
                       .map((rule) => (
                       <TableRow key={rule.id}>
-                        <TableCell className="font-medium">{rule.name}</TableCell>
+                        <TableCell className="font-medium">{rule.rule_name}</TableCell>
+                        <TableCell className="font-medium text-primary">{rule.group_rule_name}</TableCell>
                         <TableCell>{rule.description || "No description"}</TableCell>
                         <TableCell className="text-center">
-                          <Badge variant={rule.enabled ? "default" : "secondary"}>
-                            {rule.enabled ? "Enabled" : "Disabled"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline">{rule.logic_groups.length} Groups</Badge>
+                          <Badge variant="outline">{rule.trigger_groups.length} Groups</Badge>
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge variant="outline">{rule.actions.length} Actions</Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={rule.rule_logic_operator === "AND" ? "default" : "secondary"}>
-                            {rule.rule_logic_operator}
-                          </Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">
@@ -927,21 +968,21 @@ const AutomationLogicControl = () => {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={addLogicGroup}
+                    onClick={addTriggerGroup}
                   >
                     <PlusCircle className="h-4 w-4 mr-2" />
                     Add Group
                   </Button>
                 </div>
                 
-                {currentRule.logic_groups.map((group, groupIndex) => (
+                {currentRule.trigger_groups.map((group, groupIndex) => (
                   <div key={groupIndex} className="p-4 border rounded-lg space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex-1 mr-4">
                         <Label>Group Name</Label>
                         <Input
-                          value={group.name}
-                          onChange={(e) => updateLogicGroup(groupIndex, { ...group, name: e.target.value })}
+                          value={group.group_name}
+                          onChange={(e) => updateTriggerGroup(groupIndex, { ...group, group_name: e.target.value })}
                           placeholder="Enter group name"
                         />
                       </div>
@@ -949,24 +990,24 @@ const AutomationLogicControl = () => {
                         type="button"
                         variant="destructive"
                         size="sm"
-                        onClick={() => removeLogicGroup(groupIndex)}
+                        onClick={() => removeTriggerGroup(groupIndex)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                     
                     <div className="text-xs text-muted-foreground">
-                      {group.conditions.length} condition(s) defined
+                      {group.triggers.length} trigger(s) defined
                     </div>
                     
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => addCondition(groupIndex)}
+                      onClick={() => addTrigger(groupIndex)}
                     >
                       <PlusCircle className="h-4 w-4 mr-1" />
-                      Add Condition
+                      Add Trigger
                     </Button>
                   </div>
                 ))}
@@ -1005,14 +1046,14 @@ const AutomationLogicControl = () => {
                         <Label>Action Type</Label>
                         <Select
                           value={action.action_type}
-                          onValueChange={(value) => updateAction(actionIndex, { ...action, action_type: value as "control_relay" | "send_notification" })}
+                          onValueChange={(value) => updateAction(actionIndex, { ...action, action_type: value as "control_relay" | "send_message" })}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Select action type" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="control_relay">Control Relay</SelectItem>
-                            <SelectItem value="send_notification">Send Notification</SelectItem>
+                            <SelectItem value="send_message">Send Message</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>

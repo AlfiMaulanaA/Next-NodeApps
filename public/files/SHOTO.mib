@@ -1,0 +1,835 @@
+BMS-BATTERY-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE, NOTIFICATION-TYPE,
+    Integer32, Unsigned32, Counter32, Gauge32, TimeTicks
+        FROM SNMPv2-SMI
+    DisplayString, TruthValue
+        FROM SNMPv2-TC
+    MODULE-COMPLIANCE, OBJECT-GROUP, NOTIFICATION-GROUP
+        FROM SNMPv2-CONF;
+
+bmsBatteryMIB MODULE-IDENTITY
+    LAST-UPDATED "202412240000Z"
+    ORGANIZATION "BMS Battery Management System"
+    CONTACT-INFO 
+        "Contact: BMS Support Team
+         Email: support@bms.local
+         Description: Battery Management System SNMP MIB"
+    DESCRIPTION
+        "This MIB module defines objects for monitoring and managing
+         battery systems including Shoto SDA10-48100 lithium batteries
+         and battery chargers through SNMP protocol."
+    REVISION "202412240000Z"
+    DESCRIPTION "Initial version with enhanced System Event support"
+    ::= { enterprises 10000 }
+
+-- Enterprise and organizational structure
+bmsSystem       OBJECT IDENTIFIER ::= { bmsBatteryMIB 11 }
+bmsConfig       OBJECT IDENTIFIER ::= { bmsSystem 5 }
+bmsEquipment    OBJECT IDENTIFIER ::= { bmsSystem 12 }
+bmsTraps        OBJECT IDENTIFIER ::= { bmsSystem 13 }
+bmsTrapProtect  OBJECT IDENTIFIER ::= { bmsSystem 14 }
+bmsTrapStatus   OBJECT IDENTIFIER ::= { bmsSystem 15 }
+
+-- Configuration Objects (5.x.0)
+bmsConfigGroup  OBJECT IDENTIFIER ::= { bmsConfig 1 }
+
+snmpIPAddress OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(7..15))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP agent IP address configuration"
+    ::= { bmsConfig 10 0 }
+
+snmpNetmask OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(7..15))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP agent network mask"
+    ::= { bmsConfig 20 0 }
+
+snmpGateway OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(7..15))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP agent gateway address"
+    ::= { bmsConfig 30 0 }
+
+snmpVersion OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..3))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP protocol version (1, 2c, 3)"
+    ::= { bmsConfig 40 0 }
+
+snmpCommunity OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP community string"
+    ::= { bmsConfig 50 0 }
+
+snmpPort OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..5))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP agent listening port"
+    ::= { bmsConfig 60 0 }
+
+systemOID OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "System object identifier"
+    ::= { bmsConfig 70 0 }
+
+snmpSecurityName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMPv3 security name"
+    ::= { bmsConfig 80 0 }
+
+snmpAuthKey OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMPv3 authentication key"
+    ::= { bmsConfig 90 0 }
+
+snmpPrivKey OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMPv3 privacy key"
+    ::= { bmsConfig 100 0 }
+
+snmpSecurityLevel OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..16))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMPv3 security level"
+    ::= { bmsConfig 110 0 }
+
+deviceName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "Device name identifier"
+    ::= { bmsConfig 120 0 }
+
+siteName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "Installation site name"
+    ::= { bmsConfig 130 0 }
+
+-- Equipment Objects
+batteryCharger  OBJECT IDENTIFIER ::= { bmsEquipment 1 }
+batteryShoto    OBJECT IDENTIFIER ::= { bmsEquipment 2 }
+
+-- Battery Charger Objects (12.1.x.0)
+chargerVoltageInput OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Input voltage in centi-volts (divide by 100 for volts)"
+    ::= { batteryCharger 1 0 }
+
+chargerCurrentInput OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-amperes"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Input current in centi-amperes (divide by 100 for amperes)"
+    ::= { batteryCharger 2 0 }
+
+chargerPowerInput OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "watts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Input power in watts"
+    ::= { batteryCharger 3 0 }
+
+chargerEnergyInput OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "watt-hours"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Input energy in watt-hours"
+    ::= { batteryCharger 4 0 }
+
+chargerFrequencyInput OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-hertz"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Input frequency in centi-hertz (divide by 100 for Hz)"
+    ::= { batteryCharger 5 0 }
+
+chargerPowerFactorInput OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-units"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Input power factor in centi-units"
+    ::= { batteryCharger 6 0 }
+
+chargerVoltageBattery OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery voltage in centi-volts"
+    ::= { batteryCharger 7 0 }
+
+chargerCurrentBattery OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-amperes"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery current in centi-amperes"
+    ::= { batteryCharger 8 0 }
+
+chargerPowerBattery OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "watts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery power in watts"
+    ::= { batteryCharger 9 0 }
+
+chargerEnergyBattery OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "watt-hours"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery energy in watt-hours"
+    ::= { batteryCharger 10 0 }
+
+chargerVoltageOutput OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Output voltage in centi-volts"
+    ::= { batteryCharger 11 0 }
+
+chargerCurrentOutput OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-amperes"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Output current in centi-amperes"
+    ::= { batteryCharger 12 0 }
+
+chargerPowerOutput OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "watts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Output power in watts"
+    ::= { batteryCharger 13 0 }
+
+chargerEnergyOutput OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "watt-hours"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Output energy in watt-hours"
+    ::= { batteryCharger 14 0 }
+
+chargerChargingStatus OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Charging status (0=off, 1=on)"
+    ::= { batteryCharger 15 0 }
+
+chargerDischargingStatus OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Discharging status (0=off, 1=on)"
+    ::= { batteryCharger 16 0 }
+
+chargerStandbyStatus OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Standby status (0=off, 1=on)"
+    ::= { batteryCharger 17 0 }
+
+chargerLineFaultAlarm OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Line fault alarm (0=normal, 1=alarm)"
+    ::= { batteryCharger 18 0 }
+
+chargerOnOffStatus OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "On/Off status (0=off, 1=on)"
+    ::= { batteryCharger 19 0 }
+
+chargerPowerSupplyFailure OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Power supply failure alarm (0=normal, 1=failure)"
+    ::= { batteryCharger 20 0 }
+
+chargerBatteryFaultAlarm OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery fault alarm (0=normal, 1=fault)"
+    ::= { batteryCharger 21 0 }
+
+chargerDischargeCycle OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Discharge cycle count"
+    ::= { batteryCharger 22 0 }
+
+-- Shoto Battery Objects (12.2.x.0)
+shotoPackVoltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery pack voltage in centi-volts (divide by 100 for actual volts)"
+    ::= { batteryShoto 1 0 }
+
+shotoCurrent OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-amperes"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery current in centi-amperes (divide by 100 for actual amperes)"
+    ::= { batteryShoto 2 0 }
+
+shotoRemainingCapacity OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-ampere-hours"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Remaining capacity in centi-ampere-hours"
+    ::= { batteryShoto 3 0 }
+
+shotoTotalCapacity OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-ampere-hours"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Total capacity in centi-ampere-hours"
+    ::= { batteryShoto 4 0 }
+
+shotoTotalDischargeCapacity OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "ampere-hours"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Total discharge capacity in ampere-hours"
+    ::= { batteryShoto 5 0 }
+
+shotoSOC OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-percent"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "State of Charge in deci-percent (divide by 10 for actual percentage)"
+    ::= { batteryShoto 6 0 }
+
+shotoSOH OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-percent"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "State of Health in deci-percent (divide by 10 for actual percentage)"
+    ::= { batteryShoto 7 0 }
+
+shotoCycle OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery cycle count"
+    ::= { batteryShoto 8 0 }
+
+shotoAverageOfCellVoltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Average cell voltage in milli-volts (divide by 1000 for volts)"
+    ::= { batteryShoto 9 0 }
+
+shotoMaxCellVoltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Maximum cell voltage in milli-volts"
+    ::= { batteryShoto 10 0 }
+
+shotoMinCellVoltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Minimum cell voltage in milli-volts"
+    ::= { batteryShoto 11 0 }
+
+shotoAverageOfCellTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Average cell temperature in centi-celsius (divide by 100 for degrees C)"
+    ::= { batteryShoto 12 0 }
+
+shotoMaxCellTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Maximum cell temperature in centi-celsius"
+    ::= { batteryShoto 13 0 }
+
+shotoMinCellTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Minimum cell temperature in centi-celsius"
+    ::= { batteryShoto 14 0 }
+
+-- Individual Cell Voltages (15-29)
+shotoCell1Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 1 voltage in milli-volts"
+    ::= { batteryShoto 15 0 }
+
+shotoCell2Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 2 voltage in milli-volts"
+    ::= { batteryShoto 16 0 }
+
+shotoCell3Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 3 voltage in milli-volts"
+    ::= { batteryShoto 17 0 }
+
+shotoCell4Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 4 voltage in milli-volts"
+    ::= { batteryShoto 18 0 }
+
+shotoCell5Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 5 voltage in milli-volts"
+    ::= { batteryShoto 19 0 }
+
+shotoCell6Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 6 voltage in milli-volts"
+    ::= { batteryShoto 20 0 }
+
+shotoCell7Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 7 voltage in milli-volts"
+    ::= { batteryShoto 21 0 }
+
+shotoCell8Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 8 voltage in milli-volts"
+    ::= { batteryShoto 22 0 }
+
+shotoCell9Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 9 voltage in milli-volts"
+    ::= { batteryShoto 23 0 }
+
+shotoCell10Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 10 voltage in milli-volts"
+    ::= { batteryShoto 24 0 }
+
+shotoCell11Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 11 voltage in milli-volts"
+    ::= { batteryShoto 25 0 }
+
+shotoCell12Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 12 voltage in milli-volts"
+    ::= { batteryShoto 26 0 }
+
+shotoCell13Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 13 voltage in milli-volts"
+    ::= { batteryShoto 27 0 }
+
+shotoCell14Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 14 voltage in milli-volts"
+    ::= { batteryShoto 28 0 }
+
+shotoCell15Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 15 voltage in milli-volts"
+    ::= { batteryShoto 29 0 }
+
+-- Cell Temperatures (30-33)
+shotoCellTemperature1 OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell temperature 1 in centi-celsius"
+    ::= { batteryShoto 30 0 }
+
+shotoCellTemperature2 OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell temperature 2 in centi-celsius"
+    ::= { batteryShoto 31 0 }
+
+shotoCellTemperature3 OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell temperature 3 in centi-celsius"
+    ::= { batteryShoto 32 0 }
+
+shotoCellTemperature4 OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell temperature 4 in centi-celsius"
+    ::= { batteryShoto 33 0 }
+
+-- Environment Sensors (34-35)
+shotoEnvironmentTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Environment temperature in centi-celsius"
+    ::= { batteryShoto 34 0 }
+
+shotoMOSFETTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "MOSFET temperature in centi-celsius"
+    ::= { batteryShoto 35 0 }
+
+-- System Event (36) - Legacy single value
+shotoSystemEvent OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "System event status (legacy - use individual System Event parameters below)"
+    ::= { batteryShoto 36 0 }
+
+-- Enhanced System Event Parameters (37-47) - Individual alarms
+shotoSystemEventOverVoltage OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Over voltage protection status (0=normal, 1=protection active)"
+    ::= { batteryShoto 37 0 }
+
+shotoSystemEventUnderVoltage OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Under voltage protection status (0=normal, 1=protection active)"
+    ::= { batteryShoto 38 0 }
+
+shotoSystemEventChargeOC OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Charge over current protection status (0=normal, 1=protection active)"
+    ::= { batteryShoto 39 0 }
+
+shotoSystemEventDischargeOC OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Discharge over current protection status (0=normal, 1=protection active)"
+    ::= { batteryShoto 40 0 }
+
+shotoSystemEventShortCircuit OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Short circuit protection status (0=normal, 1=protection active)"
+    ::= { batteryShoto 41 0 }
+
+shotoSystemEventHighTemp OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "High temperature protection status (0=normal, 1=protection active)"
+    ::= { batteryShoto 42 0 }
+
+shotoSystemEventSOCLow OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "SOC low alarm status (0=normal, 1=alarm active)"
+    ::= { batteryShoto 43 0 }
+
+shotoSystemEventDischarging OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Discharging status (0=not discharging, 1=discharging)"
+    ::= { batteryShoto 44 0 }
+
+shotoSystemEventCharging OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Charging status (0=not charging, 1=charging)"
+    ::= { batteryShoto 45 0 }
+
+shotoSystemEventChargeOnline OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Charge online status (0=offline, 1=online)"
+    ::= { batteryShoto 46 0 }
+
+shotoSystemEventHighTemp2 OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "High temperature protection 2 status (0=normal, 1=protection active)"
+    ::= { batteryShoto 47 0 }
+
+-- Trap Definitions
+batteryLowVoltage NOTIFICATION-TYPE
+    OBJECTS { shotoPackVoltage, shotoSOC, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery pack voltage below threshold alarm"
+    ::= { bmsTraps 1 }
+
+batteryHighVoltage NOTIFICATION-TYPE
+    OBJECTS { shotoPackVoltage, shotoSOC, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery pack voltage above threshold alarm"
+    ::= { bmsTraps 2 }
+
+batteryLowSOC NOTIFICATION-TYPE
+    OBJECTS { shotoSOC, shotoPackVoltage, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery State of Charge below threshold alarm"
+    ::= { bmsTraps 3 }
+
+batteryHighTemp NOTIFICATION-TYPE
+    OBJECTS { shotoMaxCellTemperature, shotoPackVoltage, shotoSOC, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery temperature above threshold alarm"
+    ::= { bmsTraps 4 }
+
+-- BMS Protection Traps
+batteryOverVoltageProtect NOTIFICATION-TYPE
+    OBJECTS { shotoSystemEventOverVoltage, shotoPackVoltage, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS Over Voltage Protection activated"
+    ::= { bmsTrapProtect 1 }
+
+batteryUnderVoltageProtect NOTIFICATION-TYPE
+    OBJECTS { shotoSystemEventUnderVoltage, shotoPackVoltage, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS Under Voltage Protection activated"
+    ::= { bmsTrapProtect 2 }
+
+batteryChargeOCProtect NOTIFICATION-TYPE
+    OBJECTS { shotoSystemEventChargeOC, shotoCurrent, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS Charge Over Current Protection activated"
+    ::= { bmsTrapProtect 3 }
+
+batteryDischargeOCProtect NOTIFICATION-TYPE
+    OBJECTS { shotoSystemEventDischargeOC, shotoCurrent, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS Discharge Over Current Protection activated"
+    ::= { bmsTrapProtect 4 }
+
+batteryShortCircuitProtect NOTIFICATION-TYPE
+    OBJECTS { shotoSystemEventShortCircuit, shotoPackVoltage, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS Short Circuit Protection activated"
+    ::= { bmsTrapProtect 5 }
+
+batteryHighTempProtect NOTIFICATION-TYPE
+    OBJECTS { shotoSystemEventHighTemp, shotoMaxCellTemperature, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS High Temperature Protection activated"
+    ::= { bmsTrapProtect 6 }
+
+-- BMS Status Traps
+batterySOCLowAlarm NOTIFICATION-TYPE
+    OBJECTS { shotoSystemEventSOCLow, shotoSOC, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS SOC Low Alarm"
+    ::= { bmsTrapStatus 1 }
+
+batteryDischargingStatus NOTIFICATION-TYPE
+    OBJECTS { shotoSystemEventDischarging, shotoCurrent, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery Discharging Status"
+    ::= { bmsTrapStatus 2 }
+
+batteryChargingStatus NOTIFICATION-TYPE
+    OBJECTS { shotoSystemEventCharging, shotoCurrent, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery Charging Status"
+    ::= { bmsTrapStatus 3 }
+
+batteryChargeOnlineStatus NOTIFICATION-TYPE
+    OBJECTS { shotoSystemEventChargeOnline, shotoPackVoltage, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery Charge Online Status"
+    ::= { bmsTrapStatus 4 }
+
+-- Conformance Information
+bmsMIBConformance OBJECT IDENTIFIER ::= { bmsBatteryMIB 99 }
+bmsMIBCompliances OBJECT IDENTIFIER ::= { bmsMIBConformance 1 }
+bmsMIBGroups      OBJECT IDENTIFIER ::= { bmsMIBConformance 2 }
+
+-- Compliance Statements
+bmsMIBCompliance MODULE-COMPLIANCE
+    STATUS  current
+    DESCRIPTION "The compliance statement for BMS battery management systems"
+    MODULE  -- this module
+        MANDATORY-GROUPS { bmsConfigGroup, batteryChargerGroup, batteryShotoGroup }
+    ::= { bmsMIBCompliances 1 }
+
+-- Object Groups
+batteryChargerGroup OBJECT-GROUP
+    OBJECTS { 
+        chargerVoltageInput, chargerCurrentInput, chargerPowerInput,
+        chargerEnergyInput, chargerFrequencyInput, chargerPowerFactorInput,
+        chargerVoltageBattery, chargerCurrentBattery, chargerPowerBattery,
+        chargerEnergyBattery, chargerVoltageOutput, chargerCurrentOutput,
+        chargerPowerOutput, chargerEnergyOutput, chargerChargingStatus,
+        chargerDischargingStatus, chargerStandbyStatus, chargerLineFaultAlarm,
+        chargerOnOffStatus, chargerPowerSupplyFailure, chargerBatteryFaultAlarm,
+        chargerDischargeCycle
+    }
+    STATUS  current
+    DESCRIPTION "Collection of objects for battery charger monitoring"
+    ::= { bmsMIBGroups 1 }
+
+batteryShotoGroup OBJECT-GROUP
+    OBJECTS { 
+        shotoPackVoltage, shotoCurrent, shotoRemainingCapacity,
+        shotoTotalCapacity, shotoTotalDischargeCapacity, shotoSOC,
+        shotoSOH, shotoCycle, shotoAverageOfCellVoltage,
+        shotoMaxCellVoltage, shotoMinCellVoltage, shotoAverageOfCellTemperature,
+        shotoMaxCellTemperature, shotoMinCellTemperature,
+        shotoCell1Voltage, shotoCell2Voltage, shotoCell3Voltage,
+        shotoCell4Voltage, shotoCell5Voltage, shotoCell6Voltage,
+        shotoCell7Voltage, shotoCell8Voltage, shotoCell9Voltage,
+        shotoCell10Voltage, shotoCell11Voltage, shotoCell12Voltage,
+        shotoCell13Voltage, shotoCell14Voltage, shotoCell15Voltage,
+        shotoCellTemperature1, shotoCellTemperature2, shotoCellTemperature3,
+        shotoCellTemperature4, shotoEnvironmentTemperature, shotoMOSFETTemperature,
+        shotoSystemEvent, shotoSystemEventOverVoltage, shotoSystemEventUnderVoltage,
+        shotoSystemEventChargeOC, shotoSystemEventDischargeOC,
+        shotoSystemEventShortCircuit, shotoSystemEventHighTemp,
+        shotoSystemEventSOCLow, shotoSystemEventDischarging,
+        shotoSystemEventCharging, shotoSystemEventChargeOnline,
+        shotoSystemEventHighTemp2
+    }
+    STATUS  current
+    DESCRIPTION "Collection of objects for Shoto SDA10-48100 battery monitoring"
+    ::= { bmsMIBGroups 2 }
+
+bmsConfigurationGroup OBJECT-GROUP
+    OBJECTS { 
+        snmpIPAddress, snmpNetmask, snmpGateway, snmpVersion,
+        snmpCommunity, snmpPort, systemOID, snmpSecurityName,
+        snmpAuthKey, snmpPrivKey, snmpSecurityLevel, deviceName, siteName
+    }
+    STATUS  current
+    DESCRIPTION "Collection of objects for BMS system configuration"
+    ::= { bmsMIBGroups 3 }
+
+bmsNotificationGroup NOTIFICATION-GROUP
+    NOTIFICATIONS { 
+        batteryLowVoltage, batteryHighVoltage, batteryLowSOC,
+        batteryHighTemp, batteryOverVoltageProtect, batteryUnderVoltageProtect,
+        batteryChargeOCProtect, batteryDischargeOCProtect,
+        batteryShortCircuitProtect, batteryHighTempProtect,
+        batterySOCLowAlarm, batteryDischargingStatus,
+        batteryChargingStatus, batteryChargeOnlineStatus
+    }
+    STATUS  current
+    DESCRIPTION "Collection of notifications for BMS battery alarms and status"
+    ::= { bmsMIBGroups 4 }
+
+END

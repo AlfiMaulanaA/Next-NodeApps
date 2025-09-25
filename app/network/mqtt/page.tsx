@@ -19,7 +19,7 @@ import MqttStatus from "@/components/mqtt-status";
 interface MqttConfig {
   username: string;
   password: string;
-  broker_address: string;
+  broker_host: string;
   broker_port: number;
 }
 
@@ -27,7 +27,7 @@ export default function MqttConfigPage() {
   const [activeTab, setActiveTab] = useState<"mqtt" | "modbus">("mqtt");
   const [mqttConfig, setMqttConfig] = useState<MqttConfig | null>(null);
   const [modbusConfig, setModbusConfig] = useState<MqttConfig | null>(null);
-  const [editConfig, setEditConfig] = useState<MqttConfig>({ username: "", password: "", broker_address: "", broker_port: 0 });
+  const [editConfig, setEditConfig] = useState<MqttConfig>({ username: "", password: "", broker_host: "", broker_port: 0 });
   const [dialogOpen, setDialogOpen] = useState(false);
   const clientRef = useRef<MqttClient | null>(null);
 
@@ -192,12 +192,12 @@ export default function MqttConfigPage() {
                 type="password"
                 onChange={e => handleInput("password", e.target.value)}
               />
-              <Label htmlFor="broker_address">Broker Address</Label>
+              <Label htmlFor="broker_host">Broker Host</Label>
               <Input
-                id="broker_address"
-                placeholder="Broker Address"
-                value={editConfig.broker_address}
-                onChange={e => handleInput("broker_address", e.target.value)}
+                id="broker_host"
+                placeholder="localhost or 192.168.1.100 or broker.example.com"
+                value={editConfig.broker_host}
+                onChange={e => handleInput("broker_host", e.target.value)}
               />
               <Label htmlFor="broker_port">Broker Port</Label>
               <Input
@@ -254,7 +254,7 @@ function ConfigView({
               <td className="font-medium pr-4 py-1">Password</td><td className="py-1">{config.password ? "••••••" : "—"}</td>
             </tr>
             <tr>
-              <td className="font-medium pr-4 py-1">Broker Address</td><td className="py-1">{config.broker_address}</td>
+              <td className="font-medium pr-4 py-1">Broker Host</td><td className="py-1">{config.broker_host}</td>
             </tr>
             <tr>
               <td className="font-medium pr-4 py-1">Broker Port</td><td className="py-1">{config.broker_port}</td>

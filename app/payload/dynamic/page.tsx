@@ -234,7 +234,7 @@ export default function CustomPayloadPage() {
 
   // 1. Load device keys from devices.json once on component mount
   useEffect(() => {
-    axios.get("/devices.json")
+    axios.get("/files/devices.json")
       .then(res => {
         const keys: Record<string, string[]> = {};
         const allDevices = Array.isArray(res.data) ? res.data : Object.values(res.data).flat();

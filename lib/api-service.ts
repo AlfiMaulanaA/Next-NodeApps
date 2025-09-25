@@ -1,46 +1,72 @@
-// lib/api-service.ts
+// API Service utility for making HTTP requests
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000";
+interface ApiResponse<T = any> {
+  data?: T;
+  error?: string;
+  success?: boolean;
+}
 
-export type LoginResponse = {
-  success: boolean;
-  token?: string;
-  user?: any;
-  message?: string;
-};
+class ApiService {
+  private baseURL: string;
 
-export const api = {
-  async post<T = any>(endpoint: string, body: Record<string, any>): Promise<T> {
-    const response = await fetch(`${BASE_URL}/api${endpoint}`, {
-      method: "POST",
+  constructor() {
+    this.baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+  }
+
+  private async request<T = any>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
+    const url = endpoint.startsWith('http') ? endpoint : `${this.baseURL}${endpoint}`;
+
+    const config: RequestInit = {
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
+        ...options.headers,
       },
-      body: JSON.stringify(body),
-    });
+      ...options,
+    };
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Something went wrong");
-    }
-
-    return response.json();
-  },
-
-  async loginUser(username: string, password: string): Promise<LoginResponse> {
     try {
-      const data = await this.post<LoginResponse>("/users/login", { username, password });
+      const response = await fetch(url, config);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return { data, success: true };
+    } catch (error) {
+      console.error('API Request failed:', error);
       return {
-        ...data,
-        success: true,
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        message: error.message || "Something went wrong",
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        success: false
       };
     }
-  }  
-};
+  }
 
+  async get<T = any>(endpoint: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET' });
+  }
+
+  async post<T = any>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async put<T = any>(endpoint: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async delete<T = any>(endpoint: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+}
+
+const api = new ApiService();
 export default api;

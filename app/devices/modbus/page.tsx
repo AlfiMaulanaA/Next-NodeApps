@@ -97,7 +97,7 @@ export default function DeviceManagerPage() {
   const [isUpdateMode, setIsUpdateMode] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [deviceToUpdate, setDeviceToUpdate] = useState<string>("");
-  
+
   // Device Library States
   const [deviceTypes, setDeviceTypes] = useState<string[]>([]);
   const [manufacturers, setManufacturers] = useState<string[]>([]);
@@ -111,7 +111,7 @@ export default function DeviceManagerPage() {
       part_number: "",
       topic: "",
       interval_publish: 60,
-      qos: 1
+      qos: 1,
     },
     protocol_setting: {
       protocol: "Modbus RTU",
@@ -141,77 +141,89 @@ export default function DeviceManagerPage() {
     }
   }, [client]);
 
-  const requestManufacturers = useCallback((deviceType: string) => {
-    if (client && client.connected && deviceType) {
-      setDeviceLibraryLoading(true);
-      const command = JSON.stringify({ 
-        command: "getManufacturers", 
-        device_type: deviceType 
-      });
-      client.publish("command_device_selection", command);
-    }
-  }, [client]);
+  const requestManufacturers = useCallback(
+    (deviceType: string) => {
+      if (client && client.connected && deviceType) {
+        setDeviceLibraryLoading(true);
+        const command = JSON.stringify({
+          command: "getManufacturers",
+          device_type: deviceType,
+        });
+        client.publish("command_device_selection", command);
+      }
+    },
+    [client]
+  );
 
-  const requestPartNumbers = useCallback((deviceType: string, manufacturer: string) => {
-    if (client && client.connected && deviceType && manufacturer) {
-      setDeviceLibraryLoading(true);
-      const command = JSON.stringify({ 
-        command: "getPartNumbers", 
-        device_type: deviceType,
-        manufacturer: manufacturer
-      });
-      client.publish("command_device_selection", command);
-    }
-  }, [client]);
+  const requestPartNumbers = useCallback(
+    (deviceType: string, manufacturer: string) => {
+      if (client && client.connected && deviceType && manufacturer) {
+        setDeviceLibraryLoading(true);
+        const command = JSON.stringify({
+          command: "getPartNumbers",
+          device_type: deviceType,
+          manufacturer: manufacturer,
+        });
+        client.publish("command_device_selection", command);
+      }
+    },
+    [client]
+  );
 
   // Handle device selection changes
-  const handleDeviceTypeChange = useCallback((deviceType: string) => {
-    setNewDevice(prev => ({
-      ...prev,
-      profile: {
-        ...prev.profile,
-        device_type: deviceType,
-        manufacturer: "", // Reset manufacturer when device type changes
-        part_number: ""   // Reset part number when device type changes
-      }
-    }));
-    
-    // Clear dependent dropdowns
-    setManufacturers([]);
-    setPartNumbers([]);
-    
-    // Request manufacturers for this device type
-    if (deviceType) {
-      requestManufacturers(deviceType);
-    }
-  }, [requestManufacturers]);
+  const handleDeviceTypeChange = useCallback(
+    (deviceType: string) => {
+      setNewDevice((prev) => ({
+        ...prev,
+        profile: {
+          ...prev.profile,
+          device_type: deviceType,
+          manufacturer: "", // Reset manufacturer when device type changes
+          part_number: "", // Reset part number when device type changes
+        },
+      }));
 
-  const handleManufacturerChange = useCallback((manufacturer: string) => {
-    setNewDevice(prev => ({
-      ...prev,
-      profile: {
-        ...prev.profile,
-        manufacturer: manufacturer,
-        part_number: "" // Reset part number when manufacturer changes
+      // Clear dependent dropdowns
+      setManufacturers([]);
+      setPartNumbers([]);
+
+      // Request manufacturers for this device type
+      if (deviceType) {
+        requestManufacturers(deviceType);
       }
-    }));
-    
-    // Clear part numbers
-    setPartNumbers([]);
-    
-    // Request part numbers for this device type and manufacturer
-    if (manufacturer && newDevice.profile.device_type) {
-      requestPartNumbers(newDevice.profile.device_type, manufacturer);
-    }
-  }, [requestPartNumbers, newDevice.profile.device_type]);
+    },
+    [requestManufacturers]
+  );
+
+  const handleManufacturerChange = useCallback(
+    (manufacturer: string) => {
+      setNewDevice((prev) => ({
+        ...prev,
+        profile: {
+          ...prev.profile,
+          manufacturer: manufacturer,
+          part_number: "", // Reset part number when manufacturer changes
+        },
+      }));
+
+      // Clear part numbers
+      setPartNumbers([]);
+
+      // Request part numbers for this device type and manufacturer
+      if (manufacturer && newDevice.profile.device_type) {
+        requestPartNumbers(newDevice.profile.device_type, manufacturer);
+      }
+    },
+    [requestPartNumbers, newDevice.profile.device_type]
+  );
 
   const handlePartNumberChange = useCallback((partNumber: string) => {
-    setNewDevice(prev => ({
+    setNewDevice((prev) => ({
       ...prev,
       profile: {
         ...prev.profile,
-        part_number: partNumber
-      }
+        part_number: partNumber,
+      },
     }));
   }, []);
 
@@ -225,14 +237,14 @@ export default function DeviceManagerPage() {
           port: 161,
           ip_address: "",
           snmp_version: 1,
-          read_community: "public"
-        }
+          read_community: "public",
+        },
       }));
     } else if (protocol === "Modbus RTU") {
       setNewDevice((prev: Device) => ({
         ...prev,
         protocol_setting: {
-          protocol: "Modbus RTU", 
+          protocol: "Modbus RTU",
           address: 1,
           port: "",
           baudrate: 9600,
@@ -240,8 +252,8 @@ export default function DeviceManagerPage() {
           bytesize: 8,
           stop_bit: 1,
           timeout: 1000,
-          endianness: "Little Endian"
-        }
+          endianness: "Little Endian",
+        },
       }));
     }
   }, []);
@@ -254,7 +266,10 @@ export default function DeviceManagerPage() {
     }
 
     const handleMessage = (topic: string, message: Buffer) => {
-      if (topic !== "response_device_modbus" && topic !== "response_device_selection") {
+      if (
+        topic !== "response_device_modbus" &&
+        topic !== "response_device_selection"
+      ) {
         return; // Ignore messages not meant for device management
       }
 
@@ -267,10 +282,10 @@ export default function DeviceManagerPage() {
         // Handle device selection responses
         if (topic === "response_device_selection") {
           setDeviceLibraryLoading(false);
-          
+
           if (payload.status === "success") {
             const command = payload.message;
-            
+
             if (command.includes("Device types")) {
               setDeviceTypes(payload.data || []);
             } else if (command.includes("Manufacturers")) {
@@ -281,7 +296,7 @@ export default function DeviceManagerPage() {
           } else {
             toast.error(`Device library error: ${payload.message}`, {
               duration: 3000,
-              position: "top-right"
+              position: "top-right",
             });
           }
           return;
@@ -295,31 +310,35 @@ export default function DeviceManagerPage() {
           if (payload.status === "success") {
             // Dismiss any existing loading toast
             toast.dismiss("device-operation");
-            
+
             // Show success toast with appropriate message
-            const successMessage = payload.message || "Operation completed successfully";
+            const successMessage =
+              payload.message || "Operation completed successfully";
             toast.success(successMessage, {
               duration: 3000,
-              position: "top-right"
+              position: "top-right",
             });
-            
+
             // Close dialog if it's open
             if (showDialog) {
               setShowDialog(false);
             }
-            
+
             // Auto refresh data after successful operation
             setTimeout(() => {
-              client?.publish("command_device_modbus", JSON.stringify({ command: "getDataModbus" }));
+              client?.publish(
+                "command_device_modbus",
+                JSON.stringify({ command: "getDataModbus" })
+              );
             }, 500);
           } else if (payload.status === "error") {
             // Dismiss any existing loading toast
             toast.dismiss("device-operation");
-            
+
             // Show error toast
             toast.error(payload.message || "Operation failed", {
               duration: 4000,
-              position: "top-right"
+              position: "top-right",
             });
           }
         } else {
@@ -347,7 +366,7 @@ export default function DeviceManagerPage() {
       "command_device_modbus",
       JSON.stringify({ command: "getDataModbus" })
     );
-    
+
     // Request device types for dynamic selection
     setTimeout(() => {
       requestDeviceTypes();
@@ -364,9 +383,9 @@ export default function DeviceManagerPage() {
   const handleSubmit = () => {
     // Show loading toast
     toast.loading(isUpdateMode ? "Updating device..." : "Adding device...", {
-      id: "device-operation"
+      id: "device-operation",
     });
-    
+
     const command = JSON.stringify({
       command: isUpdateMode ? "updateDevice" : "addDevice",
       device: newDevice,
@@ -386,53 +405,64 @@ export default function DeviceManagerPage() {
         manufacturer: device.profile.manufacturer || "",
         part_number: device.profile.part_number || "",
         topic: device.profile.topic || "",
-        interval_publish: typeof device.profile.interval_publish === 'string' 
-          ? parseInt(device.profile.interval_publish) 
-          : device.profile.interval_publish || 60,
-        qos: typeof device.profile.qos === 'string' 
-          ? parseInt(device.profile.qos) 
-          : device.profile.qos || 1
+        interval_publish:
+          typeof device.profile.interval_publish === "string"
+            ? parseInt(device.profile.interval_publish)
+            : device.profile.interval_publish || 60,
+        qos:
+          typeof device.profile.qos === "string"
+            ? parseInt(device.profile.qos)
+            : device.profile.qos || 1,
       },
       protocol_setting: {
         protocol: device.protocol_setting.protocol || "Modbus RTU",
-        address: typeof device.protocol_setting.address === 'string' 
-          ? parseInt(device.protocol_setting.address) 
-          : device.protocol_setting.address || 1,
+        address:
+          typeof device.protocol_setting.address === "string"
+            ? parseInt(device.protocol_setting.address)
+            : device.protocol_setting.address || 1,
         ip_address: device.protocol_setting.ip_address || "",
         port: device.protocol_setting.port || "",
-        baudrate: typeof device.protocol_setting.baudrate === 'string' 
-          ? parseInt(device.protocol_setting.baudrate) 
-          : device.protocol_setting.baudrate || 9600,
+        baudrate:
+          typeof device.protocol_setting.baudrate === "string"
+            ? parseInt(device.protocol_setting.baudrate)
+            : device.protocol_setting.baudrate || 9600,
         parity: device.protocol_setting.parity || "NONE",
-        bytesize: typeof device.protocol_setting.bytesize === 'string' 
-          ? parseInt(device.protocol_setting.bytesize) 
-          : device.protocol_setting.bytesize || 8,
-        stop_bit: typeof device.protocol_setting.stop_bit === 'string' 
-          ? parseInt(device.protocol_setting.stop_bit) 
-          : device.protocol_setting.stop_bit || 1,
-        timeout: typeof device.protocol_setting.timeout === 'string' 
-          ? parseInt(device.protocol_setting.timeout) 
-          : device.protocol_setting.timeout || 1000,
+        bytesize:
+          typeof device.protocol_setting.bytesize === "string"
+            ? parseInt(device.protocol_setting.bytesize)
+            : device.protocol_setting.bytesize || 8,
+        stop_bit:
+          typeof device.protocol_setting.stop_bit === "string"
+            ? parseInt(device.protocol_setting.stop_bit)
+            : device.protocol_setting.stop_bit || 1,
+        timeout:
+          typeof device.protocol_setting.timeout === "string"
+            ? parseInt(device.protocol_setting.timeout)
+            : device.protocol_setting.timeout || 1000,
         endianness: device.protocol_setting.endianness || "Little Endian",
-        snmp_version: typeof device.protocol_setting.snmp_version === 'string' 
-          ? parseInt(device.protocol_setting.snmp_version) 
-          : device.protocol_setting.snmp_version || 1,
+        snmp_version:
+          typeof device.protocol_setting.snmp_version === "string"
+            ? parseInt(device.protocol_setting.snmp_version)
+            : device.protocol_setting.snmp_version || 1,
         read_community: device.protocol_setting.read_community || "public",
-      }
+      },
     });
-    
+
     // Load manufacturers for the device type
     if (device.profile.device_type) {
       requestManufacturers(device.profile.device_type);
-      
+
       // Load part numbers if manufacturer is available
       if (device.profile.manufacturer) {
         setTimeout(() => {
-          requestPartNumbers(device.profile.device_type, device.profile.manufacturer);
+          requestPartNumbers(
+            device.profile.device_type,
+            device.profile.manufacturer
+          );
         }, 500);
       }
     }
-    
+
     setShowDialog(true);
   };
 
@@ -448,9 +478,9 @@ export default function DeviceManagerPage() {
       if (result.isConfirmed) {
         // Show loading toast
         toast.loading(`Deleting ${name}...`, {
-          id: "device-operation"
+          id: "device-operation",
         });
-        
+
         const command = JSON.stringify({ command: "deleteDevice", name });
         client?.publish("command_device_modbus", command);
       }
@@ -516,7 +546,7 @@ export default function DeviceManagerPage() {
                   part_number: "",
                   topic: "",
                   interval_publish: 60,
-                  qos: 1
+                  qos: 1,
                 },
                 protocol_setting: {
                   protocol: "Modbus RTU",
@@ -533,11 +563,11 @@ export default function DeviceManagerPage() {
                   read_community: "public",
                 },
               });
-              
+
               // Reset device library states
               setManufacturers([]);
               setPartNumbers([]);
-              
+
               setDeviceToUpdate("");
               setIsUpdateMode(false);
               setShowDialog(true); // Open the dialog
@@ -786,7 +816,7 @@ export default function DeviceManagerPage() {
               Configure device profile and protocol settings
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-6">
             {/* Profile Section */}
             <div className="space-y-4">
@@ -813,7 +843,13 @@ export default function DeviceManagerPage() {
                     onValueChange={handleDeviceTypeChange}
                   >
                     <SelectTrigger id="deviceType">
-                      <SelectValue placeholder={deviceLibraryLoading ? "Loading..." : "Select device type"} />
+                      <SelectValue
+                        placeholder={
+                          deviceLibraryLoading
+                            ? "Loading..."
+                            : "Select device type"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {deviceTypes.map((type) => (
@@ -829,16 +865,20 @@ export default function DeviceManagerPage() {
                   <Select
                     value={newDevice.profile.manufacturer}
                     onValueChange={handleManufacturerChange}
-                    disabled={!newDevice.profile.device_type || deviceLibraryLoading}
+                    disabled={
+                      !newDevice.profile.device_type || deviceLibraryLoading
+                    }
                   >
                     <SelectTrigger id="manufacturer">
-                      <SelectValue placeholder={
-                        !newDevice.profile.device_type 
-                          ? "Select device type first" 
-                          : deviceLibraryLoading 
-                            ? "Loading..." 
+                      <SelectValue
+                        placeholder={
+                          !newDevice.profile.device_type
+                            ? "Select device type first"
+                            : deviceLibraryLoading
+                            ? "Loading..."
                             : "Select manufacturer"
-                      } />
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {manufacturers.map((manufacturer) => (
@@ -854,16 +894,20 @@ export default function DeviceManagerPage() {
                   <Select
                     value={newDevice.profile.part_number}
                     onValueChange={handlePartNumberChange}
-                    disabled={!newDevice.profile.manufacturer || deviceLibraryLoading}
+                    disabled={
+                      !newDevice.profile.manufacturer || deviceLibraryLoading
+                    }
                   >
                     <SelectTrigger id="partNumber">
-                      <SelectValue placeholder={
-                        !newDevice.profile.manufacturer 
-                          ? "Select manufacturer first" 
-                          : deviceLibraryLoading 
-                            ? "Loading..." 
+                      <SelectValue
+                        placeholder={
+                          !newDevice.profile.manufacturer
+                            ? "Select manufacturer first"
+                            : deviceLibraryLoading
+                            ? "Loading..."
                             : "Select part number"
-                      } />
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {partNumbers.map((partNumber) => (
@@ -882,7 +926,10 @@ export default function DeviceManagerPage() {
                     onChange={(e) =>
                       setNewDevice({
                         ...newDevice,
-                        profile: { ...newDevice.profile, topic: e.target.value },
+                        profile: {
+                          ...newDevice.profile,
+                          topic: e.target.value,
+                        },
                       })
                     }
                     required
@@ -890,7 +937,9 @@ export default function DeviceManagerPage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="intervalPublish">Interval Publish (seconds)</Label>
+                  <Label htmlFor="intervalPublish">
+                    Interval Publish (seconds)
+                  </Label>
                   <Input
                     id="intervalPublish"
                     type="number"
@@ -898,7 +947,10 @@ export default function DeviceManagerPage() {
                     onChange={(e) =>
                       setNewDevice({
                         ...newDevice,
-                        profile: { ...newDevice.profile, interval_publish: parseInt(e.target.value) || 60 },
+                        profile: {
+                          ...newDevice.profile,
+                          interval_publish: parseInt(e.target.value) || 60,
+                        },
                       })
                     }
                     placeholder="60"
@@ -926,7 +978,6 @@ export default function DeviceManagerPage() {
                   </Select>
                 </div>
               </div>
-              
             </div>
 
             {/* Protocol Settings Section */}
@@ -948,7 +999,7 @@ export default function DeviceManagerPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 {/* Modbus RTU Fields */}
                 {newDevice.protocol_setting.protocol === "Modbus RTU" && (
                   <>
@@ -973,7 +1024,9 @@ export default function DeviceManagerPage() {
                     <div>
                       <Label htmlFor="port">Serial Port *</Label>
                       <Select
-                        value={newDevice.protocol_setting.port?.toString() || ""}
+                        value={
+                          newDevice.protocol_setting.port?.toString() || ""
+                        }
                         onValueChange={(value) =>
                           setNewDevice({
                             ...newDevice,
@@ -988,17 +1041,27 @@ export default function DeviceManagerPage() {
                           <SelectValue placeholder="Select port" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="/dev/ttyUSB0">/dev/ttyUSB0</SelectItem>
-                          <SelectItem value="/dev/ttyAMA0">/dev/ttyAMA0</SelectItem>
-                          <SelectItem value="/dev/ttyAMA1">/dev/ttyAMA1</SelectItem>
-                          <SelectItem value="/dev/ttyAMA2">/dev/ttyAMA2</SelectItem>
+                          <SelectItem value="/dev/ttyUSB0">
+                            /dev/ttyUSB0
+                          </SelectItem>
+                          <SelectItem value="/dev/ttyAMA0">
+                            /dev/ttyAMA0
+                          </SelectItem>
+                          <SelectItem value="/dev/ttyAMA1">
+                            /dev/ttyAMA1
+                          </SelectItem>
+                          <SelectItem value="/dev/ttyAMA2">
+                            /dev/ttyAMA2
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
                       <Label htmlFor="baudrate">Baud Rate *</Label>
                       <Select
-                        value={newDevice.protocol_setting.baudrate?.toString() || ""}
+                        value={
+                          newDevice.protocol_setting.baudrate?.toString() || ""
+                        }
                         onValueChange={(value) =>
                           setNewDevice({
                             ...newDevice,
@@ -1114,14 +1177,16 @@ export default function DeviceManagerPage() {
                           <SelectValue placeholder="Select endianness" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Little Endian">Little Endian</SelectItem>
+                          <SelectItem value="Little Endian">
+                            Little Endian
+                          </SelectItem>
                           <SelectItem value="Big Endian">Big Endian</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </>
                 )}
-                
+
                 {/* SNMP Fields */}
                 {newDevice.protocol_setting.protocol === "SNMP" && (
                   <>
@@ -1164,7 +1229,10 @@ export default function DeviceManagerPage() {
                     <div>
                       <Label htmlFor="snmpVersion">SNMP Version</Label>
                       <Select
-                        value={newDevice.protocol_setting.snmp_version?.toString() || ""}
+                        value={
+                          newDevice.protocol_setting.snmp_version?.toString() ||
+                          ""
+                        }
                         onValueChange={(value) =>
                           setNewDevice({
                             ...newDevice,
@@ -1207,7 +1275,7 @@ export default function DeviceManagerPage() {
               </div>
             </div>
           </div>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>
               Cancel

@@ -460,38 +460,78 @@ export default function SettingsPage() {
           <Settings className="h-5 w-5 text-muted-foreground" />
           <h1 className="text-lg font-semibold">General Settings</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Toggle theme"
-            className="h-8 w-8"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            {theme === "dark" ? (
-              <Sun className="h-5 w-5 text-yellow-400 transition-all duration-200" />
-            ) : (
-              <Moon className="h-5 w-5 text-blue-600 transition-all duration-200" />
-            )}
-          </Button>
-          <span className="text-xs font-medium min-w-[70px] text-center select-none">
-            {theme === "dark" ? "Dark Mode" : "Light Mode"}
-          </span>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => window.location.reload()}
-          >
-            <RotateCw />
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0 border-border hover:bg-muted/50"
+          onClick={() => window.location.reload()}
+        >
+          <RotateCw className="h-4 w-4" />
+        </Button>
       </header>
       <div className="p-6 space-y-6">
-        <Card>
+        {/* Theme Settings Card */}
+        <Card className="border-border bg-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sun className="h-5 w-5" />
+              Appearance Settings
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <h4 className="text-sm font-medium text-foreground">
+                  Theme Mode
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Choose your preferred theme for the application
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-muted/50 border border-border">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Light mode"
+                    className={`h-8 w-8 p-0 transition-all duration-200 ${
+                      theme === "light"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "hover:bg-background/80"
+                    }`}
+                    onClick={() => setTheme("light")}
+                  >
+                    <Sun className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Dark mode"
+                    className={`h-8 w-8 p-0 transition-all duration-200 ${
+                      theme === "dark"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "hover:bg-background/80"
+                    }`}
+                    onClick={() => setTheme("dark")}
+                  >
+                    <Moon className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Badge variant="outline" className="px-3 py-1">
+                  {theme === "dark" ? "Dark Mode" : "Light Mode"}
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-card">
           <CardHeader>
             <CardTitle className="flex justify-between items-center">
-              <span>Services Management</span>
+              <span className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Services Management
+              </span>
               <span className="flex items-center gap-2 text-sm">
                 <MqttStatus />
               </span>
@@ -609,44 +649,45 @@ export default function SettingsPage() {
         </Card>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
+          <Card className="border-border bg-card">
             <CardContent className="flex items-center gap-4 p-4">
-              <Wifi className="h-6 w-6 text-blue-500" />
+              <Wifi className="h-6 w-6 text-blue-500 dark:text-blue-400" />
               <div>
-                <h6 className="font-medium">IP Address</h6>
+                <h6 className="font-medium text-foreground">IP Address</h6>
                 <p className="text-sm text-muted-foreground">
-                  <strong>{ipType}:</strong> {ipAddress}
+                  <strong className="text-foreground">{ipType}:</strong>{" "}
+                  {ipAddress}
                 </p>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-border bg-card">
             <CardContent className="flex items-center gap-4 p-4">
-              <Thermometer className="h-6 w-6 text-red-500" />
+              <Thermometer className="h-6 w-6 text-red-500 dark:text-red-400" />
               <div>
-                <h6 className="font-medium">CPU Temp</h6>
+                <h6 className="font-medium text-foreground">CPU Temp</h6>
                 <p className="text-sm text-muted-foreground">
                   {systemInfo.cpu_temp}°C
                 </p>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-border bg-card">
             <CardContent className="flex items-center gap-4 p-4">
-              <Cpu className="h-6 w-6 text-green-700" />
+              <Cpu className="h-6 w-6 text-green-600 dark:text-green-400" />
               <div>
-                <h6 className="font-medium">CPU Usage</h6>
+                <h6 className="font-medium text-foreground">CPU Usage</h6>
                 <p className="text-sm text-muted-foreground">
                   {systemInfo.cpu_usage}%
                 </p>
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-border bg-card">
             <CardContent className="flex items-center gap-4 p-4">
-              <MemoryStick className="h-6 w-6 text-green-600" />
+              <MemoryStick className="h-6 w-6 text-purple-500 dark:text-purple-400" />
               <div>
-                <h6 className="font-medium">Memory Usage</h6>
+                <h6 className="font-medium text-foreground">Memory Usage</h6>
                 <p className="text-sm text-muted-foreground">
                   {systemInfo.memory_usage}% ({systemInfo.used_memory}/
                   {systemInfo.total_memory} MB)
@@ -654,11 +695,11 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-border bg-card">
             <CardContent className="flex items-center gap-4 p-4">
-              <HardDrive className="h-6 w-6 text-black-500" />
+              <HardDrive className="h-6 w-6 text-gray-600 dark:text-gray-400" />
               <div>
-                <h6 className="font-medium">Disk Usage</h6>
+                <h6 className="font-medium text-foreground">Disk Usage</h6>
                 <p className="text-sm text-muted-foreground">
                   {systemInfo.disk_usage}% ({systemInfo.used_disk}/
                   {systemInfo.total_disk} MB)
@@ -666,11 +707,11 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-border bg-card">
             <CardContent className="flex items-center gap-4 p-4">
-              <Clock className="h-6 w-6 text-indigo-500" />
+              <Clock className="h-6 w-6 text-indigo-500 dark:text-indigo-400" />
               <div>
-                <h6 className="font-medium">Uptime</h6>
+                <h6 className="font-medium text-foreground">Uptime</h6>
                 <p className="text-sm text-muted-foreground">
                   {Math.floor(systemInfo.uptime / 3600)}h{" "}
                   {Math.floor((systemInfo.uptime % 3600) / 60)}m

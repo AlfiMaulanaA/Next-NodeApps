@@ -111,7 +111,7 @@ def init_error_logger_client():
 def send_error_log(function_name, error_detail, error_type, additional_info=None):
     """
     Sends an error message to the centralized error log service via MQTT.
-    Uses the dedicated client_error_logger.
+    Uses the dedicated client_error_logger. Falls back to console logging only.
     """
     error_message = {
         "data": f"[{function_name}] {error_detail}",
@@ -122,36 +122,62 @@ def send_error_log(function_name, error_detail, error_type, additional_info=None
     if additional_info:
         error_message.update(additional_info)
 
+    # Always log to console first for immediate visibility
+    print(f"[{error_type.upper()}] Error in {function_name}: {error_detail}")
+    
     try:
         if client_error_logger and client_error_logger.is_connected():
             client_error_logger.publish(ERROR_LOG_TOPIC, json.dumps(error_message))
-            logger.debug(f"Error log sent: {error_message}")
+            # Only log debug message if MQTT publish succeeds
+            logger.debug(f"Error log sent via MQTT: {error_message}")
         else:
-            logger.error(f"Error logger MQTT client not connected, unable to send log: {error_message}")
+            # Silently handle MQTT connection failure - don't spam console
+            # Just store the log locally or handle gracefully
+            pass
     except Exception as e:
-        logger.error(f"Failed to publish error log (internal error): {e}", exc_info=True)
-    
-    # Also log to console for immediate visibility
-    logger.error(f"Error in {function_name} ({error_type}): {error_detail}")
+        # Don't spam console with MQTT publish failures during startup
+        # Just log once that MQTT error logging is unavailable
+        pass
 
 # --- Load MQTT configuration from file ---
 def load_mqtt_config():
+    """Load MQTT config with graceful error handling and fallback defaults"""
+    default_config = {
+        "enable": True,
+        "broker_address": "localhost",
+        "broker_port": 1883,
+        "username": "",
+        "password": "",
+        "qos": 1,
+        "retain": True
+    }
+    
     try:
         with open(mqtt_config_file, 'r') as file:
+            content = file.read().strip()
+            if not content:  # Handle empty file
+                error_detail = f"MQTT config file is empty: {mqtt_config_file}"
+                print(f"[WARNING] {error_detail}. Using default configuration.")
+                send_error_log("load_mqtt_config", error_detail, ERROR_TYPE_WARNING, {"file": mqtt_config_file})
+                return default_config
             return json.load(file)
     except FileNotFoundError:
         error_detail = f"MQTT config file not found: {mqtt_config_file}"
-        send_error_log("load_mqtt_config", error_detail, ERROR_TYPE_CRITICAL)
-        raise SystemExit(error_detail + ". Please create it.")
+        print(f"[WARNING] {error_detail}. Using default configuration.")
+        send_error_log("load_mqtt_config", error_detail, ERROR_TYPE_WARNING, {"file": mqtt_config_file})
+        return default_config
     except json.JSONDecodeError as e:
         error_detail = f"Error decoding MQTT config file: {e}"
-        send_error_log("load_mqtt_config", error_detail, ERROR_TYPE_CRITICAL, {"file": mqtt_config_file})
-        raise SystemExit(error_detail + ". Please check it.")
+        print(f"[WARNING] {error_detail}. Using default configuration.")
+        send_error_log("load_mqtt_config", error_detail, ERROR_TYPE_WARNING, {"file": mqtt_config_file})
+        return default_config
     except Exception as e:
         error_detail = f"Unexpected error loading MQTT config: {e}"
-        send_error_log("load_mqtt_config", error_detail, ERROR_TYPE_CRITICAL, {"file": mqtt_config_file})
-        raise SystemExit(error_detail)
+        print(f"[WARNING] {error_detail}. Using default configuration.")
+        send_error_log("load_mqtt_config", error_detail, ERROR_TYPE_WARNING, {"file": mqtt_config_file})
+        return default_config
 
+# Load MQTT config with error handling - program continues with defaults
 mqtt_config = load_mqtt_config()
 
 # Broker configurations
@@ -697,14 +723,14 @@ def run():
     load_config()
     load_installed_devices()
 
-    # Connect to MQTT brokers
+    # Connect to MQTT brokers - continue even if connections fail
     log_simple("Connecting to Control MQTT broker...")
     global client_control
     client_control = connect_mqtt_control()
     if not client_control:
-        log_simple("Failed to connect to Control MQTT broker", "ERROR")
-        send_error_log("run", "Failed to connect to Control MQTT broker at startup.", ERROR_TYPE_CRITICAL)
-        return
+        log_simple("Failed to connect to Control MQTT broker - will retry during runtime", "WARNING")
+        send_error_log("run", "Failed to connect to Control MQTT broker at startup, continuing with retries.", ERROR_TYPE_WARNING)
+        # Continue execution instead of returning
 
     log_simple("Connecting to CRUD MQTT broker...")
     global client_crud
@@ -712,13 +738,15 @@ def run():
     if client_crud:
         client_crud.on_message = on_message_crud
     else:
-        log_simple("Failed to connect to CRUD MQTT broker", "ERROR")
-        send_error_log("run", "Failed to connect to CRUD MQTT broker at startup.", ERROR_TYPE_CRITICAL)
-        return
+        log_simple("Failed to connect to CRUD MQTT broker - will retry during runtime", "WARNING")
+        send_error_log("run", "Failed to connect to CRUD MQTT broker at startup, continuing with retries.", ERROR_TYPE_WARNING)
+        # Continue execution instead of returning
 
-    # Start loops for all clients
-    client_control.loop_start()
-    client_crud.loop_start()
+    # Start loops for all clients that were successfully created
+    if client_control:
+        client_control.loop_start()
+    if client_crud:
+        client_crud.loop_start()
 
     # Wait a moment for connections to establish
     time.sleep(2)
@@ -727,33 +755,55 @@ def run():
     print_success_banner()
     print_broker_status(crud_broker_connected, control_broker_connected)
 
-    # Set up the scheduled tasks for control client
-    log_simple("Setting up scheduled tasks...")
-    schedule_control(client_control)
+    # Set up the scheduled tasks for control client (only if connected)
+    if client_control:
+        log_simple("Setting up scheduled tasks...")
+        schedule_control(client_control)
+    else:
+        log_simple("Skipping scheduled tasks setup - Control MQTT client not available", "WARNING")
 
     log_simple("Scheduler service started successfully", "SUCCESS")
 
     try:
         while True:
-            # Paho MQTT clients handle reconnection automatically with loop_start().
-            # Explicit reconnect calls here are mostly redundant if loop_start() is running correctly,
-            # but can act as a fallback if loop_start() somehow gets stuck or fails.
-            # However, for robust production systems, relying on Paho's internal reconnect
-            # and proper error logging within on_disconnect is generally preferred.
-            # I'll keep them as they were in your original code, but note their redundancy.
-            if not client_control.is_connected():
+            # Handle reconnection for control client
+            if client_control and not client_control.is_connected():
                 logger.warning("Control MQTT client detected as disconnected. Attempting to force reconnect.")
                 try:
                     client_control.reconnect()
                 except Exception as e:
                     send_error_log("run (reconnect_control)", f"Failed to force reconnect Control MQTT client: {e}", ERROR_TYPE_WARNING)
+            elif not client_control:
+                # Try to recreate control client if it was None
+                logger.info("Attempting to recreate Control MQTT client...")
+                try:
+                    client_control = connect_mqtt_control()
+                    if client_control:
+                        client_control.loop_start()
+                        log_simple("Control MQTT client successfully recreated", "SUCCESS")
+                        # Reschedule tasks if we got the control client back
+                        schedule_control(client_control)
+                except Exception as e:
+                    send_error_log("run (recreate_control)", f"Failed to recreate Control MQTT client: {e}", ERROR_TYPE_WARNING)
 
-            if not client_crud.is_connected():
+            # Handle reconnection for CRUD client
+            if client_crud and not client_crud.is_connected():
                 logger.warning("CRUD MQTT client detected as disconnected. Attempting to force reconnect.")
                 try:
                     client_crud.reconnect()
                 except Exception as e:
                     send_error_log("run (reconnect_crud)", f"Failed to force reconnect CRUD MQTT client: {e}", ERROR_TYPE_WARNING)
+            elif not client_crud:
+                # Try to recreate CRUD client if it was None
+                logger.info("Attempting to recreate CRUD MQTT client...")
+                try:
+                    client_crud = connect_mqtt_crud()
+                    if client_crud:
+                        client_crud.on_message = on_message_crud
+                        client_crud.loop_start()
+                        log_simple("CRUD MQTT client successfully recreated", "SUCCESS")
+                except Exception as e:
+                    send_error_log("run (recreate_crud)", f"Failed to recreate CRUD MQTT client: {e}", ERROR_TYPE_WARNING)
             
             # Ensure the error logger stays connected
             if client_error_logger and not client_error_logger.is_connected():

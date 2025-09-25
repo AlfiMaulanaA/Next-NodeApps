@@ -366,9 +366,7 @@ const VoiceControlPage = () => {
         </div>
         <div className="flex items-center gap-2">
           <MqttStatus />
-          <Badge variant={isConnected ? "default" : "destructive"}>
-            {connectionStatus}
-          </Badge>
+          
           <Button
             variant="outline"
             size="icon"

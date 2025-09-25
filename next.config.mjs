@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "export",
+  // Removed output: "export" to allow dynamic API routes
   trailingSlash: true,
   eslint: {
     ignoreDuringBuilds: true,

@@ -1,0 +1,44 @@
+[Unit]
+Description=Subrack Controller Multiprocessing Service
+Documentation=Subrack Controller Node System for NanoPi Duo2
+After=network.target network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=npi
+Group=npi
+WorkingDirectory=/home/npi/Subrack-Controller-Node-NanopiDuo2/MIDDLEWARE/CONFIG_SYSTEM_DEVICE
+ExecStart=/usr/bin/python3 /home/npi/Subrack-Controller-Node-NanopiDuo2/MIDDLEWARE/CONFIG_SYSTEM_DEVICE/Multiprocesing.py
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+Restart=always
+RestartSec=10
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+# Environment variables
+Environment=PYTHONPATH=/home/npi/Subrack-Controller-Node-NanopiDuo2/MIDDLEWARE/CONFIG_SYSTEM_DEVICE
+Environment=PYTHONUNBUFFERED=1
+
+# Security settings
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/home/npi/Subrack-Controller-Node-NanopiDuo2/MIDDLEWARE
+ReadWritePaths=/var/log
+ReadWritePaths=/tmp
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=subrack-controller
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

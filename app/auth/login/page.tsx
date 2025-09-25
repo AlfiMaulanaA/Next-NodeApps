@@ -7,17 +7,19 @@ import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import api from "@/lib/api-service";
-import Swal from "sweetalert2";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 import { Facebook, Twitter, Instagram, Eye, EyeOff, Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
-import { setCookie, getCookie } from 'cookies-next'; // Import setCookie dan getCookie
+import DatabaseConnectionBadge from "@/components/database-status";
+import MQTTConnectionBadge from "@/components/mqtt-status";
 
 const LoginPage = () => {
   const { theme, setTheme } = useTheme();
+  const { login, user, isLoading: authLoading } = useAuth();
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION;
   const router = useRouter();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState("");
@@ -37,66 +39,44 @@ const LoginPage = () => {
       setCurrentImage(images[imageIndex]);
     }, 5000);
     return () => clearInterval(intervalId);
-  }, [images]); // Hapus router dari dependency array jika tidak digunakan untuk redirect di sini
+  }, [images]);
 
-  // Fungsi untuk menghasilkan token acak (untuk demo)
-  const generateRandomToken = () => {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-  };
-
-  // Fungsi untuk menyimpan token di cookie
-  const saveAuthToken = (token: string) => {
-    setCookie('authToken', token, { path: '/', maxAge: 60 * 60 * 24 * 7 }); // Cookie valid 7 hari
-  };
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      router.push("/");
+    }
+  }, [user, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
-    if (!username || !password) {
-      setError("Username and Password are required.");
-      setLoading(false);
-      return;
-    }
-
-    if (username === "admin" && password === "admin") {
-      const randomToken = generateRandomToken();
-      saveAuthToken(randomToken); // Simpan token di cookie
-      Swal.fire({
-        icon: "success",
-        title: "Login Successful",
-        text: "You have successfully logged in!",
-        showConfirmButton: false,
-        timer: 1500,
-      }).then(() => {
-        router.push("/"); // Redirect ke dashboard
-      });
+    if (!email || !password) {
+      setError("Email and Password are required.");
+      toast.error("Email and Password are required.");
       setLoading(false);
       return;
     }
 
     try {
-      const response = await api.post("/users/login", { username, password });
-      // Di sini, Anda akan menggunakan token yang sebenarnya dari response.data.token
-      // Misalnya: saveAuthToken(response.data.token);
-      const randomToken = generateRandomToken(); // Untuk demo, tetap pakai random
-      saveAuthToken(randomToken); // Simpan token di cookie
+      const success = await login(email, password);
 
-      Swal.fire({
-        icon: "success",
-        title: "Login Successful",
-        text: "You have successfully logged in!",
-        showConfirmButton: false,
-        timer: 1500,
-      }).then(() => {
-        router.push("/"); // Redirect ke dashboard
-      });
+      if (success) {
+        toast.success("Login successful! Welcome back.");
+        // Router.push will be handled by useEffect when user state changes
+      } else {
+        setError("Invalid credentials. Please try again.");
+        toast.error("Invalid credentials. Please try again.");
+      }
     } catch (err: any) {
-      const message = err?.response?.data?.message || "Something went wrong";
+      const message = err?.message || "Something went wrong";
       setError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -183,10 +163,12 @@ const LoginPage = () => {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 placeholder="Enter your email"
+                disabled={loading || authLoading}
               />
             </div>
 
@@ -201,6 +183,7 @@ const LoginPage = () => {
                   required
                   placeholder="Enter your password"
                   className="pr-10"
+                  disabled={loading || authLoading}
                 />
                 <button
                   type="button"
@@ -230,8 +213,8 @@ const LoginPage = () => {
             </div>
 
             {/* Tombol Login */}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? (
+            <Button type="submit" className="w-full" disabled={loading || authLoading}>
+              {(loading || authLoading) ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg
                     className="animate-spin h-4 w-4 text-white"

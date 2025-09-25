@@ -1,15 +1,20 @@
 "use client";
 
 import { useTotalErrorCount } from "@/hooks/useTotalErrorCount";
-import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import { useState } from "react";
+import UserProfile from "@/components/auth/UserProfile";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   LayoutDashboard,
   Users,
@@ -43,6 +48,7 @@ import {
   User2,
   MapPin,
   School,
+  BookText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -75,48 +81,49 @@ const navigation = [
     title: "Main",
     items: [
       { title: "Dashboard Overview", url: "/", icon: LayoutDashboard },
-      { title: "System Dashboard", url: "/dashboard", icon: Activity }
+      { title: "System Dashboard", url: "/dashboard", icon: Activity },
     ],
   },
   {
     title: "Device Management",
     items: [
-      { title: "Modular Devices", url: "/devices/modular", icon: Cpu },
+      // { title: "Modular Devices", url: "/devices/modular", icon: Cpu },
       { title: "Modbus Devices", url: "/devices/modbus", icon: Server },
       // { title: "Battery Threshold", url: "/devices/threshold", icon: ShieldAlert },
+      { title: "Modbus Data", url: "/modbus-data", icon: BookText },
     ],
   },
-  {
-    title: "Control Center",
-    items: [
-      {
-        title: "Manual Control",
-        url: "/control/manual",
-        icon: SlidersHorizontal,
-      },
-      { title: "Scheduled Control", url: "/control/schedule", icon: BarChart },
-      { title: "Logic Control", url: "/control/logic", icon: FileBarChart },
-      { title: "Voice Control", url: "/control/voice", icon: AudioLines },
-      {
-        title: "Value-Based Control",
-        url: "/control/value",
-        icon: FileBarChart,
-      },
-      {
-        title: "Geofence Control",
-        url: "/control/geofence",
-        icon: MapPin,
-      },
-    ],
-  },
-  {
-    title: "Payload Configuration",
-    items: [
-      { title: "Dynamic Payloads", url: "/payload/dynamic", icon: Code },
-      { title: "Static Payloads", url: "/payload/static", icon: Code },
-      { title: "MQTT Discovery", url: "/payload/discover", icon: Radar },
-    ],
-  },
+  // {
+  //   title: "Control Center",
+  //   items: [
+  //     {
+  //       title: "Manual Control",
+  //       url: "/control/manual",
+  //       icon: SlidersHorizontal,
+  //     },
+  //     { title: "Scheduled Control", url: "/control/schedule", icon: BarChart },
+  //     { title: "Logic Control", url: "/control/logic", icon: FileBarChart },
+  //     { title: "Voice Control", url: "/control/voice", icon: AudioLines },
+  //     {
+  //       title: "Value-Based Control",
+  //       url: "/control/value",
+  //       icon: FileBarChart,
+  //     },
+  //     {
+  //       title: "Geofence Control",
+  //       url: "/control/geofence",
+  //       icon: MapPin,
+  //     },
+  //   ],
+  // },
+  // {
+  //   title: "Payload Configuration",
+  //   items: [
+  //     { title: "Dynamic Payloads", url: "/payload/dynamic", icon: Code },
+  //     { title: "Static Payloads", url: "/payload/static", icon: Code },
+  //     { title: "MQTT Discovery", url: "/payload/discover", icon: Radar },
+  //   ],
+  // },
   {
     title: "Network Settings",
     items: [
@@ -138,6 +145,9 @@ const navigation = [
   {
     title: "System Settings",
     items: [
+      { title: "System Health", url: "/settings/system", icon: Activity },
+      { title: "MQTT Configuration", url: "/settings/mqtt", icon: Server },
+      { title: "User Management", url: "/settings/users", icon: Users },
       { title: "Error Logs", url: "/settings/error-log", icon: FileWarning },
       { title: "Library Manager", url: "/settings/library", icon: Library },
       { title: "General Settings", url: "/settings/setting", icon: Settings },
@@ -154,10 +164,13 @@ export function AppSidebar() {
   const totalErrors = useTotalErrorCount();
   // Move useRouter inside the functional component
   const router = useRouter();
+  const { logout } = useAuth();
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
-  const handleLogout = () => {
-    deleteCookie("authToken", { path: "/" }); // Hapus cookie
-    router.replace("/auth/login"); // Arahkan ke halaman login
+  const performLogout = async () => {
+    await logout(); // Use AuthContext logout to clear user state and localStorage
+    deleteCookie("authToken", { path: "/" }); // Also delete cookie for completeness
+    router.replace("/auth/login"); // Redirect to login page
   };
 
   return (
@@ -181,7 +194,10 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="bg-background">
+      <SidebarContent
+        className="bg-background overflow-auto scrollbar-hide"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
         {navigation.map((group) => (
           <SidebarGroup key={group.title}>
             <SidebarGroupLabel className="text-sidebar-foreground/80">
@@ -214,117 +230,40 @@ export function AppSidebar() {
         ))}
 
         <SidebarFooter className="p-4 bg-background border-t border-sidebar-border">
-          <Dialog>
-            <DialogTrigger asChild>
-              <div className="flex items-center gap-3 mb-4 px-1 cursor-pointer hover:bg-muted rounded-md p-1 transition hover:shadow-sm">
-                <div className="h-10 w-10 rounded-full overflow-hidden border-2 border-sidebar-border">
-                  <img
-                    src={avatarIcon}
-                    alt="User Avatar"
-                    className="object-cover h-full w-full"
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-semibold text-sm text-sidebar-foreground">
-                    Admin
-                  </span>
-                  <span className="text-xs text-sidebar-foreground/70">
-                    Administrator
-                  </span>
-                </div>
-              </div>
-            </DialogTrigger>
-
-            <DialogContent className="max-w-md animate-in fade-in zoom-in-75 bg-gradient-to-br from-white to-muted p-6 rounded-xl shadow-xl border">
-              <DialogHeader>
-                <DialogTitle className="text-center text-lg font-bold text-foreground">
-                  User Profile
-                </DialogTitle>
-                <DialogDescription className="text-center text-muted-foreground">
-                  Your account information
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="flex flex-col items-center mt-2">
-                <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-primary shadow-md mb-2">
-                  <img
-                    src={avatarIcon}
-                    alt="User Avatar"
-                    className="object-cover w-full h-full"
-                  />
-                </div>
-                <h3 className="text-lg font-semibold">Admin</h3>
-                <p className="text-sm text-muted-foreground mb-4 italic">
-                  IoT & Electrical Engineer
-                </p>
-              </div>
-
-              <Separator />
-
-              <div className="mt-4 space-y-3 text-sm text-muted-foreground">
-                <p className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-primary" />
-                  <span>
-                    <span className="font-medium text-foreground">Email:</span>{" "}
-                    alfi@example.com
-                  </span>
-                </p>
-                <p className="flex items-center gap-2">
-                  <User2 className="w-4 h-4 text-primary" />
-                  <span>
-                    <span className="font-medium text-foreground">Role:</span>{" "}
-                    Administrator
-                  </span>
-                </p>
-                <p className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-primary" />
-                  <span>
-                    <span className="font-medium text-foreground">
-                      Location:
-                    </span>{" "}
-                    West Jakarta, Indonesia
-                  </span>
-                </p>
-                <p className="flex items-center gap-2">
-                  <School className="w-4 h-4 text-primary" />
-                  <span>
-                    <span className="font-medium text-foreground">
-                      Company:
-                    </span>{" "}
-                    PT Graha Sumber Prima Elektronik
-                  </span>
-                </p>
-              </div>
-
-              <Separator className="mt-4" />
-
-              <div className="flex justify-end gap-2 mt-4">
-                <Button
-                  variant="destructive"
-                  className="hover:scale-105 transition"
-                  onClick={handleLogout}
-                >
-                  Logout
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <UserProfile />
 
           <Separator className="my-2 bg-sidebar-border h-px" />
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton
-                className="flex items-center gap-2 text-destructive bg-destructive/5 hover:bg-destructive/20 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 transition-colors px-3 py-3 rounded-md w-full border border-transparent hover:border-destructive/40"
-                asChild
+              <AlertDialog
+                open={showLogoutDialog}
+                onOpenChange={setShowLogoutDialog}
               >
-                <span
-                  onClick={handleLogout}
-                  className="flex items-center gap-2"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span className="text-sm font-medium">Logout</span>
-                </span>
-              </SidebarMenuButton>
+                <AlertDialogTrigger asChild>
+                  <SidebarMenuButton className="flex items-center gap-2 text-destructive bg-destructive/5 hover:bg-destructive/20 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 transition-colors px-3 py-3 rounded-md w-full border border-transparent hover:border-destructive/40">
+                    <LogOut className="h-4 w-4" />
+                    <span className="text-sm font-medium">Logout</span>
+                  </SidebarMenuButton>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Konfirmasi Logout</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Apakah Anda yakin ingin logout dari aplikasi? Anda akan
+                      diarahkan ke halaman login.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Batal</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={performLogout}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Logout
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>

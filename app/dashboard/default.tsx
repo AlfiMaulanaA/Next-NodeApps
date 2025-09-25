@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { LayoutDashboard, Cpu, Wifi, WifiOff, Link, Microchip, Unplug } from "lucide-react"; // Import new icons
+import {
+  LayoutDashboard,
+  Cpu,
+  Wifi,
+  WifiOff,
+  Link,
+  Microchip,
+  Unplug,
+} from "lucide-react"; // Import new icons
 import RealtimeClock from "@/components/realtime-clock";
 import Refresh from "@/components/refresh-button";
 import MqttStatus from "@/components/mqtt-status";
@@ -14,28 +22,34 @@ import {
   CardContent,
   CardDescription,
 } from "@/components/ui/card";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { connectMQTT } from "@/lib/mqttClient";
 import { useIsMobile } from "@/hooks/use-mobile";
+import DeviceDataDisplay from "@/components/DeviceDataDisplay";
 
 export default function OverviewDashboard() {
   const [modbusDevices, setModbusDevices] = useState<any[]>([]);
   const [i2cDevices, setI2cDevices] = useState<any[]>([]); // New state for I2C devices
-  const [statusSummary, setStatusSummary] = useState<Record<string, string>>({});
-  const [deviceTopicData, setDeviceTopicData] = useState<Record<string, any>>({});
+  const [statusSummary, setStatusSummary] = useState<Record<string, string>>(
+    {}
+  );
+  const [deviceTopicData, setDeviceTopicData] = useState<Record<string, any>>(
+    {}
+  );
 
   useEffect(() => {
     const client = connectMQTT();
     if (!client) return;
 
     // Request data for both types of devices
-    client.publish("command_device_modbus", JSON.stringify({ command: "getDataModbus" }));
-    client.publish("command_device_i2c", JSON.stringify({ command: "getDataI2C" }));
+    client.publish(
+      "command_device_modbus",
+      JSON.stringify({ command: "getDataModbus" })
+    );
+    client.publish(
+      "command_device_i2c",
+      JSON.stringify({ command: "getDataI2C" })
+    );
 
     const dynamicTopics = new Set<string>();
 
@@ -55,7 +69,8 @@ export default function OverviewDashboard() {
               }
             });
           }
-        } else if (topic === "response_device_i2c") { // Handle I2C device response
+        } else if (topic === "response_device_i2c") {
+          // Handle I2C device response
           if (Array.isArray(payload)) {
             setI2cDevices(payload);
           }
@@ -79,13 +94,22 @@ export default function OverviewDashboard() {
 
     client.on("message", handleMessage);
     // Subscribe to both Modbus and I2C response topics
-    const baseTopics = ["response_device_modbus", "modbus_snmp_summ", "response_device_i2c"];
+    const baseTopics = [
+      "response_device_modbus",
+      "modbus_snmp_summ",
+      "response_device_i2c",
+    ];
     baseTopics.forEach((t) => client.subscribe(t));
 
     // Request data for both types of devices
-    client.publish("command_device_modbus", JSON.stringify({ command: "getDataModbus" }));
-    client.publish("command_device_i2c", JSON.stringify({ command: "getDataI2C" }));
-
+    client.publish(
+      "command_device_modbus",
+      JSON.stringify({ command: "getDataModbus" })
+    );
+    client.publish(
+      "command_device_i2c",
+      JSON.stringify({ command: "getDataI2C" })
+    );
 
     return () => {
       baseTopics.forEach((t) => client.unsubscribe(t));
@@ -111,7 +135,8 @@ export default function OverviewDashboard() {
   const totalModbusDevices = modbusDevices.length;
   const totalModbusOnline = modbusStats.online;
   const totalModbusOffline = modbusStats.offline;
-  const allModbusOnline = totalModbusDevices === totalModbusOnline && totalModbusDevices > 0;
+  const allModbusOnline =
+    totalModbusDevices === totalModbusOnline && totalModbusDevices > 0;
   const noModbusOnline = totalModbusDevices > 0 && totalModbusOnline === 0;
   const noModbusRegistered = totalModbusDevices === 0;
 
@@ -120,7 +145,8 @@ export default function OverviewDashboard() {
   const totalI2cDevices = i2cDevices.length;
   const totalI2cOnline = i2cStats.online;
   const totalI2cOffline = i2cStats.offline;
-  const allI2cOnline = totalI2cDevices === totalI2cOnline && totalI2cDevices > 0;
+  const allI2cOnline =
+    totalI2cDevices === totalI2cOnline && totalI2cDevices > 0;
   const noI2cOnline = totalI2cDevices > 0 && totalI2cOnline === 0;
   const noI2cRegistered = totalI2cDevices === 0;
 
@@ -133,7 +159,7 @@ export default function OverviewDashboard() {
         <Separator orientation="vertical" className="mr-2 h-4" />
         <div className="flex items-center gap-2">
           <LayoutDashboard className="h-5 w-5" />
-          <h1 className="text-lg font-semibold">{ appName}</h1>
+          <h1 className="text-lg font-semibold">{appName}</h1>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {!useIsMobile() && <RealtimeClock />}
@@ -147,15 +173,21 @@ export default function OverviewDashboard() {
           {/* Card for Total Devices (Combined or specific) */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Devices</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Total Devices
+              </CardTitle>
               <Cpu className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               {/* This now reflects total of both Modbus and I2C devices */}
-              <div className="text-2xl font-bold">{totalModbusDevices + totalI2cDevices}</div>
+              <div className="text-2xl font-bold">
+                {totalModbusDevices + totalI2cDevices}
+              </div>
               <div className="flex justify-between items-center mt-1">
-                <p className="text-xs text-muted-foreground">All registered devices</p>
-                {(noModbusRegistered && noI2cRegistered) && (
+                <p className="text-xs text-muted-foreground">
+                  All registered devices
+                </p>
+                {noModbusRegistered && noI2cRegistered && (
                   <div className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-medium border border-blue-300">
                     No devices registered
                   </div>
@@ -167,18 +199,27 @@ export default function OverviewDashboard() {
           {/* Card for Online Devices (Combined) */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Online Devices</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Online Devices
+              </CardTitle>
               <Wifi className="h-5 w-5 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalModbusOnline + totalI2cOnline}</div>
+              <div className="text-2xl font-bold">
+                {totalModbusOnline + totalI2cOnline}
+              </div>
               <div className="flex justify-between items-center mt-1">
-                <p className="text-xs text-muted-foreground">Devices currently online</p>
-                {(allModbusOnline && totalModbusDevices > 0 && allI2cOnline && totalI2cDevices > 0) && ( // Check if both types are all online
-                  <div className="px-2 py-0.5 rounded-full bg-green-100 text-green-600 text-xs font-medium border border-green-300">
-                    All devices are online
-                  </div>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  Devices currently online
+                </p>
+                {allModbusOnline &&
+                  totalModbusDevices > 0 &&
+                  allI2cOnline &&
+                  totalI2cDevices > 0 && ( // Check if both types are all online
+                    <div className="px-2 py-0.5 rounded-full bg-green-100 text-green-600 text-xs font-medium border border-green-300">
+                      All devices are online
+                    </div>
+                  )}
               </div>
             </CardContent>
           </Card>
@@ -186,18 +227,27 @@ export default function OverviewDashboard() {
           {/* Card for Offline Devices (Combined) */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Offline Devices</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Offline Devices
+              </CardTitle>
               <WifiOff className="h-5 w-5 text-red-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalModbusOffline + totalI2cOffline}</div>
+              <div className="text-2xl font-bold">
+                {totalModbusOffline + totalI2cOffline}
+              </div>
               <div className="flex justify-between items-center mt-1">
-              <p className="text-xs text-muted-foreground">Devices currently offline</p>
-              {(noModbusOnline && totalModbusDevices > 0 && noI2cOnline && totalI2cDevices > 0) && ( // Check if both types are all offline
-                <div className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-medium border border-red-300">
-                  All devices are offline
-                </div>
-              )}
+                <p className="text-xs text-muted-foreground">
+                  Devices currently offline
+                </p>
+                {noModbusOnline &&
+                  totalModbusDevices > 0 &&
+                  noI2cOnline &&
+                  totalI2cDevices > 0 && ( // Check if both types are all offline
+                    <div className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-medium border border-red-300">
+                      All devices are offline
+                    </div>
+                  )}
               </div>
             </CardContent>
           </Card>
@@ -207,7 +257,8 @@ export default function OverviewDashboard() {
           <div className="flex items-center justify-between">
             <TabsList>
               <TabsTrigger value="modbus">Device Modbus/SNMP</TabsTrigger>
-              <TabsTrigger value="i2c">Device I2C</TabsTrigger> {/* New Tab Trigger */}
+              <TabsTrigger value="i2c">Device I2C</TabsTrigger>{" "}
+              {/* New Tab Trigger */}
             </TabsList>
             <MqttStatus />
           </div>
@@ -227,34 +278,39 @@ export default function OverviewDashboard() {
                       <li key={d.profile?.name || i} className="border-b pb-2">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <span className="font-semibold">{d.profile?.name}</span>
-                            <span className="ml-2 text-xs text-muted-foreground">({d.profile?.part_number})</span>
+                            <span className="font-semibold">
+                              {d.profile?.name}
+                            </span>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              ({d.profile?.part_number})
+                            </span>
                             <div className="text-xs">
                               {d.protocol_setting?.protocol === "Modbus RTU"
                                 ? `Address: ${d.protocol_setting?.address}`
                                 : `IP: ${d.protocol_setting?.ip_address}`}
                             </div>
-                            <div className="text-xs">Topic: {d.profile?.topic}</div>
+                            <div className="text-xs">
+                              Topic: {d.profile?.topic}
+                            </div>
                           </div>
-                          <span className={`text-xs font-semibold ml-2 ${statusSummary[d.profile?.name]?.includes("success") ? "text-green-600 bg-green-200" : "text-red-600 bg-red-200"} rounded-full px-2 py-1`}>
-                            {statusSummary[d.profile?.name]?.includes("success") ? "Online" : "Offline"}
+                          <span
+                            className={`text-xs font-semibold ml-2 ${
+                              statusSummary[d.profile?.name]?.includes(
+                                "success"
+                              )
+                                ? "text-green-600 bg-green-200"
+                                : "text-red-600 bg-red-200"
+                            } rounded-full px-2 py-1`}
+                          >
+                            {statusSummary[d.profile?.name]?.includes("success")
+                              ? "Online"
+                              : "Offline"}
                           </span>
                         </div>
-                        <div className="text-xs mt-1">
-                          <span className="font-semibold">Live Data:</span>
-                          <pre className="whitespace-pre-wrap break-words text-[10px] text-muted-foreground bg-muted p-1 rounded">
-                            {(() => {
-                              const topicData = deviceTopicData[d.profile?.topic];
-                              if (!topicData) return "Waiting...";
-                              try {
-                                const parsedValue = topicData.value ? JSON.parse(topicData.value) : {};
-                                return JSON.stringify(parsedValue, null, 2);
-                              } catch (err) {
-                                return "Invalid JSON in 'value'";
-                              }
-                            })()}
-                          </pre>
-                        </div>
+                        <DeviceDataDisplay
+                          topicData={deviceTopicData[d.profile?.topic]}
+                          deviceName={d.profile?.name}
+                        />
                       </li>
                     ))}
                   </ul>
@@ -263,7 +319,9 @@ export default function OverviewDashboard() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="i2c" className="mt-2"> {/* New Tab Content for I2C */}
+          <TabsContent value="i2c" className="mt-2">
+            {" "}
+            {/* New Tab Content for I2C */}
             <Card>
               <CardHeader>
                 <CardTitle>Device I2C</CardTitle>
@@ -278,28 +336,48 @@ export default function OverviewDashboard() {
                       <li key={d.profile?.name || i} className="border-b pb-2">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <span className="font-semibold">{d.profile?.name}</span>
-                            <span className="ml-2 text-xs text-muted-foreground">({d.profile?.part_number})</span>
+                            <span className="font-semibold">
+                              {d.profile?.name}
+                            </span>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              ({d.profile?.part_number})
+                            </span>
                             <div className="text-xs">
                               {/* I2C devices usually have address and device_bus */}
-                              Address: {d.protocol_setting?.address}, Bus: {d.protocol_setting?.device_bus}
+                              Address: {d.protocol_setting?.address}, Bus:{" "}
+                              {d.protocol_setting?.device_bus}
                             </div>
-                            <div className="text-xs">Topic: {d.profile?.topic}</div>
+                            <div className="text-xs">
+                              Topic: {d.profile?.topic}
+                            </div>
                           </div>
                           {/* Assuming statusSummary might also contain I2C device status,
                               or you'd need a separate mechanism for I2C status. */}
-                          <span className={`text-xs font-semibold ml-2 ${statusSummary[d.profile?.name]?.includes("success") ? "text-green-600 bg-green-200" : "text-red-600 bg-red-200"} rounded-full px-2 py-1`}>
-                            {statusSummary[d.profile?.name]?.includes("success") ? "Online" : "Offline"}
+                          <span
+                            className={`text-xs font-semibold ml-2 ${
+                              statusSummary[d.profile?.name]?.includes(
+                                "success"
+                              )
+                                ? "text-green-600 bg-green-200"
+                                : "text-red-600 bg-red-200"
+                            } rounded-full px-2 py-1`}
+                          >
+                            {statusSummary[d.profile?.name]?.includes("success")
+                              ? "Online"
+                              : "Offline"}
                           </span>
                         </div>
                         <div className="text-xs mt-1">
                           <span className="font-semibold">Live Data:</span>
                           <pre className="whitespace-pre-wrap break-words text-[10px] text-muted-foreground bg-muted p-1 rounded">
                             {(() => {
-                              const topicData = deviceTopicData[d.profile?.topic];
+                              const topicData =
+                                deviceTopicData[d.profile?.topic];
                               if (!topicData) return "Waiting...";
                               try {
-                                const parsedValue = topicData.value ? JSON.parse(topicData.value) : {};
+                                const parsedValue = topicData.value
+                                  ? JSON.parse(topicData.value)
+                                  : {};
                                 return JSON.stringify(parsedValue, null, 2);
                               } catch (err) {
                                 return "Invalid JSON in 'value'";

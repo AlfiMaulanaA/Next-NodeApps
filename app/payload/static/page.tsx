@@ -8,8 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { FileText, PlusCircle, Edit2, Eye, ArrowUpDown, RotateCw, Search, Database, Activity, Target, Settings, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSearchFilter } from "@/hooks/use-search-filter";
 import { useSortableTable } from "@/hooks/use-sort-table";
@@ -20,11 +20,9 @@ import {
   PaginationLink,
   PaginationPrevious,
   PaginationNext,
-  PaginationEllipsis,
 } from "@/components/ui/pagination";
 import MQTTConnectionBadge from "@/components/mqtt-status";
-import { connectMQTT } from "@/lib/mqttClient";
-import type { MqttClient } from "mqtt";
+import { connectMQTT, disconnectMQTT, getMQTTClient } from "@/lib/mqttClient";
 
 interface PayloadField { key: string; type: string; value: string; }
 interface DataItem {
@@ -33,7 +31,6 @@ interface DataItem {
   interval: number; qos: number; lwt: boolean; retain: boolean;
 }
 
-// Refactor form into a reusable component
 interface PayloadFormProps {
   initialMeta: { topic: string; interval: number; qos: number; lwt: boolean; retain: boolean; };
   initialFields: PayloadField[];
@@ -49,7 +46,7 @@ function PayloadForm({ initialMeta, initialFields, onSubmit, onClose, title }: P
   useEffect(() => {
     setFormMeta(initialMeta);
     setFormFields(initialFields);
-  }, [initialMeta, initialFields]); // Reset form when initial props change (e.g., for update)
+  }, [initialMeta, initialFields]);
 
   function addField() {
     setFormFields([...formFields, { key: "", type: "string", value: "" }]);
@@ -61,13 +58,12 @@ function PayloadForm({ initialMeta, initialFields, onSubmit, onClose, title }: P
     const v = [...formFields]; v[idx] = { ...v[idx], [attr]: val }; setFormFields(v);
   }
 
-  // Helper to parse field values based on their declared type
   function parseField(f: PayloadField): any {
     if (f.type === "int") {
       const parsed = parseInt(f.value, 10);
       if (isNaN(parsed)) {
         toast.error(`Invalid integer value for key '${f.key}'. Please enter a number.`);
-        throw new Error("Invalid integer value"); // Throw to stop form submission
+        throw new Error("Invalid integer value");
       }
       return parsed;
     }
@@ -83,20 +79,18 @@ function PayloadForm({ initialMeta, initialFields, onSubmit, onClose, title }: P
         return JSON.parse(f.value);
       } catch (e) {
         toast.error(`Invalid JSON for key '${f.key}'. Please ensure it's valid JSON.`);
-        throw new Error("Invalid JSON value"); // Throw to stop form submission
+        throw new Error("Invalid JSON value");
       }
     }
-    return f.value; // Default to string
+    return f.value;
   }
 
   const handleSubmit = () => {
     try {
-      // Validate topic
-      if (!formMeta.topic.trim()) { // ✨ Corrected: Using formMeta here
+      if (!formMeta.topic.trim()) {
         toast.error("Topic cannot be empty.");
         return;
       }
-      // Ensure all keys are unique and not empty
       const keys = formFields.map(f => f.key.trim());
       const uniqueKeys = new Set(keys);
       if (keys.length !== uniqueKeys.size) {
@@ -109,9 +103,8 @@ function PayloadForm({ initialMeta, initialFields, onSubmit, onClose, title }: P
       }
 
       const parsedFields = formFields.map(f => ({ key: f.key, value: parseField(f) }));
-      onSubmit(formMeta, parsedFields); // ✨ Corrected: Using formMeta here
+      onSubmit(formMeta, parsedFields);
     } catch (error) {
-      // Errors are already toasted by parseField
       console.error("Form submission error:", error);
     }
   };
@@ -173,20 +166,21 @@ export default function StaticPayloadPage() {
   const [responseMessage, setResponseMessage] = useState<string>("");
   const [updateIndex, setUpdateIndex] = useState<number | null>(null);
 
-  const clientRef = useRef<MqttClient>();
-
   const [currentFormMeta, setCurrentFormMeta] = useState({ topic: "", interval: 0, qos: 0, lwt: false, retain: false });
   const [currentFormFields, setCurrentFormFields] = useState<PayloadField[]>([]);
 
   useEffect(() => {
-    const mqttClientInstance = connectMQTT();
-    clientRef.current = mqttClientInstance;
+    // Memastikan koneksi hanya dilakukan sekali saat komponen di-mount
+    connectMQTT();
 
     const handleConnect = () => {
       setStatus("connected");
-      mqttClientInstance.subscribe("response/data/#");
-      mqttClientInstance.publish("command/data/payload", JSON.stringify({ command: "getData" }));
-      toast.info("Connected to MQTT. Requesting initial data...");
+      const client = getMQTTClient();
+      if (client?.connected) {
+        client.subscribe("response/data/#");
+        client.publish("command/data/payload", JSON.stringify({ command: "getData" }));
+        toast.info("Connected to MQTT. Requesting initial data...");
+      }
     };
 
     const handleError = (err: Error) => {
@@ -194,6 +188,7 @@ export default function StaticPayloadPage() {
       setStatus("error");
       toast.error(`MQTT Error: ${err.message}`);
     };
+    
     const handleClose = () => {
       setStatus("disconnected");
       toast.warning("Disconnected from MQTT broker.");
@@ -202,7 +197,6 @@ export default function StaticPayloadPage() {
     const handleMessage = (topic: string, buf: Buffer) => {
       try {
         const msg = JSON.parse(buf.toString());
-
         if (topic === "response/data/payload") {
           if (Array.isArray(msg)) {
             setItems(msg);
@@ -215,7 +209,10 @@ export default function StaticPayloadPage() {
           if (msg.status === "success") {
             toast.success(msg.message || "Operation successful!");
             setTimeout(() => {
-                clientRef.current?.publish("command/data/payload", JSON.stringify({ command: "getData" }));
+              const client = getMQTTClient();
+              if (client?.connected) {
+                client.publish("command/data/payload", JSON.stringify({ command: "getData" }));
+              }
             }, 500);
           } else {
             toast.error(msg.message || "Operation failed!");
@@ -228,29 +225,41 @@ export default function StaticPayloadPage() {
         console.error("MQTT message parsing error:", err);
       }
     };
-
-    mqttClientInstance.on("connect", handleConnect);
-    mqttClientInstance.on("error", handleError);
-    mqttClientInstance.on("close", handleClose);
-    mqttClientInstance.on("message", handleMessage);
+    
+    const client = getMQTTClient();
+    if (client) {
+      client.on("connect", handleConnect);
+      client.on("error", handleError);
+      client.on("close", handleClose);
+      client.on("message", handleMessage);
+      
+      if (client.connected) {
+        handleConnect();
+      }
+    }
 
     return () => {
-      if (mqttClientInstance.connected) {
-        mqttClientInstance.unsubscribe("response/data/#");
+      const client = getMQTTClient();
+      if (client) {
+        if (client.connected) {
+          client.unsubscribe("response/data/#");
+        }
+        client.off("connect", handleConnect);
+        client.off("error", handleError);
+        client.off("close", handleClose);
+        client.off("message", handleMessage);
       }
-      mqttClientInstance.off("connect", handleConnect);
-      mqttClientInstance.off("error", handleError);
-      mqttClientInstance.off("close", handleClose);
-      mqttClientInstance.off("message", handleMessage);
+      disconnectMQTT();
     };
   }, []);
 
   const send = (command: string, payload: any, responseTopic: string) => {
-    if (status !== "connected" || !clientRef.current?.connected) {
+    const client = getMQTTClient();
+    if (!client?.connected) {
       toast.error("MQTT not connected. Please wait for connection or refresh.");
       return;
     }
-    clientRef.current?.publish("command/data/payload", JSON.stringify({ command, ...payload }), (err) => {
+    client.publish("command/data/payload", JSON.stringify({ command, ...payload }), (err) => {
       if (err) {
         toast.error(`Failed to send command: ${err.message}`);
         console.error("Publish error:", err);
@@ -258,7 +267,6 @@ export default function StaticPayloadPage() {
     });
   };
 
-  // --- CRUD Handlers ---
   const handleGet = () => {
     setResponseMessage("");
     send("getData", {}, "response/data/payload");
@@ -281,7 +289,6 @@ export default function StaticPayloadPage() {
     send("deleteData", { topic: topicToDelete }, "response/data/delete");
   };
 
-  // --- Modal Openers ---
   const openCreateModal = () => {
     setCurrentFormMeta({ topic: "", interval: 0, qos: 0, lwt: false, retain: false });
     setCurrentFormFields([]);
@@ -292,7 +299,6 @@ export default function StaticPayloadPage() {
     setUpdateIndex(idx);
     const it = items[idx];
     setCurrentFormMeta({ topic: it.topic, interval: it.interval, qos: it.qos, lwt: it.lwt, retain: it.retain });
-    // Convert data object to PayloadField array for form
     setCurrentFormFields(Object.entries(it.data).map(([k, v]) => ({
       key: k,
       type: typeof v === "number" ? "int" : typeof v === "boolean" ? "boolean" : Array.isArray(v) ? "array" : typeof v === "object" ? "object" : "string",
@@ -306,7 +312,6 @@ export default function StaticPayloadPage() {
     setPreviewOpen(true);
   };
 
-  // --- Pagination, Sort, and Search Logic ---
   const { searchQuery, setSearchQuery, filteredData } = useSearchFilter(items, ["topic"]);
   const { sorted, sortField, sortDirection, handleSort } = useSortableTable(filteredData);
   const [currentPage, setCurrentPage] = useState(1);
@@ -343,7 +348,6 @@ export default function StaticPayloadPage() {
         </div>
       </header>
       
-      {/* Search */}
       <div className="px-4 py-2 border-b">
         <div className="relative max-w-sm">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -362,7 +366,6 @@ export default function StaticPayloadPage() {
           </Alert>
         )}
         
-        {/* Summary Cards */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -390,12 +393,11 @@ export default function StaticPayloadPage() {
               <div className="text-center p-4 bg-muted/50 rounded-lg">
                 <Settings className="h-8 w-8 mx-auto mb-2 text-primary" />
                 <div className="text-2xl font-bold">{items.filter(item => item.qos > 0).length}</div>
-                <div className="text-sm text-muted-foreground">QoS > 0</div>
+                <div className="text-sm text-muted-foreground">QoS 0</div>
               </div>
             </div>
           </CardContent>
         </Card>
-        {/* Data Table */}
         <Card>
           <CardHeader>
             <CardTitle>Static Payload Data</CardTitle>
@@ -413,7 +415,7 @@ export default function StaticPayloadPage() {
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
-          <TableBody>
+            <TableBody>
               {paginatedData.length === 0 ? (
                 <TableRow><TableCell colSpan={5} className="text-center py-12">
                   <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
@@ -460,7 +462,7 @@ export default function StaticPayloadPage() {
                 </TableCell>
               </TableRow>
             ))}
-              </TableBody>
+            </TableBody>
             </Table>
           </CardContent>
         </Card>
@@ -495,7 +497,6 @@ export default function StaticPayloadPage() {
           </div>
         )}
 
-        {/* Create Modal */}
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <PayloadForm
             title="Create New Data"
@@ -506,7 +507,6 @@ export default function StaticPayloadPage() {
           />
         </Dialog>
 
-        {/* Update Modal */}
         <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
           <PayloadForm
             title="Update Data"
@@ -517,7 +517,6 @@ export default function StaticPayloadPage() {
           />
         </Dialog>
 
-        {/* Preview Modal */}
         <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
           <DialogContent>
             <DialogHeader><DialogTitle>Preview JSON Payload</DialogTitle></DialogHeader>
