@@ -56,9 +56,9 @@ import MqttStatus from "@/components/mqtt-status";
 // Type definitions for updated requirements
 interface TriggerCondition {
   device_name: string;
-  device_mac: string;
   device_address: number;
   device_bus: number;
+  device_topic?: string; // MQTT topic for device data
   trigger_type: "drycontact";
   pin_number: number;
   condition_operator: "is" | "and" | "or";
@@ -107,6 +107,7 @@ interface AutomationLogicConfig {
 }
 
 interface ModularDevice {
+  id?: string;
   name: string;
   address: number;
   device_bus: number;
@@ -114,6 +115,7 @@ interface ModularDevice {
   mac: string;
   device_type: string;
   manufacturer: string;
+  topic?: string;
 }
 
 interface MQTTResponse {
@@ -219,7 +221,7 @@ const AutomationLogicControl = () => {
         id: uuidv4(),
         created_at: new Date().toISOString(),
       };
-      publishMQTT(TOPICS.COMMAND, { action: "add", data: ruleData });
+      publishMQTT(TOPICS.COMMAND, { command: "add", data: ruleData });
     },
     [publishMQTT, TOPICS.COMMAND]
   );
@@ -231,7 +233,7 @@ const AutomationLogicControl = () => {
         ...rule,
         updated_at: new Date().toISOString(),
       };
-      publishMQTT(TOPICS.COMMAND, { action: "set", data: ruleData });
+      publishMQTT(TOPICS.COMMAND, { command: "set", data: ruleData });
     },
     [publishMQTT, TOPICS.COMMAND]
   );
@@ -239,14 +241,14 @@ const AutomationLogicControl = () => {
   const deleteRule = useCallback(
     (ruleId: string) => {
       setLoading(true);
-      publishMQTT(TOPICS.COMMAND, { action: "delete", data: { id: ruleId } });
+      publishMQTT(TOPICS.COMMAND, { command: "delete", data: { id: ruleId } });
     },
     [publishMQTT, TOPICS.COMMAND]
   );
 
   const refreshData = useCallback(() => {
     setLoading(true);
-    publishMQTT(TOPICS.COMMAND, { action: "get" });
+    publishMQTT(TOPICS.COMMAND, { command: "get" });
   }, [publishMQTT, TOPICS.COMMAND]);
 
   // Load modular devices from MODULAR_DEVICE/AVAILABLES
@@ -411,7 +413,6 @@ const AutomationLogicControl = () => {
             triggers: [
               {
                 device_name: "",
-                device_mac: "",
                 device_address: 0,
                 device_bus: 0,
                 trigger_type: "drycontact",
@@ -595,7 +596,6 @@ const AutomationLogicControl = () => {
         ...currentRule.trigger_groups[groupIndex].triggers,
         {
           device_name: "",
-          device_mac: "",
           device_address: 0,
           device_bus: 0,
           trigger_type: "drycontact" as const,
@@ -683,6 +683,7 @@ const AutomationLogicControl = () => {
         address: device.address || 0,
         device_bus: device.device_bus || 0,
         mac: device.mac || "00:00:00:00:00:00",
+        topic: device.topic || "",
       }));
   }, [modularDevices]);
 
@@ -855,51 +856,147 @@ const AutomationLogicControl = () => {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="p-4 text-left font-medium">#</th>
-                      <th className="p-4 text-left font-medium">Rule Name</th>
-                      <th className="p-4 text-left font-medium">Description</th>
-                      <th className="p-4 text-center font-medium">Groups</th>
-                      <th className="p-4 text-center font-medium">Actions</th>
-                      <th className="p-4 text-center font-medium">Controls</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-16">#</TableHead>
+                      <TableHead>Rule Name</TableHead>
+                      <TableHead className="text-center w-24">
+                        Triggers
+                      </TableHead>
+                      <TableHead className="text-center w-24">
+                        Actions
+                      </TableHead>
+                      <TableHead className="text-center w-32">
+                        Controls
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {automationConfig.logic_rules
                       .slice(
                         (currentPage - 1) * itemsPerPage,
                         currentPage * itemsPerPage
                       )
                       .map((rule, index) => (
-                        <tr
+                        <TableRow
                           key={rule.id}
-                          className="border-b hover:bg-muted/30 transition-colors"
+                          className="hover:bg-muted/30 transition-colors"
                         >
-                          <td className="p-4 text-center font-medium text-muted-foreground">
+                          <TableCell className="text-center font-medium text-muted-foreground">
                             {(currentPage - 1) * itemsPerPage + index + 1}
-                          </td>
-                          <td className="p-4">
+                          </TableCell>
+                          <TableCell>
                             <div className="font-medium">{rule.rule_name}</div>
                             <div className="text-sm text-muted-foreground">
                               {rule.group_rule_name}
                             </div>
-                          </td>
-                          <td className="p-4 text-muted-foreground">
-                            {rule.description || "No description"}
-                          </td>
-                          <td className="p-4 text-center">
-                            <Badge variant="outline">
-                              {rule.trigger_groups.length}
-                            </Badge>
-                          </td>
-                          <td className="p-4 text-center">
-                            <Badge variant="outline">
-                              {rule.actions.length}
-                            </Badge>
-                          </td>
-                          <td className="p-4">
+                          </TableCell>
+                          <TableCell className="text-left">
+                            <div className="space-y-2">
+                              {rule.trigger_groups?.map((group, groupIdx) => (
+                                <div
+                                  key={groupIdx}
+                                  className="border rounded-md p-2 bg-muted/20"
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-xs"
+                                    >
+                                      {group.group_name}
+                                    </Badge>
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs"
+                                    >
+                                      {group.group_operator}
+                                    </Badge>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {group.triggers?.map(
+                                      (trigger, triggerIdx) => (
+                                        <div
+                                          key={triggerIdx}
+                                          className="text-xs bg-background/50 rounded px-2 py-1"
+                                        >
+                                          <div className="font-medium">
+                                            {trigger.device_name} - Pin{" "}
+                                            {trigger.pin_number}
+                                          </div>
+                                          <div className="text-muted-foreground">
+                                            {trigger.condition_operator.toUpperCase()}{" "}
+                                            {trigger.target_value
+                                              ? "TRUE"
+                                              : "FALSE"}
+                                            {((trigger.delay_on ?? 0) > 0 ||
+                                              (trigger.delay_off ?? 0) > 0) && (
+                                              <span className="ml-2 text-orange-600">
+                                                (Delay: ON{" "}
+                                                {trigger.delay_on ?? 0}s, OFF{" "}
+                                                {trigger.delay_off ?? 0}s)
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-left">
+                            <div className="space-y-2">
+                              {rule.actions?.map((action, actionIdx) => (
+                                <div
+                                  key={actionIdx}
+                                  className="border rounded-md p-2 bg-muted/20"
+                                >
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-xs"
+                                    >
+                                      {action.action_type === "control_relay"
+                                        ? "Control Relay"
+                                        : "Send Message"}
+                                    </Badge>
+                                  </div>
+                                  {action.action_type === "control_relay" ? (
+                                    <div className="text-xs bg-background/50 rounded px-2 py-1">
+                                      <div className="font-medium">
+                                        {action.target_device} - Pin{" "}
+                                        {action.relay_pin}
+                                      </div>
+                                      <div className="text-muted-foreground">
+                                        Set to:{" "}
+                                        {action.target_value ? "ON" : "OFF"}
+                                      </div>
+                                      <div className="text-muted-foreground">
+                                        Address: {action.target_address}, Bus:{" "}
+                                        {action.target_bus}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs bg-background/50 rounded px-2 py-1">
+                                      <div className="font-medium">
+                                        WhatsApp Message
+                                      </div>
+                                      <div className="text-muted-foreground">
+                                        To: {action.whatsapp_name || "N/A"} (
+                                        {action.whatsapp_number || "N/A"})
+                                      </div>
+                                      <div className="text-muted-foreground">
+                                        Message: {action.message || "N/A"}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>
                             <div className="flex gap-2 justify-center">
                               <Button
                                 size="sm"
@@ -916,11 +1013,11 @@ const AutomationLogicControl = () => {
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
 
                 {/* Pagination */}
                 {totalPages > 1 && (
@@ -1172,10 +1269,10 @@ const AutomationLogicControl = () => {
                                   updateTrigger(groupIndex, triggerIndex, {
                                     ...trigger,
                                     device_name: value,
-                                    device_mac: selectedDevice?.mac || "",
                                     device_address:
                                       selectedDevice?.address || 0,
                                     device_bus: selectedDevice?.device_bus || 0,
+                                    device_topic: selectedDevice?.topic || "",
                                   });
                                 }}
                               >

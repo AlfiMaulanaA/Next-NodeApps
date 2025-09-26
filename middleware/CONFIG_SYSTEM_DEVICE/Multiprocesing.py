@@ -31,6 +31,7 @@ if __name__ == '__main__':
         'PayloadDynamic.py',
         'PayloadStatic.py',
         'Settings.py',
+        'rpi_config_manager.py',
     ]
 
     # Membuat dan menjalankan proses untuk setiap file

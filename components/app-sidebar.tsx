@@ -83,53 +83,53 @@ const menuData = {
           url: "/devices/modbus",
           icon: Database,
         },
-        {
-          title: "Modular I2C",
-          url: "/devices/modular",
-          icon: Zap,
-        },
-        {
-          title: "Threshold Settings",
-          url: "/devices/threshold",
-          icon: Shield,
-        },
+        // {
+        //   title: "Modular I2C",
+        //   url: "/devices/modular",
+        //   icon: Zap,
+        // },
+        // {
+        //   title: "Threshold Settings",
+        //   url: "/devices/threshold",
+        //   icon: Shield,
+        // },
       ],
     },
-    {
-      title: "Control Center",
-      items: [
-        {
-          title: "Manual Control",
-          url: "/control/manual",
-          icon: Play,
-        },
-        {
-          title: "Scheduled Tasks",
-          url: "/control/schedule",
-          icon: Activity,
-        },
-        {
-          title: "Logic Control",
-          url: "/control/logic",
-          icon: Settings,
-        },
-        {
-          title: "Visual Automation",
-          url: "/control/logic/visual",
-          icon: Zap,
-        },
-        {
-          title: "Value Control",
-          url: "/control/value",
-          icon: Database,
-        },
-        {
-          title: "Voice Control",
-          url: "/control/voice",
-          icon: Wifi,
-        },
-      ],
-    },
+    // {
+    //   title: "Control Center",
+    //   items: [
+    //     {
+    //       title: "Manual Control",
+    //       url: "/control/manual",
+    //       icon: Play,
+    //     },
+    //     {
+    //       title: "Scheduled Tasks",
+    //       url: "/control/schedule",
+    //       icon: Activity,
+    //     },
+    //     {
+    //       title: "Logic Control",
+    //       url: "/control/logic",
+    //       icon: Settings,
+    //     },
+    //     {
+    //       title: "Visual Automation",
+    //       url: "/control/logic/visual",
+    //       icon: Zap,
+    //     },
+    //     {
+    //       title: "Value Control",
+    //       url: "/control/value",
+    //       icon: Database,
+    //     },
+    //     {
+    //       title: "Voice Control",
+    //       url: "/control/voice",
+    //       icon: Wifi,
+    //     },
+    //   ],
+    // },
     {
       title: "Network Configuration",
       items: [
@@ -160,26 +160,26 @@ const menuData = {
         },
       ],
     },
-    {
-      title: "Data Payload",
-      items: [
-        {
-          title: "Static Payload",
-          url: "/payload/static",
-          icon: FileText,
-        },
-        {
-          title: "Dynamic Payload",
-          url: "/payload/dynamic",
-          icon: Activity,
-        },
-        {
-          title: "Device Discovery",
-          url: "/payload/discover",
-          icon: Send,
-        },
-      ],
-    },
+    // {
+    //   title: "Data Payload",
+    //   items: [
+    //     {
+    //       title: "Static Payload",
+    //       url: "/payload/static",
+    //       icon: FileText,
+    //     },
+    //     {
+    //       title: "Dynamic Payload",
+    //       url: "/payload/dynamic",
+    //       icon: Activity,
+    //     },
+    //     {
+    //       title: "Device Discovery",
+    //       url: "/payload/discover",
+    //       icon: Send,
+    //     },
+    //   ],
+    // },
     {
       title: "System Settings",
       items: [

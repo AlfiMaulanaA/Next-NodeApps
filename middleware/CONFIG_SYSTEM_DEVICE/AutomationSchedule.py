@@ -266,19 +266,7 @@ def reload_schedule(client_control):
         send_error_log("reload_schedule", f"Failed to reload schedule: {e}", ERROR_TYPE_MINOR)
         logger.error(f"Failed to reload schedule: {e}")
 
-def restart_service():
-    try:
-        # Note: This command assumes your service is named 'scheduler_control.service'
-        # and the user running this script has sudo privileges for systemctl.
-        result = subprocess.run(["sudo", "systemctl", "restart", "scheduler_control.service"], check=True, capture_output=True, text=True)
-        logger.info(f"Service restarted successfully. Output: {result.stdout.strip()}")
-    except subprocess.CalledProcessError as e:
-        error_detail = f"Failed to restart service: {e.stderr.strip()}"
-        send_error_log("restart_service", error_detail, ERROR_TYPE_CRITICAL, {"command_output": e.stderr.strip()})
-        logger.error(error_detail)
-    except Exception as e:
-        send_error_log("restart_service", f"Unexpected error during service restart: {e}", ERROR_TYPE_CRITICAL)
-        logger.error(f"Unexpected error during service restart: {e}")
+
 
 # --- MQTT Client Callbacks ---
 def on_connect_crud(client, userdata, flags, rc):
@@ -407,11 +395,10 @@ def handle_message(client, message):
             publish_crud(client, json.dumps(config), topic_response)
         elif action in ['set', 'add', 'delete']:
             modify_config(client, message)
-            publish_response(client, f"{action.capitalize()} successful, restarting service...", True)
-            restart_service() # This will cause the service to reload schedule on startup
+            publish_response(client, f"{action.capitalize()} successful", True)
         elif action == 'get_devices':
-            # Silent processing of available devices
-            pass
+            # Send available devices to dedicated topic
+            send_available_devices(client)
         else:
             raise ValueError(f"Unknown action: {action}")
     except ValueError as e:
@@ -421,33 +408,47 @@ def handle_message(client, message):
         send_error_log("handle_message", f"Unhandled error processing message: {e}", ERROR_TYPE_MAJOR, {"action": action})
         publish_response(client, f"Failed to perform action '{action}' due to an internal error.", False)
 
+def get_active_mac_address():
+    """Get MAC address from active network interface (prioritize wlan0, then eth0)"""
+    import subprocess
+
+    # Priority: wlan0 (WiFi) > eth0 (Ethernet)
+    interfaces = ['wlan0', 'eth0']
+
+    for interface in interfaces:
+        try:
+            result = subprocess.run(['cat', f'/sys/class/net/{interface}/address'],
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                mac_address = result.stdout.strip()
+                # Validate MAC address format
+                if len(mac_address.split(':')) == 6:
+                    log_simple(f"Found active MAC address from {interface}: {mac_address}", "SUCCESS")
+                    return mac_address
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+            log_simple(f"Failed to get MAC from {interface}: {e}", "WARNING")
+            continue
+
+    # Fallback to Python uuid method
+    try:
+        import uuid
+        mac = ':'.join(['{:02x}'.format((uuid.getnode() >> elements) & 0xff) for elements in range(0, 2*6, 2)][::-1])
+        log_simple(f"Using fallback MAC address from uuid: {mac}", "WARNING")
+        return mac
+    except Exception as e:
+        log_simple(f"Failed to get fallback MAC address: {e}", "ERROR")
+        return "00:00:00:00:00:00"
+
 def handle_mac_address_request(client, msg):
     """Handle MAC address request and send response"""
     try:
-        # Get MAC address from MQTT config or from system
-        mac_address = mqtt_config.get('mac_address', '')
-        
-        if not mac_address:
-            # Try to get MAC address from system if not in config
-            import subprocess
-            try:
-                # Get MAC address using system command (Linux/Windows compatible)
-                result = subprocess.run(['cat', '/sys/class/net/eth0/address'], capture_output=True, text=True)
-                if result.returncode == 0:
-                    mac_address = result.stdout.strip()
-                else:
-                    # Fallback for Windows or if eth0 doesn't exist
-                    import uuid
-                    mac = ':'.join(['{:02x}'.format((uuid.getnode() >> elements) & 0xff) for elements in range(0, 2*6, 2)][::-1])
-                    mac_address = mac
-            except Exception as e:
-                log_simple(f"Failed to get system MAC address: {e}", "WARNING")
-                mac_address = "00:00:00:00:00:00"  # Default MAC if all methods fail
-        
+        # Get MAC address from active interface
+        mac_address = get_active_mac_address()
+
         response = {"mac": mac_address}
         client.publish(mac_address_response_topic, json.dumps(response))
         log_simple(f"MAC address sent: {mac_address}", "SUCCESS")
-        
+
     except Exception as e:
         send_error_log("handle_mac_address_request", f"Failed to handle MAC address request: {e}", ERROR_TYPE_MAJOR)
         log_simple(f"Failed to handle MAC address request: {e}", "ERROR")
@@ -728,13 +729,16 @@ def send_control_signal(client, device, pin, data):
 
     try:
         # Basic validation for critical device info
-        if not all(key in device for key in ['mac', 'part_number', 'address', 'device_bus']):
+        if not all(key in device for key in ['part_number', 'address', 'device_bus']):
             logger.error(f"Missing critical device information for sending control signal: {device.get('id', 'unknown')}")
             send_error_log("send_control_signal", "Missing critical device information.", ERROR_TYPE_CRITICAL, {"device_data": device})
             return
 
+        # Get active MAC address instead of using potentially wrong config MAC
+        active_mac = get_active_mac_address()
+
         message = {
-            "mac": device['mac'],
+            "mac": active_mac,  # Use active MAC instead of device['mac']
             "protocol_type": "Modular",
             "device": device['part_number'],
             "function": "write",
@@ -747,7 +751,7 @@ def send_control_signal(client, device, pin, data):
             "Timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
         }
         publish_control(client, json.dumps(message), "modular")
-        logger.info(f"Sent control signal to {device.get('customName', device.get('name', device['id']))}, pin {pin}, data {data}")
+        logger.info(f"Sent control signal to {device.get('customName', device.get('name', device['id']))}, pin {pin}, data {data} (using active MAC: {active_mac})")
     except Exception as e:
         send_error_log("send_control_signal", f"Failed to send control signal: {e}", ERROR_TYPE_CRITICAL, {"device_id": device.get('id', 'unknown'), "pin": pin, "data": data})
 

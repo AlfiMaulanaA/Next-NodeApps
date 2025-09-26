@@ -4,6 +4,7 @@ import threading
 import logging
 import uuid
 import operator
+import subprocess
 import paho.mqtt.client as mqtt
 from datetime import datetime, timedelta
 
@@ -56,6 +57,7 @@ def log_simple(message, level="INFO"):
 # --- Global Variables ---
 config = []
 modular_devices = []
+subscribed_topics = set()  # Track subscribed device topics
 client_control = None  # For sending control commands to devices
 client_crud = None     # For handling configuration CRUD operations
 client_error_logger = None  # Dedicated client for sending error logs
@@ -108,6 +110,101 @@ def send_error_log(error_msg, error_type):
             client_error_logger.publish(ERROR_LOG_TOPIC, json.dumps(error_message))
     except Exception as e:
         log_simple(f"Failed to send error log: {e}", "ERROR")
+
+def get_active_mac_address():
+    """Get MAC address from active network interface (prioritize wlan0, then eth0)"""
+    # Priority: wlan0 (WiFi) > eth0 (Ethernet)
+    interfaces = ['wlan0', 'eth0']
+
+    # First try: Use ifconfig (most reliable on embedded systems)
+    try:
+        log_simple("Checking network interfaces with ifconfig", "INFO")
+        ifconfig_result = subprocess.run(['ifconfig'], capture_output=True, text=True, timeout=5)
+        if ifconfig_result.returncode == 0:
+            lines = ifconfig_result.stdout.split('\n')
+            current_interface = None
+            for line in lines:
+                line = line.strip()
+                # Look for interface name (line that starts with interface name)
+                if line and not line.startswith(' ') and not line.startswith('\t') and ':' in line:
+                    current_interface = line.split(':')[0].strip()
+                # Look for ether (MAC address) in the interface block
+                elif current_interface and current_interface in interfaces and 'ether ' in line:
+                    mac_match = line.split('ether ')[1].split()[0].strip()
+                    # Validate MAC address format
+                    if len(mac_match.split(':')) == 6 and len(mac_match) == 17:
+                        # Check if interface is RUNNING by looking for RUNNING flag in previous lines
+                        # Go back a few lines to check for RUNNING flag
+                        interface_block_start = None
+                        for i, check_line in enumerate(lines):
+                            if check_line.strip().startswith(f'{current_interface}:'):
+                                interface_block_start = i
+                                break
+
+                        if interface_block_start is not None:
+                            # Check the flags line (usually the line after interface name)
+                            flags_line = lines[interface_block_start].strip()
+                            if 'RUNNING' in flags_line:
+                                log_simple(f"Found active MAC address from {current_interface}: {mac_match}", "SUCCESS")
+                                return mac_match
+                            else:
+                                log_simple(f"Interface {current_interface} is not RUNNING", "WARNING")
+    except Exception as e:
+        log_simple(f"ifconfig method failed: {e}", "ERROR")
+
+    # Second try: Use sysfs method
+    for interface in interfaces:
+        try:
+            # Check if interface exists and is up
+            operstate_path = f'/sys/class/net/{interface}/operstate'
+            address_path = f'/sys/class/net/{interface}/address'
+
+            # Check operstate
+            with open(operstate_path, 'r') as f:
+                operstate = f.read().strip()
+
+            if operstate == 'up':
+                # Get MAC address
+                with open(address_path, 'r') as f:
+                    mac_address = f.read().strip()
+
+                # Validate MAC address format
+                if len(mac_address.split(':')) == 6 and len(mac_address) == 17:
+                    log_simple(f"Found active MAC address from {interface} (sysfs): {mac_address}", "SUCCESS")
+                    return mac_address
+                else:
+                    log_simple(f"Invalid MAC format from {interface}: {mac_address}", "WARNING")
+            else:
+                log_simple(f"Interface {interface} operstate is {operstate}", "WARNING")
+        except (FileNotFoundError, PermissionError, Exception) as e:
+            log_simple(f"Failed to get MAC from {interface} (sysfs): {e}", "WARNING")
+            continue
+
+    # Third try: Use ip command
+    try:
+        log_simple("Trying ip command method", "WARNING")
+        ip_result = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True, timeout=5)
+        if ip_result.returncode == 0:
+            lines = ip_result.stdout.split('\n')
+            current_interface = None
+            for line in lines:
+                line = line.strip()
+                # Look for interface line
+                if line.startswith('link/ether'):
+                    parts = line.split()
+                    if len(parts) >= 2 and current_interface in interfaces:
+                        mac_address = parts[1]
+                        if len(mac_address.split(':')) == 6:
+                            log_simple(f"Found MAC from ip command {current_interface}: {mac_address}", "SUCCESS")
+                            return mac_address
+                elif line and not line.startswith(' ') and ':' in line:
+                    current_interface = line.split(':')[0].strip()
+    except Exception as e:
+        log_simple(f"ip command method failed: {e}", "ERROR")
+
+    # Fallback to default if no active interface found
+    log_simple("No active network interface found, using default MAC", "WARNING")
+    return "00:00:00:00:00:00"
 
 # --- Configuration Management ---
 def load_mqtt_config():
@@ -208,24 +305,71 @@ def publish_available_devices():
             available_devices = []
             for device in modular_devices:
                 available_device = {
+                    'id': device.get('id', ''),
                     'name': device.get('profile', {}).get('name', ''),
                     'address': device.get('protocol_setting', {}).get('address', 0),
                     'device_bus': device.get('protocol_setting', {}).get('device_bus', 0),
                     'part_number': device.get('profile', {}).get('part_number', ''),
                     'mac': device.get('mac', '00:00:00:00:00:00'),
                     'device_type': device.get('profile', {}).get('device_type', ''),
-                    'manufacturer': device.get('profile', {}).get('manufacturer', '')
+                    'manufacturer': device.get('profile', {}).get('manufacturer', ''),
+                    'topic': device.get('topic', '')
                 }
                 available_devices.append(available_device)
-            
+
             client_crud.publish(MODULAR_AVAILABLES_TOPIC, json.dumps(available_devices))
             log_simple(f"Published {len(available_devices)} available devices", "SUCCESS")
         else:
             log_simple("Cannot publish available devices - CRUD client not connected", "WARNING")
-            
+
     except Exception as e:
         log_simple(f"Error publishing available devices: {e}", "ERROR")
         send_error_log(f"Error publishing available devices: {e}", ERROR_TYPE_MINOR)
+
+def handle_available_devices_update(client, available_devices):
+    """Handle available devices update"""
+    try:
+        log_simple(f"Available devices update received: {len(available_devices)} devices")
+
+        # Update subscribed topics based on available devices
+        subscribe_to_device_topics(client)
+
+    except Exception as e:
+        log_simple(f"Error handling available devices update: {e}", "ERROR")
+        send_error_log(f"Available devices update error: {e}", ERROR_TYPE_MINOR)
+
+def subscribe_to_device_topics(client):
+    """Subscribe to device topics used in trigger conditions"""
+    try:
+        if not client or not client.is_connected():
+            log_simple("Client not connected, cannot subscribe to device topics", "WARNING")
+            return
+
+        # Collect all unique device topics from logic rules
+        device_topics = set()
+
+        for rule in config:
+            trigger_groups = rule.get('trigger_groups', [])
+            for group in trigger_groups:
+                triggers = group.get('triggers', [])
+                for trigger in triggers:
+                    device_topic = trigger.get('device_topic')
+                    if device_topic:
+                        device_topics.add(device_topic)
+
+        # Subscribe to each unique device topic
+        for topic in device_topics:
+            if topic not in subscribed_topics:
+                client.subscribe(topic)
+                subscribed_topics.add(topic)
+                log_simple(f"Subscribed to device topic: {topic}", "SUCCESS")
+
+        # Log total subscribed topics
+        log_simple(f"Total device topics subscribed: {len(subscribed_topics)}", "INFO")
+
+    except Exception as e:
+        log_simple(f"Error subscribing to device topics: {e}", "ERROR")
+        send_error_log(f"Device topic subscription error: {e}", ERROR_TYPE_MAJOR)
 
 # --- MQTT Connection Functions ---
 def on_connect_crud(client, userdata, flags, rc):
@@ -252,10 +396,13 @@ def on_connect_control(client, userdata, flags, rc):
     if rc == 0:
         control_broker_connected = True
         log_simple("Control MQTT broker connected", "SUCCESS")
-        
-        # Subscribe to device data for trigger evaluation
-        client.subscribe(MODULAR_DATA_TOPIC)
-        
+
+        # Subscribe to available devices topic to get device topics
+        client.subscribe(MODULAR_AVAILABLES_TOPIC)
+
+        # Subscribe to already known device topics
+        subscribe_to_device_topics(client)
+
     else:
         control_broker_connected = False
         log_simple(f"Control MQTT broker connection failed (code {rc})", "ERROR")
@@ -290,14 +437,14 @@ def on_message_crud(client, userdata, msg):
         if topic == topic_command:
             try:
                 message_data = json.loads(payload)
-                action = message_data.get('action')
+                command = message_data.get('command')
 
-                if action == "get":
+                if command == "get":
                     handle_get_request(client)
-                elif action in ["add", "set", "delete"]:
-                    handle_crud_request(client, action, message_data)
+                elif command in ["add", "set", "delete"]:
+                    handle_crud_request(client, command, message_data)
                 else:
-                    log_simple(f"Unknown action: {action}", "WARNING")
+                    log_simple(f"Unknown command: {command}", "WARNING")
 
             except json.JSONDecodeError:
                 log_simple(f"Invalid JSON in command message: {payload}", "ERROR")
@@ -313,15 +460,31 @@ def on_message_control(client, userdata, msg):
     try:
         topic = msg.topic
         payload = msg.payload.decode()
-        
-        if topic == MODULAR_DATA_TOPIC:
-            # Process device data for trigger evaluation
+
+        if topic == MODULAR_AVAILABLES_TOPIC:
+            # Handle available devices update
+            try:
+                available_devices = json.loads(payload)
+                handle_available_devices_update(client, available_devices)
+            except json.JSONDecodeError:
+                log_simple(f"Invalid JSON in available devices: {payload}", "ERROR")
+
+        elif topic.startswith("Limbah/Modular/"):
+            # Process device data from individual device topics
+            try:
+                device_data = json.loads(payload)
+                process_modular_device_data(device_data)
+            except json.JSONDecodeError:
+                log_simple(f"Invalid JSON in device data: {payload}", "ERROR")
+
+        elif topic == MODULAR_DATA_TOPIC:
+            # Process device data for trigger evaluation (legacy)
             try:
                 device_data = json.loads(payload)
                 process_device_data(device_data)
             except json.JSONDecodeError:
                 log_simple(f"Invalid JSON in device data: {payload}", "ERROR")
-                
+
     except Exception as e:
         log_simple(f"Error handling control message: {e}", "ERROR")
         send_error_log(f"Control message handling error: {e}", ERROR_TYPE_MINOR)
@@ -346,7 +509,7 @@ def handle_get_request(client):
         client.publish(topic_response, json.dumps(error_response))
         log_simple(f"Error sending config data: {e}", "ERROR")
 
-def handle_crud_request(client, action, message_data):
+def handle_crud_request(client, command, message_data):
     """Handle CRUD operations"""
     try:
         data = message_data.get('data', {})
@@ -354,14 +517,14 @@ def handle_crud_request(client, action, message_data):
         success = False
         message = ""
 
-        if action == "add":
+        if command == "add":
             success, message = create_logic_rule(data)
-        elif action == "set":
+        elif command == "set":
             success, message = update_logic_rule(data)
-        elif action == "delete":
+        elif command == "delete":
             success, message = delete_logic_rule(data.get('id'))
         else:
-            message = f"Unknown action: {action}"
+            message = f"Unknown command: {command}"
 
         # Send response
         response = {
@@ -386,6 +549,14 @@ def create_logic_rule(rule_data):
         rule_data['id'] = str(uuid.uuid4())
         rule_data['created_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+        # Update target_mac in relay control actions with active MAC address
+        if 'actions' in rule_data:
+            active_mac = get_active_mac_address()
+            for action in rule_data['actions']:
+                if action.get('action_type') == 'control_relay' and action.get('target_mac') == '00:00:00:00:00:00':
+                    action['target_mac'] = active_mac
+                    log_simple(f"Updated target_mac for relay action in rule '{rule_data.get('rule_name', 'Unknown')}' to {active_mac}", "INFO")
+
         config.append(rule_data)
         save_logic_config()
 
@@ -407,6 +578,15 @@ def update_logic_rule(rule_data):
         for i, rule in enumerate(config):
             if rule.get('id') == rule_id:
                 rule_data['updated_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                # Update target_mac in relay control actions with active MAC address
+                if 'actions' in rule_data:
+                    active_mac = get_active_mac_address()
+                    for action in rule_data['actions']:
+                        if action.get('action_type') == 'control_relay' and action.get('target_mac') == '00:00:00:00:00:00':
+                            action['target_mac'] = active_mac
+                            log_simple(f"Updated target_mac for relay action in rule '{rule_data.get('rule_name', 'Unknown')}' to {active_mac}", "INFO")
+
                 config[i] = rule_data
                 save_logic_config()
 
@@ -447,38 +627,73 @@ def process_device_data(device_data):
     try:
         device_name = device_data.get('device_name', '')
         data = device_data.get('data', {})
-        
+
+        # DEBUG: Log received device data
+        log_simple(f"DEBUG: Received device data - {device_name}: {data}", "INFO")
+
         # Update device state
         device_states[device_name] = data
-        
+
         # Evaluate all logic rules
         for rule in config:
             evaluate_rule(rule, device_name, data)
-            
+
     except Exception as e:
         log_simple(f"Error processing device data: {e}", "ERROR")
         send_error_log(f"Device data processing error: {e}", ERROR_TYPE_MINOR)
+
+def process_modular_device_data(device_data):
+    """Process incoming modular device data from device topics and evaluate triggers"""
+    try:
+        # Extract device information from the data
+        device_name = device_data.get('device_name', '')
+        data = device_data.get('data', {})
+
+        # DEBUG: Log received modular device data
+        log_simple(f"DEBUG: Received modular device data - {device_name}: {data}", "INFO")
+
+        # Update device state
+        device_states[device_name] = data
+
+        # Evaluate all logic rules for this device
+        for rule in config:
+            evaluate_rule(rule, device_name, data)
+
+    except Exception as e:
+        log_simple(f"Error processing modular device data: {e}", "ERROR")
+        send_error_log(f"Modular device data processing error: {e}", ERROR_TYPE_MINOR)
 
 def evaluate_rule(rule, device_name, device_data):
     """Evaluate a single logic rule"""
     try:
         rule_id = rule.get('id', '')
+        rule_name = rule.get('rule_name', '')
         trigger_groups = rule.get('trigger_groups', [])
-        
+
+        # DEBUG: Log rule evaluation start
+        log_simple(f"DEBUG: Evaluating rule '{rule_name}' ({rule_id}) for device '{device_name}'", "INFO")
+
         if not trigger_groups:
+            log_simple(f"DEBUG: Rule '{rule_name}' has no trigger groups", "WARNING")
             return
-            
+
         group_results = []
-        
-        for group in trigger_groups:
+
+        for i, group in enumerate(trigger_groups):
             group_result = evaluate_trigger_group(group, device_name, device_data)
             group_results.append(group_result)
-            
+            log_simple(f"DEBUG: Rule '{rule_name}' group {i+1} result: {group_result}", "INFO")
+
         # All groups must be true for rule to trigger
-        if all(group_results):
-            log_simple(f"Logic rule triggered: {rule.get('rule_name', rule_id)}")
+        all_groups_true = all(group_results)
+        log_simple(f"DEBUG: Rule '{rule_name}' all groups true: {all_groups_true} (results: {group_results})", "INFO")
+
+        if all_groups_true:
+            log_simple(f"Logic rule triggered: {rule_name} ({rule_id})")
             execute_rule_actions(rule)
-            
+        else:
+            log_simple(f"DEBUG: Rule '{rule_name}' NOT triggered - conditions not met", "WARNING")
+
     except Exception as e:
         log_simple(f"Error evaluating rule: {e}", "ERROR")
         send_error_log(f"Rule evaluation error: {e}", ERROR_TYPE_MINOR)
@@ -625,18 +840,19 @@ def execute_relay_control(action):
         if not (client_control and client_control.is_connected()):
             log_simple("Control client not connected for relay action", "WARNING")
             return
-            
+
         target_device = action.get('target_device', '')
-        target_mac = action.get('target_mac', '')
         target_address = action.get('target_address', 0)
         target_bus = action.get('target_bus', 0)
         relay_pin = action.get('relay_pin', 1)
         target_value = action.get('target_value', False)
-        
-        # Create control payload according to requirements
-        mqtt_config = load_mqtt_config()
+
+        # Get active MAC address from network interface
+        local_controller_mac = get_active_mac_address()
+
+        # Create control payload using active network MAC
         control_payload = {
-            "mac": target_mac or mqtt_config.get('mac_address', '00:00:00:00:00:00'),
+            "mac": local_controller_mac,
             "protocol_type": "Modular",
             "device": "RELAYMINI",  # Default relay type
             "function": "write",
@@ -648,11 +864,11 @@ def execute_relay_control(action):
             "device_bus": target_bus,
             "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        
+
         # Send control command
         client_control.publish(MODULAR_CONTROL_TOPIC, json.dumps(control_payload))
-        log_simple(f"Relay control sent: {target_device} pin {relay_pin} = {target_value}", "SUCCESS")
-        
+        log_simple(f"Relay control sent: {target_device} pin {relay_pin} = {target_value} (using active MAC: {local_controller_mac})", "SUCCESS")
+
     except Exception as e:
         log_simple(f"Error executing relay control: {e}", "ERROR")
         send_error_log(f"Relay control execution error: {e}", ERROR_TYPE_MINOR)
@@ -821,9 +1037,14 @@ def connect_mqtt(client_id, broker, port, username="", password="", on_connect_c
 # --- Main Application ---
 def run():
     global client_control, client_crud, client_error_logger
-    
+
     print_startup_banner()
-    
+
+    # Test MAC address detection
+    log_simple("Testing MAC address detection...")
+    test_mac = get_active_mac_address()
+    log_simple(f"MAC address detection test result: {test_mac}", "INFO")
+
     # Load configurations
     log_simple("Loading configurations...")
     mqtt_config = load_mqtt_config()

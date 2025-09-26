@@ -973,6 +973,8 @@ def send_all_available_devices(client):
     send_modular_available_devices(client)
     send_modbus_available_devices(client)
 
+
+
 def periodic_available_devices_publish(client):
     """Periodic publishing of available devices every 30 seconds"""
     while True:
@@ -1055,7 +1057,7 @@ def main():
 
     log_simple("Starting periodic publish thread...")
     threading.Thread(target=periodic_publish, args=(client_publishing,), daemon=True).start()
-    
+
     # Start periodic available devices publishing
     log_simple("Starting periodic available devices publishing...")
     threading.Thread(target=periodic_available_devices_publish, args=(client_operations,), daemon=True).start()

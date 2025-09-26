@@ -3,185 +3,227 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
 import { toast } from "sonner";
-import Swal from 'sweetalert2'; // Import SweetAlert2 for confirmation dialogs
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import Swal from "sweetalert2";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
-import { Network, RotateCw, Loader2, Save, Wifi, Search, RefreshCw } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Network,
+  Wifi,
+  Cable,
+  Settings,
+  Loader2,
+  Save,
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
+  Info,
+  Globe,
+  Router,
+  Shield,
+} from "lucide-react";
 import type { MqttClient } from "mqtt";
 import MqttStatus from "@/components/mqtt-status";
 
 // --- MQTT Topics ---
-const IP_CONFIG_COMMAND_TOPIC = "command_device_ip"; // For readIP, changeIP, restartNetworking
-const IP_CONFIG_RESPONSE_TOPIC = "response_device_ip"; // Backend response
-const SERVICE_COMMAND_TOPIC = "service/command"; // To restart other services like 'Multiprocessing.service'
-const SERVICE_RESPONSE_TOPIC = "service/response"; // Responses for service commands
+const NETWORK_GET_TOPIC = "rpi/network/get";
+const NETWORK_SET_TOPIC = "rpi/network/set";
+const NETWORK_RESPONSE_TOPIC = "rpi/network/response";
 
-// New MQTT Topics for dependent services
-const MODBUS_TCP_SETTING_COMMAND_TOPIC = "IOT/Containment/modbustcp/setting/command";
+// Additional topics for dependent services
+const MODBUS_TCP_SETTING_COMMAND_TOPIC =
+  "IOT/Containment/modbustcp/setting/command";
 const SNMP_SETTING_COMMAND_TOPIC = "IOT/Containment/snmp/setting/command";
 
 // --- Type Definitions ---
+interface NetworkInterface {
+  method: "static" | "dhcp";
+  address?: string;
+  netmask?: string;
+  gateway?: string;
+  "dns-nameservers"?: string;
+  current_address?: string;
+  connection?: string;
+  state?: string;
+  type?: string;
+  cidr?: string;
+  device_state?: string;
+}
+
 interface NetworkConfig {
-  address: string;
+  [interfaceName: string]: NetworkInterface;
+}
+
+interface EditConfig {
+  interface: string;
+  method: "static" | "dhcp";
+  static_ip: string;
   netmask: string;
   gateway: string;
+  dns: string;
 }
-
-// Assume Modbus TCP current settings (especially port) might be needed
-// In a real app, this might come from another config topic or a default.
-interface ModbusTcpConfig {
-    modbus_tcp_ip: string;
-    modbus_tcp_port: number;
-}
-
-interface SnmpConfigPartial {
-    snmpIPaddress: string;
-    // Add other SNMP fields if the backend 'write' command expects a full payload
-    // For this modification, we only focus on snmpIPaddress as requested.
-    // Ideally, a 'read' would happen first to get current full config, then 'write' with updated IP.
-}
-
 
 export default function NetworkPage() {
   // --- State Variables ---
-  const [config, setConfig] = useState<NetworkConfig | null>(null); // Current active config from backend
-  const [editConfig, setEditConfig] = useState<NetworkConfig>({ address: "", netmask: "", gateway: "" }); // Config being edited in the dialog
-  const [open, setOpen] = useState(false); // State for managing the dialog open/close
-  const clientRef = useRef<MqttClient | null>(null); // Ref to hold the MQTT client instance
-  const [isLoading, setIsLoading] = useState(true); // Loading state for initial fetch and update operations (start true for initial fetch)
+  const [networkConfig, setNetworkConfig] = useState<NetworkConfig | null>(
+    null
+  );
+  const [editConfig, setEditConfig] = useState<EditConfig>({
+    interface: "eth0",
+    method: "static",
+    static_ip: "",
+    netmask: "255.255.255.0",
+    gateway: "",
+    dns: "8.8.8.8 8.8.4.4",
+  });
+  const [open, setOpen] = useState(false);
+  const clientRef = useRef<MqttClient | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isConfiguring, setIsConfiguring] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [currentModbusTcpPort] = useState<number>(502);
 
-  // Assuming you need to know the Modbus TCP port for the payload
-  // In a more complex app, this might be fetched from a dedicated Modbus config topic.
-  const [currentModbusTcpPort, setCurrentModbusTcpPort] = useState<number>(502); // Default Modbus TCP port, you might fetch this.
+  // Get current interface configs
+  const eth0Config = networkConfig?.eth0;
+  const wlan0Config = networkConfig?.wlan0;
 
   // --- Input Validation Functions ---
   const isValidIP = (ip: string) =>
-    /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/.test(ip);
+    /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/.test(
+      ip
+    );
 
   const isValidNetmask = (mask: string) => {
-    const parts = mask.split('.').map(Number);
+    const parts = mask.split(".").map(Number);
     if (parts.length !== 4) return false;
-    if (parts.some(p => p < 0 || p > 255)) return false;
-
-    // List of common valid netmasks (full octets)
+    if (parts.some((p) => p < 0 || p > 255)) return false;
     const validMasks = [
-        "255.255.255.255", "255.255.255.254", "255.255.255.252", "255.255.255.248",
-        "255.255.255.240", "255.255.255.224", "255.255.255.192", "255.255.255.128",
-        "255.255.255.0", "255.255.254.0", "255.255.252.0", "255.255.248.0",
-        "255.255.240.0", "255.255.224.0", "255.255.192.0", "255.255.128.0",
-        "255.255.0.0", "255.254.0.0", "255.252.0.0", "255.248.0.0",
-        "255.240.0.0", "255.224.0.0", "255.192.0.0", "255.128.0.0", "255.0.0.0",
-        "0.0.0.0" // Loopback or default
+      "255.255.255.255",
+      "255.255.255.254",
+      "255.255.255.252",
+      "255.255.255.248",
+      "255.255.255.240",
+      "255.255.255.224",
+      "255.255.255.192",
+      "255.255.255.128",
+      "255.255.255.0",
+      "255.255.254.0",
+      "255.255.252.0",
+      "255.255.248.0",
+      "255.255.240.0",
+      "255.255.224.0",
+      "255.255.192.0",
+      "255.255.128.0",
+      "255.255.0.0",
+      "255.254.0.0",
+      "255.252.0.0",
+      "255.248.0.0",
+      "255.240.0.0",
+      "255.224.0.0",
+      "255.192.0.0",
+      "255.128.0.0",
+      "255.0.0.0",
+      "0.0.0.0",
     ];
     return validMasks.includes(mask);
   };
 
   // --- Event Handlers ---
-  const handleInput = (field: keyof NetworkConfig, value: string) => {
-    setEditConfig(prev => ({ ...prev, [field]: value }));
+  const handleInput = (field: keyof EditConfig, value: string | boolean) => {
+    console.log(`[DEBUG] handleInput: ${field} = ${value}`);
+    setEditConfig((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // --- Network Status Helper ---
+  const getConnectionStatus = (config?: NetworkInterface) => {
+    if (!config)
+      return {
+        status: "unknown",
+        color: "bg-gray-500",
+        textColor: "text-gray-700",
+      };
+
+    const state = config.state?.toLowerCase();
+    if (state === "connected") {
+      return {
+        status: "connected",
+        color: "bg-green-500",
+        textColor: "text-green-700",
+      };
+    } else if (state === "disconnected" || state === "unavailable") {
+      return {
+        status: "disconnected",
+        color: "bg-red-500",
+        textColor: "text-red-700",
+      };
+    } else {
+      return {
+        status: "unknown",
+        color: "bg-yellow-500",
+        textColor: "text-yellow-700",
+      };
+    }
   };
 
   /**
-   * Requests the current network configuration (specifically for eth0) from the backend via MQTT.
+   * Request current network configuration from backend
    */
   const requestNetworkConfig = useCallback(() => {
+    console.log("[DEBUG] requestNetworkConfig: Starting request");
     const client = getMQTTClient();
     if (client && client.connected) {
-      setIsLoading(true); // Set loading true when initiating request
-      // Add a small delay to ensure MQTT is ready to publish after connection/page load
-      setTimeout(() => {
-        client.publish(IP_CONFIG_COMMAND_TOPIC, JSON.stringify({ command: "readIP", interface: "eth0" }), {}, (err) => {
-          if (err) {
-            toast.error(`Failed to request config: ${err.message}`);
-            console.error("Publish error (readIP command):", err);
-            setIsLoading(false); // Stop loading if publish fails
-          } else {
-            toast.info("Requesting network configuration...");
-          }
-        });
-      }, 300);
-    } else {
-      toast.warning("MQTT not connected. Cannot request network configuration.");
-      setIsLoading(false); // Stop loading if MQTT is not connected
-    }
-  }, []); // No dependencies for useCallback as it relies on getMQTTClient() which is external
-
-  /**
-   * Sends a command (restart, stop, start) to a specific service via MQTT.
-   * Includes a SweetAlert2 confirmation dialog.
-   * @param serviceName The name of the service to command (e.g., "networking.service").
-   * @param action The action to perform ("restart", "stop", "start").
-   * @param confirmMessage Optional message for the confirmation dialog.
-   * @param topic Optional: specify a different command topic (default: SERVICE_COMMAND_TOPIC)
-   * @param customPayload Optional: provide a custom payload object instead of default service command.
-   */
-  const sendCommandToService = useCallback(async (serviceName: string, action: string, confirmMessage?: string, topic: string = SERVICE_COMMAND_TOPIC, customPayload?: object) => {
-    const client = clientRef.current;
-    if (!client || !client.connected) {
-      toast.error("MQTT not connected. Please wait for connection or refresh.");
-      return;
-    }
-
-    let proceed = true;
-    if (confirmMessage) {
-      const result = await Swal.fire({
-        title: 'Are you sure?',
-        text: confirmMessage,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: 'Yes, proceed!'
-      });
-
-      if (!result.isConfirmed) {
-        proceed = false;
-        toast.info("Action cancelled.");
-      }
-    }
-
-    if (proceed) {
-      let payload: any;
-      let toastId = "serviceCommand";
-
-      if (customPayload) {
-          payload = customPayload; // Use provided custom payload
-      } else if (topic === SERVICE_COMMAND_TOPIC) {
-        // For general service commands, backend expects 'services' array
-        payload = { services: [serviceName], action: action };
-      } else if (topic === IP_CONFIG_COMMAND_TOPIC && action === "restartNetworking") {
-        // Specific payload for backend's restartNetworking command on IP_CONFIG_COMMAND_TOPIC
-        payload = { command: "restartNetworking" }; // Ensure this matches backend expected command
-        toastId = "networkRestart"; // Use specific ID for network restart toast
-      } else {
-          console.warn("Unhandled payload construction scenario for sendCommandToService.");
-          return;
-      }
-
-      client.publish(topic, JSON.stringify(payload), {}, (err) => {
+      setIsLoading(true);
+      console.log("[DEBUG] Publishing to:", NETWORK_GET_TOPIC);
+      client.publish(NETWORK_GET_TOPIC, JSON.stringify({}), {}, (err) => {
         if (err) {
-          toast.dismiss(toastId);
-          toast.error(`Failed to send command: ${err.message}`);
-          console.error(`Publish error to ${topic}:`, err);
+          console.error("[DEBUG] Publish error (get network config):", err);
+          toast.error(`Failed to request config: ${err.message}`);
+          setIsLoading(false);
         } else {
-          toast.loading(`${action.toUpperCase()} ${serviceName} initiated...`, { id: toastId });
+          console.log("[DEBUG] Successfully published network config request");
         }
       });
+    } else {
+      console.warn("[DEBUG] MQTT not connected, cannot request network config");
+      toast.warning(
+        "MQTT not connected. Cannot request network configuration."
+      );
+      setIsLoading(false);
     }
-  }, []); // Empty dependency array as it only depends on clientRef.current, which is stable
+  }, []);
 
+  /**
+   * Update network configuration
+   */
   const updateConfig = async () => {
-    if (
-      !isValidIP(editConfig.address) ||
-      !isValidIP(editConfig.gateway) ||
-      !isValidNetmask(editConfig.netmask)
-    ) {
-      toast.error("Invalid input format for IP Address, Netmask, or Gateway. Please check values.");
-      return;
+    console.log(
+      "[DEBUG] updateConfig: Starting update with config:",
+      editConfig
+    );
+
+    if (editConfig.method === "static") {
+      if (
+        !isValidIP(editConfig.static_ip) ||
+        !isValidIP(editConfig.gateway) ||
+        !isValidNetmask(editConfig.netmask)
+      ) {
+        toast.error(
+          "Invalid input format for IP Address, Netmask, or Gateway."
+        );
+        return;
+      }
     }
 
     const client = getMQTTClient();
@@ -191,14 +233,33 @@ export default function NetworkPage() {
     }
 
     const result = await Swal.fire({
-      title: 'Apply Network Changes?',
-      html: "Changing network settings will require the **device to reboot** to apply the changes. This may temporarily disconnect the device. Are you sure you want to proceed?",
-      icon: 'warning',
+      title: "Apply Network Changes?",
+      html: `
+        <div class="text-left space-y-2">
+          <p><strong>Interface:</strong> ${editConfig.interface}</p>
+          <p><strong>Method:</strong> ${editConfig.method.toUpperCase()}</p>
+          ${
+            editConfig.method === "static"
+              ? `
+            <p><strong>IP Address:</strong> ${editConfig.static_ip}</p>
+            <p><strong>Gateway:</strong> ${editConfig.gateway}</p>
+            <p><strong>Netmask:</strong> ${editConfig.netmask}</p>
+          `
+              : "<p><em>DHCP will obtain settings automatically</em></p>"
+          }
+          <hr class="my-3">
+          <p class="text-sm text-amber-600">⚠️ This may temporarily interrupt network connectivity</p>
+        </div>
+      `,
+      icon: "question",
       showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, update and reboot!',
-      cancelButtonText: 'Cancel'
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Apply Changes",
+      cancelButtonText: "Cancel",
+      customClass: {
+        htmlContainer: "text-sm",
+      },
     });
 
     if (!result.isConfirmed) {
@@ -206,254 +267,210 @@ export default function NetworkPage() {
       return;
     }
 
-    setIsLoading(true); // Set loading true when sending changes
-    toast.loading("Sending configuration update...", { id: "networkUpdate" });
+    setIsConfiguring(true);
+    toast.loading("Applying network configuration...", { id: "networkUpdate" });
 
-    const newIP = editConfig.address; // Capture the new IP address here
-
-    const networkPayload = {
-      command: "changeIP",
-      interface: "eth0",
-      method: "static", // Assuming static configuration
-      static_ip: newIP,
-      netmask: editConfig.netmask,
-      gateway: editConfig.gateway,
+    const networkPayload: any = {
+      interface: editConfig.interface,
+      method: editConfig.method,
     };
 
-    client.publish(IP_CONFIG_COMMAND_TOPIC, JSON.stringify(networkPayload), {}, (err) => {
-      if (err) {
-        toast.dismiss("networkUpdate");
-        Swal.fire({
-          position: 'top-end',
-          icon: 'error',
-          title: `Failed to send update command: ${err.message}`,
-          showConfirmButton: false,
-          timer: 3000,
-          toast: true
-        });
-        setIsLoading(false); // Stop loading if publish fails
-      } else {
-        setOpen(false); // Close dialog immediately after sending the network config
+    if (editConfig.method === "static") {
+      networkPayload.static_ip = editConfig.static_ip;
+      networkPayload.netmask = editConfig.netmask;
+      networkPayload.gateway = editConfig.gateway;
+      networkPayload.dns = editConfig.dns;
+    }
 
-        // --- NEW LOGIC: PUBLISH NEW IP TO MODBUS TCP AND SNMP TOPICS ---
-        // These publishes are "best-effort" from the client side.
-        // For a more robust solution, the backend should ideally handle this propagation
-        // after it has successfully applied the network changes and possibly rebooted.
+    console.log("[DEBUG] Network payload:", networkPayload);
 
-        // 1. Publish to Modbus TCP
-        const modbusTcpPayload: ModbusTcpConfig & { command: string } = {
-          command: "write",
-          modbus_tcp_ip: newIP,
-          modbus_tcp_port: currentModbusTcpPort, // Use the state variable for Modbus Port
-        };
-        client.publish(MODBUS_TCP_SETTING_COMMAND_TOPIC, JSON.stringify(modbusTcpPayload), {}, (modbusErr) => {
-          if (modbusErr) {
-            console.error("Failed to publish new IP to Modbus TCP:", modbusErr);
-            toast.error("Failed to update Modbus TCP IP. Check manually after network change.");
-          } else {
-            console.log("Published new IP to Modbus TCP successfully.");
-            // No toast for this, as the main network update toast handles feedback.
+    client.publish(
+      NETWORK_SET_TOPIC,
+      JSON.stringify(networkPayload),
+      {},
+      (err) => {
+        if (err) {
+          console.error("[DEBUG] Publish error:", err);
+          toast.dismiss("networkUpdate");
+          toast.error(`Failed to send update: ${err.message}`);
+          setIsConfiguring(false);
+        } else {
+          console.log("[DEBUG] Network config update sent");
+          setOpen(false);
+
+          // Update dependent services for static IP
+          if (editConfig.method === "static") {
+            const newIP = editConfig.static_ip;
+
+            // Update Modbus TCP
+            client.publish(
+              MODBUS_TCP_SETTING_COMMAND_TOPIC,
+              JSON.stringify({
+                command: "write",
+                modbus_tcp_ip: newIP,
+                modbus_tcp_port: currentModbusTcpPort,
+              }),
+              {},
+              (err) => {
+                if (err)
+                  console.error("[DEBUG] Modbus TCP update failed:", err);
+                else console.log("[DEBUG] Modbus TCP updated with new IP");
+              }
+            );
+
+            // Update SNMP
+            client.publish(
+              SNMP_SETTING_COMMAND_TOPIC,
+              JSON.stringify({
+                command: "write",
+                snmpIPaddress: newIP,
+              }),
+              {},
+              (err) => {
+                if (err) console.error("[DEBUG] SNMP update failed:", err);
+                else console.log("[DEBUG] SNMP updated with new IP");
+              }
+            );
           }
-        });
-
-        // 2. Publish to SNMP
-        const snmpPayload: SnmpConfigPartial & { command: string } = {
-          command: "write",
-          snmpIPaddress: newIP,
-          // IMPORTANT: If your SNMP backend requires ALL settings for a 'write' command,
-          // you MUST fetch the current SNMP config first, update the IP, then send the full config.
-          // Otherwise, other SNMP settings might be reset to default or null.
-          // For now, this assumes the backend can merge partial updates.
-        };
-        client.publish(SNMP_SETTING_COMMAND_TOPIC, JSON.stringify(snmpPayload), {}, (snmpErr) => {
-          if (snmpErr) {
-            console.error("Failed to publish new IP to SNMP:", snmpErr);
-            toast.error("Failed to update SNMP IP. Check manually after network change.");
-          } else {
-            console.log("Published new IP to SNMP successfully.");
-            // No toast for this, as the main network update toast handles feedback.
-          }
-        });
-        // --- END NEW LOGIC ---
-
-        // The success/error toast and re-fetch for network config are handled by the response_device_ip listener
+        }
       }
-    });
+    );
   };
 
-  /**
-   * Handles Get IP Address button - fetches current network configuration
-   */
-  const handleGetIPAddress = () => {
-    requestNetworkConfig();
+  const handleMethodChange = (isStatic: boolean) => {
+    const newMethod = isStatic ? "static" : "dhcp";
+    console.log("[DEBUG] Method changed to:", newMethod);
+    handleInput("method", newMethod);
+
+    // Pre-fill with current values when switching to static
+    if (isStatic && eth0Config) {
+      setEditConfig((prev) => ({
+        ...prev,
+        static_ip: eth0Config.current_address || eth0Config.address || "",
+        gateway: eth0Config.gateway || "",
+        dns: eth0Config["dns-nameservers"] || "8.8.8.8 8.8.4.4",
+      }));
+    }
   };
 
-  /**
-   * Handles page refresh
-   */
-  const handleRefreshPage = () => {
-    window.location.reload();
+  const formatUptime = () => {
+    if (!lastUpdated) return "Never";
+    const now = new Date();
+    const diff = now.getTime() - lastUpdated.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const seconds = Math.floor((diff % 60000) / 1000);
+
+    if (minutes > 0) return `${minutes}m ${seconds}s ago`;
+    return `${seconds}s ago`;
   };
 
-  // --- useEffect for MQTT Connection and Message Handling ---
+  // --- useEffect for MQTT Connection and Auto-Load ---
   useEffect(() => {
+    console.log("[DEBUG] Initializing MQTT connection and auto-load");
     const mqttClientInstance = connectMQTT();
     clientRef.current = mqttClientInstance;
 
-    const topicsToSubscribe = [
-      IP_CONFIG_RESPONSE_TOPIC,
-      SERVICE_RESPONSE_TOPIC,
-      // You might add specific response topics for MODBUS_TCP_SETTING_COMMAND_TOPIC and SNMP_SETTING_COMMAND_TOPIC
-      // if those services provide direct confirmation of settings applied.
-    ];
-
-    // Initial subscription attempt
-    topicsToSubscribe.forEach((topic) => {
-      mqttClientInstance.subscribe(topic, (err) => {
-        if (err) console.error(`Failed to subscribe to ${topic}:`, err);
-      });
-    });
-
-    // If already connected on mount, fetch config
-    if (mqttClientInstance.connected) {
-      requestNetworkConfig();
-    }
-
-    // MQTT 'connect' event handler
     const handleConnect = () => {
-      topicsToSubscribe.forEach((topic) => {
-        mqttClientInstance.subscribe(topic, (err) => {
-          if (err) console.error(`Failed to re-subscribe to ${topic} on connect:`, err);
-        });
+      console.log("[DEBUG] MQTT connected, subscribing to topics");
+      mqttClientInstance.subscribe(NETWORK_RESPONSE_TOPIC, (err) => {
+        if (err) console.error(`[DEBUG] Subscribe error:`, err);
+        else console.log(`[DEBUG] Subscribed to ${NETWORK_RESPONSE_TOPIC}`);
       });
-      requestNetworkConfig();
-      toast.success("MQTT Connected for Network settings. Fetching data...");
+
+      // Auto-load data on connect
+      setTimeout(() => requestNetworkConfig(), 500);
+      toast.success("Connected - Loading network data...");
     };
 
-    // MQTT 'message' event handler
     const handleMessage = (topic: string, messageBuf: Buffer) => {
       try {
         const data = JSON.parse(messageBuf.toString());
-        console.log(`Received message on topic ${topic}:`, data); // Log all incoming messages for debugging
+        console.log(`[DEBUG] Received:`, data);
 
-        if (topic === IP_CONFIG_RESPONSE_TOPIC) {
-          toast.dismiss("networkUpdate"); // Dismiss update toast if active
-          toast.dismiss("networkRestart"); // Dismiss restart toast if active
+        if (topic === NETWORK_RESPONSE_TOPIC) {
+          toast.dismiss("networkUpdate");
 
           if (data.status === "success") {
-            if (data.data && data.data.eth0) {
-              // This is a 'readIP' response
-              setConfig(data.data.eth0);
-              setEditConfig(data.data.eth0); // Also update edit form with current data
-              Swal.fire({
-                position: 'top-end',
-                icon: 'success',
-                title: 'Network configuration loaded!',
-                showConfirmButton: false,
-                timer: 1500,
-                toast: true
-              });
-            } else if (data.command === "changeIP") {
-              // This is a 'changeIP' response
-              Swal.fire({
-                position: 'top-end',
-                icon: 'success',
-                title: data.message || "Change IP command successful!",
-                html: data.restart_networking ? `Device rebooting or network restarting to apply changes...` : '',
-                showConfirmButton: false,
-                timer: 5000, // Longer timer for critical network changes
-                toast: true
-              });
-              // No immediate requestNetworkConfig here, as device might be rebooting.
-              // A manual refresh or waiting for device to come back online is more appropriate.
-            } else if (data.command === "restartNetworking") {
-              // This is a 'restartNetworking' response
-              Swal.fire({
-                position: 'top-end',
-                icon: 'success',
-                title: data.message || "Network service restarted successfully!",
-                showConfirmButton: false,
-                timer: 3000,
-                toast: true
-              });
-              // After network restart, request config again to confirm changes
-              setTimeout(() => {
-                requestNetworkConfig();
-              }, 2000); // Give networking service a moment to stabilize
-            }
-          } else if (data.status === "error") {
-            Swal.fire({
-              position: 'top-end',
-              icon: 'error',
-              title: data.message || "Network operation failed!",
-              showConfirmButton: false,
-              timer: 3000,
-              toast: true
-            });
-          }
-          setIsLoading(false); // Stop loading after processing IP config response
-        } else if (topic === SERVICE_RESPONSE_TOPIC) {
-          toast.dismiss("serviceCommand"); // Dismiss generic service command toast
+            if (data.action === "get_network_config" && data.network_config) {
+              console.log(
+                "[DEBUG] Setting network config:",
+                data.network_config
+              );
+              setNetworkConfig(data.network_config);
+              setLastUpdated(new Date());
 
-          if (data.result === "success") { // Note: backend uses 'result' for SERVICE_RESPONSE_TOPIC
-            Swal.fire({
-              position: 'top-end',
-              icon: 'success',
-              title: data.message || 'Service command executed successfully!',
-              showConfirmButton: false,
-              timer: 3000,
-              toast: true
-            });
-            // After a service command (e.g., multiprocessing restart), re-request network config
-            // to ensure displayed data is fresh, especially if it was a networking service.
-            // This is a general safety measure, might not always be needed depending on service.
-            setTimeout(() => {
-              requestNetworkConfig();
-            }, 2000);
+              // Update edit form with current eth0 config
+              if (data.network_config.eth0) {
+                const eth0 = data.network_config.eth0;
+                setEditConfig({
+                  interface: "eth0",
+                  method: eth0.method || "dhcp",
+                  static_ip: eth0.address || eth0.current_address || "",
+                  netmask: eth0.netmask || "255.255.255.0",
+                  gateway: eth0.gateway || "",
+                  dns: eth0["dns-nameservers"] || "8.8.8.8 8.8.4.4",
+                });
+              }
+
+              toast.success("Network configuration loaded");
+            } else if (data.action === "set_network_config") {
+              toast.success(data.message || "Network updated successfully");
+              setTimeout(() => requestNetworkConfig(), 2000);
+            }
           } else {
-            Swal.fire({
-              position: 'top-end',
-              icon: 'error',
-              title: 'Error!',
-              text: data.message || 'Failed to execute service command.',
-              showConfirmButton: false,
-              timer: 3000,
-              toast: true
-            });
+            console.error("[DEBUG] Error response:", data);
+            toast.error(
+              data.error || data.message || "Network operation failed"
+            );
           }
+
+          setIsLoading(false);
+          setIsConfiguring(false);
         }
-        // You would add handling for MODBUS_TCP_SETTING_RESPONSE_TOPIC and SNMP_SETTING_RESPONSE_TOPIC here
-        // if your backend provides specific responses for those config changes.
       } catch (err) {
-        toast.error("Invalid response from MQTT. Check backend payload.");
-        console.error("Error parsing MQTT message:", messageBuf.toString(), err);
+        console.error("[DEBUG] Parse error:", err);
+        toast.error("Invalid response format");
         setIsLoading(false);
+        setIsConfiguring(false);
       }
     };
 
-    // Attach event listeners
-    mqttClientInstance.on("connect", handleConnect);
+    // Event listeners
+    if (mqttClientInstance.connected) {
+      handleConnect();
+    } else {
+      mqttClientInstance.on("connect", handleConnect);
+    }
+
     mqttClientInstance.on("message", handleMessage);
     mqttClientInstance.on("error", (err) => {
-      console.error("MQTT Client connection error:", err);
-      toast.error("MQTT connection error. Please check broker settings.");
+      console.error("[DEBUG] MQTT error:", err);
+      toast.error("MQTT connection error");
       setIsLoading(false);
     });
 
-    // Cleanup function for unmounting
     return () => {
+      console.log("[DEBUG] Cleanup MQTT");
       if (clientRef.current) {
-        topicsToSubscribe.forEach((topic) => {
-          clientRef.current?.unsubscribe(topic);
-        });
         clientRef.current.off("connect", handleConnect);
         clientRef.current.off("message", handleMessage);
-        clientRef.current.off("error", () => {}); // Remove error listener
+        clientRef.current.unsubscribe(NETWORK_RESPONSE_TOPIC);
       }
     };
-  }, [requestNetworkConfig, sendCommandToService]); // Added sendCommandToService to dependencies
+  }, [requestNetworkConfig]);
 
-  // --- Rendered Component (JSX) ---
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isLoading && !isConfiguring) {
+        console.log("[DEBUG] Auto-refresh network config");
+        requestNetworkConfig();
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [requestNetworkConfig, isLoading, isConfiguring]);
+
   return (
     <SidebarInset>
       {/* Header */}
@@ -462,119 +479,392 @@ export default function NetworkPage() {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
           <Network className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-semibold tracking-tight">Network Configuration</h1>
+          <h1 className="text-lg font-semibold tracking-tight">
+            Network Configuration
+          </h1>
         </div>
         <div className="flex items-center gap-2">
           <MqttStatus />
-          <Button variant="outline" size="icon" onClick={handleGetIPAddress} disabled={isLoading}>
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-          </Button>
-          <Button variant="outline" size="icon" onClick={handleRefreshPage}>
-            <RefreshCw className="w-4 h-4" />
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={requestNetworkConfig}
+            disabled={isLoading}
+            title="Refresh Network Data"
+          >
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
           </Button>
         </div>
       </header>
-
-      {/* Content */}
-      <div className="p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>IP Configuration (eth0)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <>
-              {!config && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
-                  <div className="flex items-center">
-                    <Network className="w-4 h-4 text-yellow-600 mr-2" />
-                    <p className="text-sm text-yellow-800">
-                      ETH0 network interface not detected or configured. You can configure a new IP address below.
-                    </p>
+      <div className="p-6 space-y-6 ">
+        {/* Status Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Cable className="w-5 h-5 text-blue-600" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Ethernet Status</p>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <div
+                      className={`w-2 h-2 rounded-full ${
+                        getConnectionStatus(eth0Config).color
+                      }`}
+                    />
+                    <span className="text-sm capitalize">
+                      {getConnectionStatus(eth0Config).status}
+                    </span>
                   </div>
                 </div>
-              )}
-              <table className="text-sm w-full">
-                <tbody>
-                  <tr>
-                    <td className="font-medium pr-4 py-1">IP Address</td>
-                    <td className="py-1">{config?.address || "not defined"}</td>
-                  </tr>
-                  <tr>
-                    <td className="font-medium pr-4 py-1">Netmask</td>
-                    <td className="py-1">{config?.netmask || "not defined"}</td>
-                  </tr>
-                  <tr>
-                    <td className="font-medium pr-4 py-1">Gateway</td>
-                    <td className="py-1">{config?.gateway || "not defined"}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div className="flex flex-wrap gap-2 mt-4">
-                <Button size="sm" variant="outline" onClick={handleGetIPAddress} disabled={isLoading}>
-                  {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-                  Get IP Address
-                </Button>
-                <Dialog open={open} onOpenChange={setOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" variant="default" disabled={isLoading}>
-                      {config ? "Edit IP" : "Configure IP"}
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>{config ? "Edit IP Configuration" : "Configure IP"}</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-3">
-                      {!config && (
-                        <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-3">
-                          <p className="text-sm text-blue-800">
-                            <strong>Note:</strong> ETH0 interface not found. Please configure the network settings below to establish connectivity.
-                          </p>
-                        </div>
-                      )}
-                      <Input
-                        placeholder="IP Address"
-                        value={editConfig.address}
-                        onChange={e => handleInput("address", e.target.value)}
-                        className={!isValidIP(editConfig.address) && editConfig.address !== "" ? "border-red-500" : ""}
-                      />
-                      {!isValidIP(editConfig.address) && editConfig.address !== "" && (
-                        <p className="text-xs text-red-500">Invalid IP Address format (e.g., 192.168.1.1).</p>
-                      )}
-                      <Input
-                        placeholder="Netmask"
-                        value={editConfig.netmask}
-                        onChange={e => handleInput("netmask", e.target.value)}
-                        className={!isValidNetmask(editConfig.netmask) && editConfig.netmask !== "" ? "border-red-500" : ""}
-                      />
-                      {!isValidNetmask(editConfig.netmask) && editConfig.netmask !== "" && (
-                        <p className="text-xs text-red-500">Invalid Netmask format (e.g., 255.255.255.0).</p>
-                      )}
-                      <Input
-                        placeholder="Gateway"
-                        value={editConfig.gateway}
-                        onChange={e => handleInput("gateway", e.target.value)}
-                        className={!isValidIP(editConfig.gateway) && editConfig.gateway !== "" ? "border-red-500" : ""}
-                      />
-                      {!isValidIP(editConfig.gateway) && editConfig.gateway !== "" && (
-                        <p className="text-xs text-red-500">Invalid Gateway IP Address format (e.g., 192.168.1.254).</p>
-                      )}
-                      <Button
-                        onClick={updateConfig}
-                        disabled={isLoading || !isValidIP(editConfig.address) || !isValidIP(editConfig.gateway) || !isValidNetmask(editConfig.netmask)}
-                        className="w-full"
-                      >
-                        {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} 
-                        {config ? "Save Changes" : "Configure Network"}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
               </div>
-            </>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Wifi className="w-5 h-5 text-green-600" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">WiFi Status</p>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <div
+                      className={`w-2 h-2 rounded-full ${
+                        getConnectionStatus(wlan0Config).color
+                      }`}
+                    />
+                    <span className="text-sm capitalize">
+                      {getConnectionStatus(wlan0Config).status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Info className="w-5 h-5 text-purple-600" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Last Updated</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {formatUptime()}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        {/* Main Interface Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Ethernet Interface */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Cable className="w-5 h-5" />
+                  <CardTitle className="text-lg">Ethernet (eth0)</CardTitle>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Badge
+                    variant={
+                      eth0Config?.method === "static" ? "default" : "secondary"
+                    }
+                  >
+                    {eth0Config?.method?.toUpperCase() || "Unknown"}
+                  </Badge>
+                  {eth0Config?.state === "connected" ? (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!networkConfig ? (
+                <div className="flex items-center justify-center p-8">
+                  <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                  <span>Loading network configuration...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="font-medium text-gray-700">
+                          IP Address
+                        </label>
+                        <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded">
+                          {eth0Config?.current_address ||
+                            eth0Config?.address ||
+                            "Not assigned"}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="font-medium text-gray-700">
+                          Gateway
+                        </label>
+                        <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded flex items-center">
+                          <Router className="w-3 h-3 mr-1" />
+                          {eth0Config?.gateway || "Not set"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="font-medium text-gray-700">
+                          Netmask
+                        </label>
+                        <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded">
+                          {eth0Config?.netmask || "Not set"}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="font-medium text-gray-700">
+                          DNS Servers
+                        </label>
+                        <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded flex items-center">
+                          <Globe className="w-3 h-3 mr-1" />
+                          {eth0Config?.["dns-nameservers"] || "Not set"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <Dialog open={open} onOpenChange={setOpen}>
+                      <DialogTrigger asChild>
+                        <Button
+                          className="w-full"
+                          disabled={isLoading || isConfiguring}
+                        >
+                          <Settings className="w-4 h-4 mr-2" />
+                          Configure Network
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[500px]">
+                        <DialogHeader>
+                          <DialogTitle className="flex items-center">
+                            <Settings className="w-5 h-5 mr-2" />
+                            Configure Ethernet Interface
+                          </DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-6">
+                          {/* Method Toggle */}
+                          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                            <div>
+                              <Label className="text-base font-medium">
+                                Configuration Method
+                              </Label>
+                              <p className="text-sm text-gray-600 mt-1">
+                                {editConfig.method === "static"
+                                  ? "Manual IP configuration"
+                                  : "Automatic DHCP configuration"}
+                              </p>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <Label className="text-sm">DHCP</Label>
+                              <Switch
+                                checked={editConfig.method === "static"}
+                                onCheckedChange={handleMethodChange}
+                              />
+                              <Label className="text-sm">Static</Label>
+                            </div>
+                          </div>
+
+                          {editConfig.method === "static" ? (
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="col-span-2">
+                                <Label>IP Address</Label>
+                                <Input
+                                  placeholder="192.168.1.100"
+                                  value={editConfig.static_ip}
+                                  onChange={(e) =>
+                                    handleInput("static_ip", e.target.value)
+                                  }
+                                  className={
+                                    !isValidIP(editConfig.static_ip) &&
+                                    editConfig.static_ip
+                                      ? "border-red-500"
+                                      : ""
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label>Netmask</Label>
+                                <Input
+                                  placeholder="255.255.255.0"
+                                  value={editConfig.netmask}
+                                  onChange={(e) =>
+                                    handleInput("netmask", e.target.value)
+                                  }
+                                  className={
+                                    !isValidNetmask(editConfig.netmask) &&
+                                    editConfig.netmask
+                                      ? "border-red-500"
+                                      : ""
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label>Gateway</Label>
+                                <Input
+                                  placeholder="192.168.1.1"
+                                  value={editConfig.gateway}
+                                  onChange={(e) =>
+                                    handleInput("gateway", e.target.value)
+                                  }
+                                  className={
+                                    !isValidIP(editConfig.gateway) &&
+                                    editConfig.gateway
+                                      ? "border-red-500"
+                                      : ""
+                                  }
+                                />
+                              </div>
+                              <div className="col-span-2">
+                                <Label>DNS Servers</Label>
+                                <Input
+                                  placeholder="8.8.8.8 8.8.4.4"
+                                  value={editConfig.dns}
+                                  onChange={(e) =>
+                                    handleInput("dns", e.target.value)
+                                  }
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                              <div className="flex items-start space-x-2">
+                                <Info className="w-5 h-5 text-blue-600 mt-0.5" />
+                                <div>
+                                  <h4 className="font-medium text-blue-900">
+                                    DHCP Configuration
+                                  </h4>
+                                  <p className="text-sm text-blue-700 mt-1">
+                                    Network settings will be obtained
+                                    automatically from your router or DHCP
+                                    server. This is the recommended option for
+                                    most users.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <Button
+                            onClick={updateConfig}
+                            disabled={
+                              isConfiguring ||
+                              (editConfig.method === "static" &&
+                                (!isValidIP(editConfig.static_ip) ||
+                                  !isValidIP(editConfig.gateway) ||
+                                  !isValidNetmask(editConfig.netmask)))
+                            }
+                            className="w-full"
+                          >
+                            {isConfiguring ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Save className="w-4 h-4 mr-2" />
+                            )}
+                            Apply Configuration
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* WiFi Interface */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Wifi className="w-5 h-5" />
+                  <CardTitle className="text-lg">WiFi (wlan0)</CardTitle>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Badge
+                    variant={
+                      wlan0Config?.method === "static" ? "default" : "secondary"
+                    }
+                  >
+                    {wlan0Config?.method?.toUpperCase() || "Unknown"}
+                  </Badge>
+                  {wlan0Config?.state === "connected" ? (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {wlan0Config ? (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="font-medium text-gray-700">
+                        IP Address
+                      </label>
+                      <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded">
+                        {wlan0Config.current_address ||
+                          wlan0Config.address ||
+                          "Not assigned"}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="font-medium text-gray-700">
+                        Connection
+                      </label>
+                      <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded flex items-center">
+                        <Shield className="w-3 h-3 mr-1" />
+                        {wlan0Config.connection || "Not connected"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="font-medium text-gray-700">
+                        Gateway
+                      </label>
+                      <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded flex items-center">
+                        <Router className="w-3 h-3 mr-1" />
+                        {wlan0Config.gateway || "Not set"}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="font-medium text-gray-700">DNS</label>
+                      <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded flex items-center">
+                        <Globe className="w-3 h-3 mr-1" />
+                        {wlan0Config["dns-nameservers"] || "Not set"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center p-8 text-sm text-gray-500">
+                  <Wifi className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                  <p>
+                    WiFi interface (wlan0) is not available or not configured.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>{" "}
+        {/* End of grid for cards */}
+      </div>{" "}
+      {/* End of main content padding */}
     </SidebarInset>
   );
 }

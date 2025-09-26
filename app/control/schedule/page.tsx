@@ -537,16 +537,16 @@ const DeviceSchedulerControl = () => {
   };
 
   const restartService = () => {
-    // The middleware AutomationSchedule.py handles service restart internally
-    // after config modifications. We just need to wait and refresh config.
+    // Configuration updates are handled internally by the scheduler
+    // Just refresh the config after a short delay
     setTimeout(() => {
       getConfig();
       Swal.close();
-    }, 3000);
+    }, 1000);
 
     Swal.fire({
       title: "Updating Configuration",
-      text: "Please wait while the scheduler is being updated...",
+      text: "Please wait while the scheduler configuration is updated...",
       icon: "info",
       allowOutsideClick: false,
       showConfirmButton: false,
@@ -977,7 +977,7 @@ const DeviceSchedulerControl = () => {
                         />
                       </div>
                       <div>
-                        <Label>Start Time</Label>
+                        <Label>Start Time (24-hour format)</Label>
                         <Input
                           type="time"
                           value={control.onTime}
@@ -988,7 +988,7 @@ const DeviceSchedulerControl = () => {
                         />
                       </div>
                       <div className="md:col-span-3">
-                        <Label>End Time</Label>
+                        <Label>End Time (24-hour format)</Label>
                         <Input
                           type="time"
                           value={control.offTime}
