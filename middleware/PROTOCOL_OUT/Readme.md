@@ -1,1 +1,0 @@
-Run main.py for main programm running and Lib/app.py for server to download modbus list and mib list

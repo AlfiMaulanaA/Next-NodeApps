@@ -3,7 +3,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Swal from "sweetalert2";
 import { v4 as uuidv4 } from "uuid";
-import { connectMQTT, getMQTTClient, isClientConnected, getConnectionState } from "@/lib/mqttClient";
+import {
+  connectMQTT,
+  getMQTTClient,
+  isClientConnected,
+  getConnectionState,
+} from "@/lib/mqttClient";
 import { MqttClient } from "mqtt";
 
 // UI Components
@@ -21,11 +26,36 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
@@ -87,13 +117,14 @@ const VoiceControlPage = () => {
   const [voiceControl, setVoiceControl] =
     useState<VoiceControl>(initialVoiceControl);
 
-  // MQTT Topics
-  const topicVoiceControlCreate = "voice_control/create";
-  const topicVoiceControlUpdate = "voice_control/update";
-  const topicVoiceControlDelete = "voice_control/delete";
+  // MQTT Topics - Simplified like AutomationValue
+  const topicVoiceControlCommand = "command_control_voice";
+  const topicVoiceControlResponse = "response_control_voice";
   const topicVoiceControlData = "voice_control/data";
   const topicModularData = "modular_value/data";
-  const topicRefreshData = "voice_control/request_data";
+
+  // Response handler for simplified topics
+  const [responseData, setResponseData] = useState<any>(null);
 
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -103,41 +134,46 @@ const VoiceControlPage = () => {
       try {
         const client = connectMQTT();
         setMqttClient(client);
-        
-        client.on('connect', () => {
-          setConnectionStatus('connected');
+
+        client.on("connect", () => {
+          setConnectionStatus("connected");
           setIsConnected(true);
-          console.log('MQTT: Voice Control - Connected');
-          
+          console.log("MQTT: Voice Control - Connected");
+
           // Subscribe to topics
-          client.subscribe('voice_control/data', (err) => {
-            if (err) console.error('Failed to subscribe to voice_control/data:', err);
+          client.subscribe("voice_control/data", (err) => {
+            if (err)
+              console.error("Failed to subscribe to voice_control/data:", err);
           });
-          client.subscribe('modular_value/data', (err) => {
-            if (err) console.error('Failed to subscribe to modular_value/data:', err);
+          client.subscribe("modular_value/data", (err) => {
+            if (err)
+              console.error("Failed to subscribe to modular_value/data:", err);
+          });
+          client.subscribe(topicVoiceControlResponse, (err) => {
+            if (err)
+              console.error("Failed to subscribe to response topic:", err);
           });
         });
-        
-        client.on('disconnect', () => {
-          setConnectionStatus('disconnected');
+
+        client.on("disconnect", () => {
+          setConnectionStatus("disconnected");
           setIsConnected(false);
-          console.log('MQTT: Voice Control - Disconnected');
+          console.log("MQTT: Voice Control - Disconnected");
         });
-        
-        client.on('error', (error) => {
-          console.error('MQTT Error:', error);
-          setConnectionStatus('error');
+
+        client.on("error", (error) => {
+          console.error("MQTT Error:", error);
+          setConnectionStatus("error");
           setIsConnected(false);
         });
-        
       } catch (error) {
-        console.error('Failed to initialize MQTT:', error);
-        setConnectionStatus('error');
+        console.error("Failed to initialize MQTT:", error);
+        setConnectionStatus("error");
       }
     };
-    
+
     initMQTT();
-    
+
     return () => {
       // Cleanup on unmount
       if (mqttClient) {
@@ -145,14 +181,14 @@ const VoiceControlPage = () => {
       }
     };
   }, []);
-  
+
   // Publish Message Function
   const publishMessage = useCallback(
     (message: any, topic: string) => {
       if (mqttClient && isConnected) {
         mqttClient.publish(topic, JSON.stringify(message), (err) => {
           if (err) {
-            console.error('Failed to publish message:', err);
+            console.error("Failed to publish message:", err);
             Swal.fire({
               icon: "error",
               title: "MQTT Error",
@@ -171,9 +207,9 @@ const VoiceControlPage = () => {
     [mqttClient, isConnected]
   );
 
-  // Refresh Function
+  // Refresh Function - Use get action for simplified topics
   const refreshVoiceControlData = useCallback(() => {
-    publishMessage("refresh", topicRefreshData);
+    publishMessage({ action: "get" }, topicVoiceControlCommand);
     Swal.fire({
       icon: "info",
       title: "Refreshing data...",
@@ -181,12 +217,12 @@ const VoiceControlPage = () => {
       showConfirmButton: false,
       timer: 1000,
     });
-  }, [publishMessage, topicRefreshData]);
+  }, [publishMessage, topicVoiceControlCommand]);
 
   // Message Handlers
   useEffect(() => {
     if (!mqttClient || !isConnected) return;
-    
+
     // Handler untuk data voice control
     const handleVoiceControlData = (topic: string, message: Buffer) => {
       try {
@@ -219,26 +255,68 @@ const VoiceControlPage = () => {
       }
     };
 
+    // Handler untuk response dari simplified topics
+    const handleVoiceControlResponse = (topic: string, message: Buffer) => {
+      try {
+        const payload = JSON.parse(message.toString());
+        console.log("MQTT: Response diterima:", payload);
+
+        if (payload.status === "success") {
+          Swal.fire({
+            icon: "success",
+            title: "Success",
+            text: payload.message,
+            timer: 2000,
+            showConfirmButton: false,
+          });
+
+          // Refresh data setelah operasi berhasil
+          setTimeout(() => {
+            refreshVoiceControlData();
+          }, 500);
+        } else {
+          Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: payload.message || "An error occurred",
+          });
+        }
+      } catch (error) {
+        console.error("MQTT: Gagal memproses response", error);
+      }
+    };
+
     // Set up message handlers
-    mqttClient.on('message', (topic: string, message: Buffer) => {
+    mqttClient.on("message", (topic: string, message: Buffer) => {
       if (topic === topicVoiceControlData) {
         handleVoiceControlData(topic, message);
       } else if (topic === topicModularData) {
         handleModularData(topic, message);
+      } else if (topic === topicVoiceControlResponse) {
+        handleVoiceControlResponse(topic, message);
       }
     });
 
     // Request initial data
     console.log("MQTT: Meminta data awal setelah koneksi berhasil.");
-    publishMessage("refresh", topicRefreshData);
-    
+    publishMessage({ action: "get" }, topicVoiceControlCommand);
+
     return () => {
       // Cleanup message handlers
       if (mqttClient) {
-        mqttClient.removeAllListeners('message');
+        mqttClient.removeAllListeners("message");
       }
     };
-  }, [mqttClient, isConnected, publishMessage, topicVoiceControlData, topicModularData, topicRefreshData]);
+  }, [
+    mqttClient,
+    isConnected,
+    publishMessage,
+    topicVoiceControlData,
+    topicModularData,
+    topicVoiceControlCommand,
+    topicVoiceControlResponse,
+    refreshVoiceControlData,
+  ]);
 
   // Modal Functions
   const openModal = (item?: VoiceControl) => {
@@ -275,16 +353,16 @@ const VoiceControlPage = () => {
       return;
     }
 
-    const topic = isEditing ? topicVoiceControlUpdate : topicVoiceControlCreate;
-    publishMessage(voiceControl, topic);
+    // Use simplified topic with action in payload
+    const action = isEditing ? "set" : "add";
+    const message = {
+      action: action,
+      data: voiceControl,
+    };
+
+    publishMessage(message, topicVoiceControlCommand);
 
     closeModal();
-    Swal.fire({
-      icon: "success",
-      title: isEditing ? "Voice Control Updated!" : "Voice Control Created!",
-      showConfirmButton: false,
-      timer: 1500,
-    });
   };
 
   // Delete Function
@@ -298,14 +376,13 @@ const VoiceControlPage = () => {
       cancelButtonText: "No, keep it",
     }).then((result) => {
       if (result.isConfirmed) {
-        publishMessage({ uuid }, topicVoiceControlDelete);
-        Swal.fire({
-          icon: "success",
-          title: "Deleted!",
-          text: "Voice control has been deleted.",
-          showConfirmButton: false,
-          timer: 1500,
-        });
+        // Use simplified topic with action in payload
+        const message = {
+          action: "delete",
+          data: { id: uuid, uuid: uuid },
+        };
+
+        publishMessage(message, topicVoiceControlCommand);
       }
     });
   };
@@ -366,7 +443,7 @@ const VoiceControlPage = () => {
         </div>
         <div className="flex items-center gap-2">
           <MqttStatus />
-          
+
           <Button
             variant="outline"
             size="icon"
@@ -375,10 +452,7 @@ const VoiceControlPage = () => {
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button
-            size="sm"
-            onClick={() => openModal()}
-          >
+          <Button size="sm" onClick={() => openModal()}>
             <PlusCircle className="h-4 w-4 mr-2" />
             Add Voice Control
           </Button>
@@ -397,38 +471,53 @@ const VoiceControlPage = () => {
           />
         </div>
       </div>
-      
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
-        {/* Summary Cards */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* Summary Cards - Modern Design */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Volume2 className="h-5 w-5" />
-              <CardTitle>Voice Control Summary</CardTitle>
+              <Mic className="h-5 w-5" />
+              <CardTitle>Voice Control Overview</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="text-center p-4 bg-muted/50 rounded-lg">
-                <Volume2 className="h-8 w-8 mx-auto mb-2 text-primary" />
-                <div className="text-2xl font-bold">{totalVoiceControls}</div>
-                <div className="text-sm text-muted-foreground">Total Commands</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 rounded-xl border">
+                <Mic className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                  {totalVoiceControls}
+                </div>
+                <div className="text-sm text-blue-600 dark:text-blue-400">
+                  Voice Commands
+                </div>
               </div>
-              <div className="text-center p-4 bg-muted/50 rounded-lg">
-                <Activity className="h-8 w-8 mx-auto mb-2 text-primary" />
-                <div className="text-2xl font-bold">{uniqueDevices}</div>
-                <div className="text-sm text-muted-foreground">Devices Used</div>
+              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 rounded-xl border">
+                <Activity className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+                  {uniqueDevices}
+                </div>
+                <div className="text-sm text-green-600 dark:text-green-400">
+                  Devices Used
+                </div>
               </div>
-              <div className="text-center p-4 bg-muted/50 rounded-lg">
-                <Settings className="h-8 w-8 mx-auto mb-2 text-primary" />
-                <div className="text-2xl font-bold">{availableDevices}</div>
-                <div className="text-sm text-muted-foreground">Available</div>
+              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 rounded-xl border">
+                <Settings className="h-8 w-8 mx-auto mb-2 text-purple-600" />
+                <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                  {availableDevices}
+                </div>
+                <div className="text-sm text-purple-600 dark:text-purple-400">
+                  Available Devices
+                </div>
               </div>
-              <div className="text-center p-4 bg-muted/50 rounded-lg">
-                <PlusCircle className="h-8 w-8 mx-auto mb-2 text-primary" />
-                <div className="text-2xl font-bold">{usedPins}</div>
-                <div className="text-sm text-muted-foreground">Active Pins</div>
+              <div className="text-center p-4 bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 rounded-xl border">
+                <PlusCircle className="h-8 w-8 mx-auto mb-2 text-orange-600" />
+                <div className="text-2xl font-bold text-orange-700 dark:text-orange-300">
+                  {usedPins}
+                </div>
+                <div className="text-sm text-orange-600 dark:text-orange-400">
+                  Active Pins
+                </div>
               </div>
             </div>
           </CardContent>
@@ -438,225 +527,246 @@ const VoiceControlPage = () => {
         <Card>
           <CardHeader>
             <CardTitle>Voice Controls</CardTitle>
-            <CardDescription>Manage your voice command configurations</CardDescription>
+            <CardDescription>
+              Manage your voice command configurations
+            </CardDescription>
           </CardHeader>
-        <CardContent>
-          {filteredData.length === 0 ? (
-            <div className="text-center py-12">
-              <Mic className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold">No voice controls found</h3>
-              <p className="text-muted-foreground mb-4">
-                Create your first voice control command to get started
-              </p>
-              <Button onClick={() => openModal()}>
-                <PlusCircle className="h-4 w-4 mr-2" />
-                Add Voice Control
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Voice Command</TableHead>
-                  <TableHead>Device Name</TableHead>
-                  <TableHead>Pin</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Bus</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedData.map((item) => (
-                  <TableRow key={item.uuid}>
-                    <TableCell className="font-medium">{item.data.custom_name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{item.device_name}</Badge>
-                    </TableCell>
-                    <TableCell>{item.data.pin}</TableCell>
-                    <TableCell>{item.data.address}</TableCell>
-                    <TableCell>{item.data.bus}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openModal(item)}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => deleteVoiceControl(item.uuid)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4">
-              <p className="text-sm text-muted-foreground">
-                Showing {Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, filteredData.length)} to{" "}
-                {Math.min(currentPage * ITEMS_PER_PAGE, filteredData.length)} of {filteredData.length} results
-              </p>
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </Button>
-                <span className="text-sm">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
+          <CardContent>
+            {filteredData.length === 0 ? (
+              <div className="text-center py-12">
+                <Mic className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold">
+                  No voice controls found
+                </h3>
+                <p className="text-muted-foreground mb-4">
+                  Create your first voice control command to get started
+                </p>
+                <Button onClick={() => openModal()}>
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Add Voice Control
                 </Button>
               </div>
-            </div>
-          )}
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Voice Command</TableHead>
+                    <TableHead>Device Name</TableHead>
+                    <TableHead>Pin</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>Bus</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedData.map((item) => (
+                    <TableRow key={item.uuid}>
+                      <TableCell className="font-medium">
+                        {item.data.custom_name}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{item.device_name}</Badge>
+                      </TableCell>
+                      <TableCell>{item.data.pin}</TableCell>
+                      <TableCell>{item.data.address}</TableCell>
+                      <TableCell>{item.data.bus}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openModal(item)}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => deleteVoiceControl(item.uuid)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-4">
+                <p className="text-sm text-muted-foreground">
+                  Showing{" "}
+                  {Math.min(
+                    (currentPage - 1) * ITEMS_PER_PAGE + 1,
+                    filteredData.length
+                  )}{" "}
+                  to{" "}
+                  {Math.min(currentPage * ITEMS_PER_PAGE, filteredData.length)}{" "}
+                  of {filteredData.length} results
+                </p>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCurrentPage(Math.min(totalPages, currentPage + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-      {/* Voice Control Dialog */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center space-x-2">
-              <Mic className="h-5 w-5" />
-              <span>{isEditing ? "Edit Voice Control" : "Add New Voice Control"}</span>
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={saveVoiceControl} className="space-y-6">
-            {/* Voice Command Settings */}
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Volume2 className="h-4 w-4" />
-                <h3 className="text-sm font-medium">Voice Command Settings</h3>
-              </div>
-              <div>
-                <Label htmlFor="custom_name">Voice Command *</Label>
-                <Input
-                  id="custom_name"
-                  value={voiceControl.data.custom_name}
-                  onChange={(e) =>
-                    setVoiceControl((prev) => ({
-                      ...prev,
-                      data: { ...prev.data, custom_name: e.target.value },
-                    }))
-                  }
-                  placeholder="e.g., Turn on living room light"
-                  required
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  This phrase will be recognized after "nyalakan" or "matikan"
-                </p>
-              </div>
-            </div>
-
-            {/* Device Configuration */}
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Settings className="h-4 w-4" />
-                <h3 className="text-sm font-medium">Device Configuration</h3>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="device_name">Device Name *</Label>
-                  <Select
-                    value={voiceControl.device_name}
-                    onValueChange={handleDeviceSelection}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select device" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {modularDevices.map((device) => (
-                        <SelectItem key={device.profile.name} value={device.profile.name}>
-                          {device.profile.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+        {/* Voice Control Dialog */}
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2">
+                <Mic className="h-5 w-5" />
+                <span>
+                  {isEditing ? "Edit Voice Control" : "Add New Voice Control"}
+                </span>
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={saveVoiceControl} className="space-y-6">
+              {/* Voice Command Settings */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Volume2 className="h-4 w-4" />
+                  <h3 className="text-sm font-medium">
+                    Voice Command Settings
+                  </h3>
                 </div>
                 <div>
-                  <Label htmlFor="pin">Pin *</Label>
-                  <Select
-                    value={voiceControl.data.pin.toString()}
-                    onValueChange={(value) =>
+                  <Label htmlFor="custom_name">Voice Command *</Label>
+                  <Input
+                    id="custom_name"
+                    value={voiceControl.data.custom_name}
+                    onChange={(e) =>
                       setVoiceControl((prev) => ({
                         ...prev,
-                        data: { ...prev.data, pin: parseInt(value) },
+                        data: { ...prev.data, custom_name: e.target.value },
                       }))
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select pin" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 8 }, (_, i) => (
-                        <SelectItem key={i + 1} value={(i + 1).toString()}>
-                          Pin {i + 1}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="address">Address</Label>
-                  <Input
-                    id="address"
-                    type="number"
-                    value={voiceControl.data.address.toString()}
-                    placeholder="Auto-filled"
-                    readOnly
+                    placeholder="e.g., Turn on living room light"
+                    required
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Address is automatically filled from device selection
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor="bus">Bus</Label>
-                  <Input
-                    id="bus"
-                    type="number"
-                    value={voiceControl.data.bus.toString()}
-                    placeholder="Auto-filled"
-                    readOnly
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Bus is automatically filled from device selection
+                    This phrase will be recognized after "nyalakan" or "matikan"
                   </p>
                 </div>
               </div>
-            </div>
 
-            {/* Actions */}
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={closeModal}>
-                Cancel
-              </Button>
-              <Button type="submit">
-                {isEditing ? "Update" : "Create"} Voice Control
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+              {/* Device Configuration */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Settings className="h-4 w-4" />
+                  <h3 className="text-sm font-medium">Device Configuration</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="device_name">Device Name *</Label>
+                    <Select
+                      value={voiceControl.device_name}
+                      onValueChange={handleDeviceSelection}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select device" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {modularDevices.map((device) => (
+                          <SelectItem
+                            key={device.profile.name}
+                            value={device.profile.name}
+                          >
+                            {device.profile.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="pin">Pin *</Label>
+                    <Select
+                      value={voiceControl.data.pin.toString()}
+                      onValueChange={(value) =>
+                        setVoiceControl((prev) => ({
+                          ...prev,
+                          data: { ...prev.data, pin: parseInt(value) },
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select pin" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 8 }, (_, i) => (
+                          <SelectItem key={i + 1} value={(i + 1).toString()}>
+                            Pin {i + 1}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="address">Address</Label>
+                    <Input
+                      id="address"
+                      type="number"
+                      value={voiceControl.data.address.toString()}
+                      placeholder="Auto-filled"
+                      readOnly
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Address is automatically filled from device selection
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="bus">Bus</Label>
+                    <Input
+                      id="bus"
+                      type="number"
+                      value={voiceControl.data.bus.toString()}
+                      placeholder="Auto-filled"
+                      readOnly
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Bus is automatically filled from device selection
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={closeModal}>
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  {isEditing ? "Update" : "Create"} Voice Control
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </SidebarInset>
   );

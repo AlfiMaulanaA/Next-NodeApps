@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { reconnectMQTT } from "@/lib/mqttClient";
+import { reconnectMQTT, connectMQTTAsync } from "@/lib/mqttClient";
 
 export type MQTTConnectionMode = "env" | "database";
 
@@ -23,12 +23,27 @@ const MQTTModeContext = createContext<MQTTModeContextType | undefined>(undefined
 export function MQTTModeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<MQTTConnectionMode>("env");
 
-  // Load saved mode from localStorage
+  // Load saved mode from localStorage and initialize MQTT connection
   useEffect(() => {
     const savedMode = localStorage.getItem("mqtt_connection_mode") as MQTTConnectionMode;
     if (savedMode && (savedMode === "env" || savedMode === "database")) {
       setModeState(savedMode);
     }
+
+    // Initialize MQTT connection after setting the mode
+    const initializeMQTT = async () => {
+      try {
+        console.log("Initializing MQTT connection on app startup...");
+        await connectMQTTAsync();
+        console.log("MQTT connection initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize MQTT connection:", error);
+      }
+    };
+
+    // Small delay to ensure mode is set before connection
+    const timeoutId = setTimeout(initializeMQTT, 100);
+    return () => clearTimeout(timeoutId);
   }, []);
 
   // Save mode to localStorage when changed

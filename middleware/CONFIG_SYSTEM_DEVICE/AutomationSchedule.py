@@ -607,6 +607,46 @@ def parse_time(time_string):
         except ValueError as e:
             raise ValueError(f"Invalid time format: {time_string}. Expected 'HH:MM' or 'HH:MM AM/PM'.") from e
 
+def check_and_send_immediate_control(client_control):
+    """Check current time and send immediate control signals if within scheduled windows"""
+    try:
+        if not config or not isinstance(config, list) or len(config) == 0:
+            return
+
+        current_time = datetime.now()
+        current_day = current_time.strftime("%a")
+        current_time_str = current_time.strftime('%H:%M')
+
+        logger.info(f"Checking immediate control for current time: {current_time_str} on {current_day}")
+
+        for device in config:
+            if not device.get('autoControl', True):
+                continue
+
+            if not is_within_active_days(device, current_day):
+                continue
+
+            for control in device['controls']:
+                try:
+                    on_time = parse_time(control['onTime'])
+                    off_time = parse_time(control['offTime'])
+                    on_time_str = on_time.strftime('%H:%M')
+                    off_time_str = off_time.strftime('%H:%M')
+
+                    # Check if current time is within the on/off window
+                    if on_time_str <= current_time_str < off_time_str:
+                        # Should be ON
+                        logger.info(f"Current time {current_time_str} is within ON window ({on_time_str}-{off_time_str}) for device {device.get('id')} pin {control['pin']}")
+                        send_control_signal(client_control, device, control['pin'], 1)
+                    elif off_time_str <= current_time_str or current_time_str < on_time_str:
+                        # Should be OFF (before on_time or after off_time)
+                        logger.info(f"Current time {current_time_str} is within OFF window for device {device.get('id')} pin {control['pin']}")
+                        send_control_signal(client_control, device, control['pin'], 0)
+                except Exception as e:
+                    logger.warning(f"Error checking immediate control for device {device.get('id')} pin {control.get('pin')}: {e}")
+    except Exception as e:
+        logger.error(f"Error in check_and_send_immediate_control: {e}")
+
 def schedule_control(client_control):
     try:
         if not config or not isinstance(config, list) or len(config) == 0:
@@ -679,8 +719,11 @@ def is_within_active_days(device, current_day):
         return False
 
 def send_control_signal(client, device, pin, data):
-    if not config.get('autoControl', True):
-        logger.info(f"Auto control is disabled. Not sending signal to {device.get('name', device.get('id'))}, pin {pin}, data {data}.")
+    # BUG: config is an array, not a dict with 'autoControl'
+    # This check is broken and always allows sending
+    # Should be: if not device.get('autoControl', True):
+    if not device.get('autoControl', True):
+        logger.info(f"Auto control is disabled for device. Not sending signal to {device.get('name', device.get('id'))}, pin {pin}, data {data}.")
         return
 
     try:
@@ -759,6 +802,8 @@ def run():
     if client_control:
         log_simple("Setting up scheduled tasks...")
         schedule_control(client_control)
+        log_simple("Checking and sending immediate control signals...")
+        check_and_send_immediate_control(client_control)
     else:
         log_simple("Skipping scheduled tasks setup - Control MQTT client not available", "WARNING")
 
@@ -781,8 +826,9 @@ def run():
                     if client_control:
                         client_control.loop_start()
                         log_simple("Control MQTT client successfully recreated", "SUCCESS")
-                        # Reschedule tasks if we got the control client back
+                        # Reschedule tasks and check immediate control if we got the control client back
                         schedule_control(client_control)
+                        check_and_send_immediate_control(client_control)
                 except Exception as e:
                     send_error_log("run (recreate_control)", f"Failed to recreate Control MQTT client: {e}", ERROR_TYPE_WARNING)
 

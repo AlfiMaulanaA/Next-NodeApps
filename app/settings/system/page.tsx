@@ -25,7 +25,7 @@ import {
   Loader2,
 } from "lucide-react";
 import MQTTModeSelector from "@/components/MQTTModeSelector";
-import { MQTTModeProvider } from "@/contexts/MQTTModeContext";
+import { MQTTModeProvider, useMQTTMode } from "@/contexts/MQTTModeContext";
 
 interface HealthStatus {
   status: "healthy" | "degraded" | "unhealthy";
@@ -56,10 +56,23 @@ interface HealthStatus {
 }
 
 const SystemHealthPage = () => {
+  const { mode, getMQTTConfig } = useMQTTMode();
   const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [testingDatabase, setTestingDatabase] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [currentMQTTConfig, setCurrentMQTTConfig] = useState<{url: string; host: string; port: number; protocol: string} | null>(null);
+
+  // Fetch current MQTT config based on mode
+  const fetchMQTTConfig = async () => {
+    try {
+      const config = await getMQTTConfig();
+      setCurrentMQTTConfig(config);
+    } catch (error) {
+      console.error("Error fetching MQTT config:", error);
+      setCurrentMQTTConfig(null);
+    }
+  };
 
   // Fetch health status
   const fetchHealthStatus = async () => {
@@ -71,6 +84,7 @@ const SystemHealthPage = () => {
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
+          "X-MQTT-Mode": mode, // Pass the current MQTT mode to the API
         },
       });
 
@@ -123,13 +137,17 @@ const SystemHealthPage = () => {
   };
 
   useEffect(() => {
+    fetchMQTTConfig();
     fetchHealthStatus();
 
     // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchHealthStatus, 30000);
+    const interval = setInterval(() => {
+      fetchMQTTConfig();
+      fetchHealthStatus();
+    }, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [mode, getMQTTConfig]);
 
   // Get status icon and color
   const getStatusInfo = (status: string) => {
@@ -386,7 +404,7 @@ const SystemHealthPage = () => {
                   <div>
                     <CardTitle>MQTT Broker</CardTitle>
                     <p className="text-sm text-muted-foreground">
-                      Message Broker Connection
+                      Connection Mode: {mode.toUpperCase()}
                     </p>
                   </div>
                 </div>
@@ -420,7 +438,49 @@ const SystemHealthPage = () => {
                 </Badge>
               </div>
 
-              {healthStatus.services.mqtt.active_config && (
+              {/* Current MQTT Configuration based on selected mode */}
+              {currentMQTTConfig && (
+                <div className="space-y-2">
+                  <span className="text-sm font-medium">
+                    Current Configuration
+                  </span>
+                  <div className="text-sm space-y-1">
+                    <div className="flex justify-between">
+                      <span>Mode:</span>
+                      <span className="font-medium">
+                        {mode === "env" ? "Environment Variables" : "Database Configuration"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Protocol:</span>
+                      <span className="font-medium">
+                        {currentMQTTConfig.protocol.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Host:</span>
+                      <span className="font-medium">
+                        {currentMQTTConfig.host}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Port:</span>
+                      <span className="font-medium">
+                        {currentMQTTConfig.port}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Broker URL:</span>
+                      <span className="font-medium text-xs break-all">
+                        {currentMQTTConfig.url}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Fallback to health API data if currentMQTTConfig is not available */}
+              {!currentMQTTConfig && healthStatus.services.mqtt.active_config && (
                 <div className="space-y-2">
                   <span className="text-sm font-medium">
                     Active Configuration

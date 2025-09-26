@@ -5,7 +5,7 @@ import paho.mqtt.client as mqtt
 import os
 import subprocess
 import logging
-import threading 
+import threading
 from getmac import get_mac_address
 import netifaces as ni
 from datetime import datetime
@@ -31,7 +31,7 @@ def print_broker_status(broker_status=False):
         print("MQTT Broker Local is Running")
     else:
         print("MQTT Broker Local connection failed")
-    
+
     print("\n" + "="*34)
     print("Log print Data")
     print("")
@@ -246,7 +246,8 @@ DEFAULT_SNMP_CONFIG = {
 
 # --- Logging Setup ---
 # Basic logging configuration for console output.
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("SettingsService")
 
 # --- Helper Functions for File Operations ---
 def save_json_config(filepath, config_data):
@@ -277,7 +278,7 @@ def load_json_config(filepath, default_config=None):
                 if save_json_config(filepath, default_config):
                     return default_config
             return default_config # Return default even if saving fails
-            
+
         with open(filepath, 'r') as file:
             return json.load(file)
     except json.JSONDecodeError as e:
@@ -325,7 +326,7 @@ def get_uptime(client=None):
 def get_ip_addresses(client=None):
     """Returns a dictionary of IP addresses for eth0 and wlan0."""
     ip_addresses = {"eth0_ip": "N/A", "wlan0_ip": "N/A"}
-    
+
     try:
         # Attempt to get eth0 IP
         eth0_ip = ni.ifaddresses('eth0')[ni.AF_INET][0]['addr']
@@ -343,7 +344,7 @@ def get_ip_addresses(client=None):
         logging.info("wlan0 interface or IP not found.")
     except Exception as e:
         send_error_log(client, "get_ip_addresses_wlan0", e, "minor")
-    
+
     return ip_addresses
 
 def get_cpu_temperature(client=None):
@@ -366,7 +367,7 @@ def get_system_info(client=None):
         cpu_usage = psutil.cpu_percent(interval=None) # Non-blocking call for instantaneous usage
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
-        
+
         cpu_temp = get_cpu_temperature(client)
         ip_addresses = get_ip_addresses(client)
 
@@ -448,7 +449,7 @@ def reset_wifi_config(client=None):
         wifi_connections_cmd = ["nmcli", "-t", "-f", "NAME,TYPE", "con", "show"]
         result = subprocess.run(wifi_connections_cmd, capture_output=True, text=True, check=True)
         connections = result.stdout.strip().split('\n')
-        
+
         for conn in connections:
             if conn and "wifi" in conn: # Filter for Wi-Fi connections
                 conn_name = conn.split(':')[0] # Extract connection name
@@ -461,8 +462,8 @@ def reset_wifi_config(client=None):
 
         # 2. Add a new Wi-Fi connection with the default SSID and password
         add_wifi_cmd = [
-            "sudo", "nmcli", "dev", "wifi", "connect", "IOTech1", 
-            "password", "IOT@1868", 
+            "sudo", "nmcli", "dev", "wifi", "connect", "IOTech1",
+            "password", "IOT@1868",
             "name", "IOTech1_default", # Assign a recognizable name to the new connection
             "--autoconnect", "yes" # Ensure it auto-connects on boot
         ]
@@ -517,9 +518,9 @@ def publish_system_info(client):
 
             system_info_json = json.dumps(system_info)
             # Publish with QoS 1 and no retain for live data (retain=False is good for live data)
-            client.publish(TOPIC_SYSTEM_STATUS, system_info_json, qos=1, retain=False) 
+            client.publish(TOPIC_SYSTEM_STATUS, system_info_json, qos=1, retain=False)
             logging.debug(f"Published system info: {system_info_json}") # Changed to debug for less verbosity
-            
+
             time.sleep(1) # Publish every 1 second
 
         except Exception as e:
@@ -532,7 +533,7 @@ def on_connect(client, userdata, flags, rc):
     """Callback function when MQTT client connects."""
     try:
         if rc == 0:
-            logging.info("Connected to MQTT broker successfully! ✅")
+            logging.info("Connected to MQTT broker successfully!")
             # Subscribe to all necessary command topics
             client.subscribe(TOPIC_COMMAND_RESET)
             client.subscribe(COMMAND_TOPIC)
@@ -542,14 +543,14 @@ def on_connect(client, userdata, flags, rc):
             client.publish("subrack/error/data/request", json.dumps({"command": "get_all"}))
             logging.info(f"Subscribed to: {TOPIC_COMMAND_RESET}, {COMMAND_TOPIC}, {TOPIC_DOWNLOAD}, {TOPIC_UPLOAD}")
         else:
-            logging.error(f"Failed to connect to MQTT broker, return code {rc} ❌")
+            logging.error(f"Failed to connect to MQTT broker, return code {rc}")
             send_error_log(client, "mqtt_on_connect", f"Connection failed with code {rc}", "critical")
     except Exception as e:
         send_error_log(client, "on_connect_callback_error", e, "critical")
 
 def on_disconnect(client, userdata, rc):
     """Callback function when MQTT client disconnects."""
-    logging.warning(f"Disconnected from MQTT broker with result code {rc} 🔌. Attempting to reconnect...")
+    logging.warning(f"Disconnected from MQTT broker with result code {rc}. Attempting to reconnect...")
     send_error_log(client, "mqtt_on_disconnect", f"Disconnected with code {rc}", "major")
 
 def on_message(client, userdata, message):
@@ -557,7 +558,7 @@ def on_message(client, userdata, message):
     General callback for messages if not handled by specific callbacks.
     This should ideally not be hit if all topics are explicitly handled by message_callback_add.
     """
-    logging.warning(f"Received message on unhandled topic: {message.topic} with payload: {message.payload.decode()} ❓")
+    logging.warning(f"Received message on unhandled topic: {message.topic} with payload: {message.payload.decode()}")
     send_error_log(client, "on_message_unhandled", f"Unhandled topic: {message.topic}", "minor")
 
 def on_message_command(client, userdata, message):
@@ -567,7 +568,7 @@ def on_message_command(client, userdata, message):
         action = payload.get("action")
         services = payload.get("services", [])
 
-        logging.info(f"Received command: {action} for services: {services} ⚙️")
+        logging.info(f"Received command: {action} for services: {services}")
 
         response_payload = {"result": "error", "action": action, "services": services, "message": "Unknown error."}
 
@@ -576,28 +577,28 @@ def on_message_command(client, userdata, message):
                 try:
                     # Execute systemctl restart command for specified service
                     subprocess.run(["sudo", "systemctl", "restart", service], check=True)
-                    logging.info(f"{service} restarted successfully. ✅")
+                    logging.info(f"{service} restarted successfully.")
                 except subprocess.CalledProcessError as e:
-                    logging.error(f"Failed to restart service {service}: {e} ❌")
+                    logging.error(f"Failed to restart service {service}: {e}")
                     response_payload["message"] = f"Failed to restart {service}: {str(e)}"
                     send_error_log(client, "on_message_command_restart", e, "critical")
                     client.publish(RESPONSE_TOPIC, json.dumps(response_payload))
                     return # Exit if any service restart fails
             response_payload.update({"result": "success", "message": "Services restarted successfully."})
         elif action == "reboot":
-            response_payload.update({"result": "success", "message": "System is rebooting... 🔄"})
+            response_payload.update({"result": "success", "message": "System is rebooting..."})
             client.publish(RESPONSE_TOPIC, json.dumps(response_payload)) # Publish before rebooting
-            logging.info("System is rebooting... initiating sudo reboot. ⏳")
+            logging.info("System is rebooting... initiating sudo reboot.")
             subprocess.run(["sudo", "reboot"], check=True) # Initiate system reboot
         elif action == "reset":
             # This 'reset' action here seems to be a placeholder or partial implementation
             # The main factory reset logic is in on_message_reset
             response_payload.update({"result": "success", "message": "System reset command received. No specific action implemented beyond this command."})
-            logging.info("System reset command received. No specific action implemented here. ⚙️")
+            logging.info("System reset command received. No specific action implemented here.")
         else:
             response_payload["message"] = "Unknown action."
-            logging.error(f"Command failed: {response_payload['message']} �")
-        
+            logging.error(f"Command failed: {response_payload['message']}")
+
         client.publish(RESPONSE_TOPIC, json.dumps(response_payload))
 
     except json.JSONDecodeError as e:
@@ -619,9 +620,9 @@ def on_message_reset(client, userdata, message):
     This function is the core of the "factory reset" functionality.
     """
     try:
-        logging.info(f"Received message on {message.topic}: {message.payload.decode()} 🔄")
+        logging.info(f"Received message on {message.topic}: {message.payload.decode()}")
         if message.topic == TOPIC_COMMAND_RESET:
-            logging.info("Initiating full configuration reset... 🧹")
+            logging.info("Initiating full configuration reset...")
             # Call all individual reset functions to revert to default configurations
             reset_scheduler_config(client)
             reset_drycontact_config(client)
@@ -633,16 +634,16 @@ def on_message_reset(client, userdata, message):
             reset_wifi_config(client) # Resets WiFi config using nmcli
             reset_modbus_tcp_config(client) # Reset Modbus TCP configuration
             reset_snmp_config(client) # NEW: Reset SNMP configuration
-            
+
             # Publish success response before rebooting
             response = {"result": "success", "message": "All configurations have been reset to default. System will reboot."}
             client.publish(TOPIC_RESPONSE_RESET, json.dumps(response))
-            logging.info("Reset command processed successfully. Rebooting system... ⏳")
+            logging.info("Reset command processed successfully. Rebooting system...")
             subprocess.run(["sudo", "reboot"], check=True) # Initiate system reboot to apply changes
         else:
             response = {"result": "error", "message": "Unknown command."}
             client.publish(TOPIC_RESPONSE_RESET, json.dumps(response))
-            logging.error("Unknown command received for reset. 🚫")
+            logging.error("Unknown command received for reset.")
     except Exception as e:
         send_error_log(client, "on_message_reset", e, "critical")
         response = {"result": "error", "message": f"Error during reset: {str(e)}"}
@@ -655,7 +656,7 @@ def handle_file_download(client):
         if not os.path.exists(FILEPATH):
             error_message = {
                 "status": "error", "action": "download",
-                "message": f"File not found: {FILEPATH} 🚫"
+                "message": f"File not found: {FILEPATH}"
             }
             client.publish(TOPIC_RESPONSE_FILE, json.dumps(error_message))
             logging.error(f"File {FILEPATH} not found for download.")
@@ -667,7 +668,7 @@ def handle_file_download(client):
         response = {
             "status": "success", "action": "download",
             "content": file_content, # Send file content as string
-            "message": "File downloaded successfully. ✅"
+            "message": "File downloaded successfully."
         }
         client.publish(TOPIC_RESPONSE_FILE, json.dumps(response))
         logging.info(f"File {FILEPATH} downloaded successfully.")
@@ -675,7 +676,7 @@ def handle_file_download(client):
     except Exception as e:
         error_message = {
             "status": "error", "action": "download",
-            "message": f"Failed to download file: {str(e)} ❌"
+            "message": f"Failed to download file: {str(e)}"
         }
         client.publish(TOPIC_RESPONSE_FILE, json.dumps(error_message))
         send_error_log(client, "handle_file_download", e, "critical")
@@ -688,7 +689,7 @@ def handle_file_upload(client, payload):
 
         if not file_content:
             raise ValueError("No file content provided in payload.")
-        
+
         # Ensure directory exists before writing the file
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
@@ -697,7 +698,7 @@ def handle_file_upload(client, payload):
 
         response = {
             "status": "success", "action": "upload",
-            "message": f"File {filepath} uploaded successfully. ✅"
+            "message": f"File {filepath} uploaded successfully."
         }
         client.publish(TOPIC_RESPONSE_FILE, json.dumps(response))
         logging.info(f"File {filepath} uploaded successfully.")
@@ -705,7 +706,7 @@ def handle_file_upload(client, payload):
     except Exception as e:
         error_message = {
             "status": "error", "action": "upload",
-            "message": f"Failed to upload file: {str(e)} ❌"
+            "message": f"Failed to upload file: {str(e)}"
         }
         client.publish(TOPIC_RESPONSE_FILE, json.dumps(error_message))
         send_error_log(client, "handle_file_upload", e, "critical")
@@ -718,8 +719,8 @@ def setup_mqtt_client():
     # Hardcode broker_address dan broker_port
     broker_address = "localhost"
     broker_port = 1883
-    username = "" 
-    password = "" 
+    username = ""
+    password = ""
 
     # Create MQTT client instance with a unique client ID
     client = mqtt.Client(
@@ -750,7 +751,7 @@ def setup_mqtt_client():
         client.connect(broker_address, int(broker_port), 60) # Connect to the broker
         return client
     except Exception as e:
-        logging.critical(f"Failed to connect MQTT client: {e}. Exiting. ❌")
+        logging.critical(f"Failed to connect MQTT client: {e}. Exiting.")
         raise # Re-raise to stop execution if connection fails at startup
 
 # --- Main Execution ---
@@ -763,23 +764,23 @@ def main():
         # Start the system info publishing in a separate thread
         system_info_thread = threading.Thread(target=publish_system_info, args=(mqtt_client,), daemon=True)
         system_info_thread.start()
-        logging.info("System info publishing thread started. ▶️")
+        logging.info("System info publishing thread started.")
 
         # Keep the main thread alive, waiting for KeyboardInterrupt (Ctrl+C)
         while True:
             time.sleep(1) # Small sleep to prevent busy-waiting and allow other threads to run
     except KeyboardInterrupt:
-        logging.info("KeyboardInterrupt received. Stopping... 🛑")
+        logging.info("KeyboardInterrupt received. Stopping...")
     except Exception as e:
         send_error_log(mqtt_client, "main_function", e, "critical")
-        logging.critical(f"An unhandled error occurred in main: {e} 💥")
+        logging.critical(f"An unhandled error occurred in main: {e}")
     finally:
         # Ensure MQTT client is properly disconnected and its loop stopped on exit
         if mqtt_client:
             mqtt_client.loop_stop()
             mqtt_client.disconnect()
-            logging.info("MQTT client disconnected and loop stopped. 🔗")
-        logging.info("Application terminated. 👋")
+            logging.info("MQTT client disconnected and loop stopped.")
+        logging.info("Application terminated.")
 
 if __name__ == "__main__":
     main() # Entry point of the script

@@ -24,6 +24,26 @@ function throttledLog(message: string, type: "log" | "error" = "log") {
   }
 }
 
+// Function to update MQTT status on server
+async function updateMQTTStatus(status: {
+  is_connected: boolean;
+  connection_state: string;
+  broker_url: string;
+  mode: string;
+}) {
+  try {
+    await fetch("/api/mqtt/status", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(status),
+    });
+  } catch (error) {
+    console.warn("Failed to update server-side MQTT status:", error);
+  }
+}
+
 // Function to get MQTT config based on mode
 async function getMQTTConfigUrl(): Promise<string> {
   const savedMode = typeof window !== "undefined" ?
@@ -117,21 +137,14 @@ export async function connectMQTTAsync(): Promise<MqttClient> {
       reconnectPeriod: 3000,
       keepalive: 60,
       reschedulePings: true,
-      protocolVersion: 4,
+      protocolVersion: 4 as const,
       rejectUnauthorized: false,
       clientId: clientId,
     };
 
-    // For WebSocket connections, ensure proper URL format
+    // For WebSocket connections, use URL as provided
     let finalUrl = mqttBrokerUrl;
-    if (mqttBrokerUrl.startsWith('ws://') || mqttBrokerUrl.startsWith('wss://')) {
-      // Ensure WebSocket URL has /mqtt path if not present
-      const url = new URL(mqttBrokerUrl);
-      if (!url.pathname || url.pathname === '/') {
-        url.pathname = '/mqtt';
-        finalUrl = url.toString();
-      }
-    }
+    console.log(`MQTT: Using broker URL as configured: ${finalUrl}`);
 
     console.log(`MQTT: Connecting to ${finalUrl} with client ID: ${clientId}`);
     client = mqtt.connect(finalUrl, connectionOptions);
@@ -141,6 +154,15 @@ export async function connectMQTTAsync(): Promise<MqttClient> {
       isConnecting = false;
       reconnectAttempts = 0;
       console.log(`MQTT: Connected to ${mqttBrokerUrl}`);
+      console.log(`MQTT: Connection state updated to: ${connectionState}, isConnected: ${client?.connected}`);
+
+      // Update server-side status
+      await updateMQTTStatus({
+        is_connected: true,
+        connection_state: "connected",
+        broker_url: mqttBrokerUrl,
+        mode: typeof window !== "undefined" ? localStorage.getItem("mqtt_connection_mode") || "env" : "env"
+      });
 
       // Update database status if connected to database configuration
       try {
@@ -182,6 +204,14 @@ export async function connectMQTTAsync(): Promise<MqttClient> {
       if (reconnectAttempts < maxReconnectAttempts) {
         throttledLog(`MQTT Error: ${err.message}`, "error");
       }
+
+      // Update server-side status
+      await updateMQTTStatus({
+        is_connected: false,
+        connection_state: "error",
+        broker_url: mqttBrokerUrl,
+        mode: typeof window !== "undefined" ? localStorage.getItem("mqtt_connection_mode") || "env" : "env"
+      });
 
       // Update database status if connected to database configuration
       try {
@@ -231,14 +261,22 @@ export async function connectMQTTAsync(): Promise<MqttClient> {
       }
     });
 
-    client.on("close", () => {
+    client.on("close", async () => {
       connectionState = "disconnected";
       isConnecting = false;
-      
+
       // Only log close events during initial connection or every few attempts
       if (reconnectAttempts === 0 || reconnectAttempts % 5 === 0) {
         throttledLog(`MQTT: Connection closed`);
       }
+
+      // Update server-side status
+      await updateMQTTStatus({
+        is_connected: false,
+        connection_state: "disconnected",
+        broker_url: mqttBrokerUrl,
+        mode: typeof window !== "undefined" ? localStorage.getItem("mqtt_connection_mode") || "env" : "env"
+      });
     });
 
     client.on("offline", () => {
@@ -258,11 +296,14 @@ export function getMQTTClient(): MqttClient | null {
 }
 
 export function getConnectionState(): string {
+  console.log(`getConnectionState called: returning ${connectionState}`);
   return connectionState;
 }
 
 export function isClientConnected(): boolean {
-  return client?.connected || false;
+  const connected = client?.connected || false;
+  console.log(`isClientConnected called: client exists=${!!client}, connected=${connected}`);
+  return connected;
 }
 
 export function resetConnection(): void {

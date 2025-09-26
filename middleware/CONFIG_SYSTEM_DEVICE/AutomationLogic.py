@@ -54,7 +54,7 @@ def log_simple(message, level="INFO"):
         print(f"[INFO] {message}")
 
 # --- Global Variables ---
-config = {"logic_rules": []}
+config = []
 modular_devices = []
 client_control = None  # For sending control commands to devices
 client_crud = None     # For handling configuration CRUD operations
@@ -70,18 +70,12 @@ control_broker_connected = False
 mqtt_config_file = '../MODULAR_I2C/JSON/Config/mqtt_config.json'
 config_file = './JSON/automationLogicConfig.json'
 modular_devices_file = '../MODULAR_I2C/JSON/Config/installed_devices.json'
+whatsapp_config_file = './whatsapp_config.json'
 
 # --- MQTT Topic Definitions ---
-# CRUD Topics (localhost broker)
-AUTOMATION_LOGIC_CREATE_TOPIC = "automation_logic/create"
-AUTOMATION_LOGIC_READ_TOPIC = "automation_logic/read"
-AUTOMATION_LOGIC_UPDATE_TOPIC = "automation_logic/update"
-AUTOMATION_LOGIC_DELETE_TOPIC = "automation_logic/delete"
-AUTOMATION_LOGIC_GET_TOPIC = "automation_logic/get"
-
-# Response Topics (localhost broker)
-RESPONSE_AUTOMATION_LOGIC_TOPIC = "response_automation_logic"
-RESPONSE_GET_DATA_TOPIC = "response_get_data"
+# Simplified Topics (localhost broker)
+topic_command = "command_control_logic"
+topic_response = "response_control_logic"
 
 # Device and Control Topics
 MODULAR_AVAILABLES_TOPIC = "MODULAR_DEVICE/AVAILABLES"
@@ -152,25 +146,25 @@ def load_logic_config():
     try:
         with open(config_file, 'r') as file:
             loaded_data = json.load(file)
-            
-        if isinstance(loaded_data, dict):
+
+        if isinstance(loaded_data, list):
             config = loaded_data
             log_simple(f"Logic configuration loaded from {config_file}")
         else:
-            config = {"logic_rules": []}
+            config = []
             log_simple("Invalid config format, using default structure.", "WARNING")
-            
+
     except FileNotFoundError:
         log_simple(f"Config file not found: {config_file}. Creating default config.")
-        config = {"logic_rules": []}
+        config = []
         save_logic_config()
     except json.JSONDecodeError as e:
         log_simple(f"Failed to load config (JSON decode error): {e}. Using default.", "ERROR")
-        config = {"logic_rules": []}
+        config = []
         send_error_log(f"Config JSON decode error: {e}", ERROR_TYPE_MAJOR)
     except Exception as e:
         log_simple(f"Failed to load config: {e}", "ERROR")
-        config = {"logic_rules": []}
+        config = []
         send_error_log(f"Config load error: {e}", ERROR_TYPE_MAJOR)
 
 def save_logic_config():
@@ -239,20 +233,16 @@ def on_connect_crud(client, userdata, flags, rc):
     if rc == 0:
         crud_broker_connected = True
         log_simple("CRUD MQTT broker connected", "SUCCESS")
-        
-        # Subscribe to CRUD topics
+
+        # Subscribe to simplified command topic
         client.subscribe([
-            (AUTOMATION_LOGIC_CREATE_TOPIC, 1),
-            (AUTOMATION_LOGIC_READ_TOPIC, 1),
-            (AUTOMATION_LOGIC_UPDATE_TOPIC, 1),
-            (AUTOMATION_LOGIC_DELETE_TOPIC, 1),
-            (AUTOMATION_LOGIC_GET_TOPIC, 1),
+            (topic_command, 1),
             ("command_available_device", 1)
         ])
-        
+
         # Publish available devices on connection
         publish_available_devices()
-        
+
     else:
         crud_broker_connected = False
         log_simple(f"CRUD MQTT broker connection failed (code {rc})", "ERROR")
@@ -288,26 +278,32 @@ def on_message_crud(client, userdata, msg):
     try:
         topic = msg.topic
         payload = msg.payload.decode()
-        
+
         log_simple(f"CRUD Message: {topic} - {payload}")
-        
+
         if topic == "command_available_device":
             if payload == "get_modular_devices":
                 publish_available_devices()
             return
-            
-        # Handle CRUD operations
-        try:
-            message_data = json.loads(payload)
-        except json.JSONDecodeError:
-            log_simple(f"Invalid JSON in CRUD message: {payload}", "ERROR")
-            return
-            
-        if topic == AUTOMATION_LOGIC_GET_TOPIC:
-            handle_get_request(client)
-        elif topic in [AUTOMATION_LOGIC_CREATE_TOPIC, AUTOMATION_LOGIC_UPDATE_TOPIC, AUTOMATION_LOGIC_DELETE_TOPIC]:
-            handle_crud_request(client, topic, message_data)
-            
+
+        # Handle simplified command topic
+        if topic == topic_command:
+            try:
+                message_data = json.loads(payload)
+                action = message_data.get('action')
+
+                if action == "get":
+                    handle_get_request(client)
+                elif action in ["add", "set", "delete"]:
+                    handle_crud_request(client, action, message_data)
+                else:
+                    log_simple(f"Unknown action: {action}", "WARNING")
+
+            except json.JSONDecodeError:
+                log_simple(f"Invalid JSON in command message: {payload}", "ERROR")
+            except Exception as e:
+                log_simple(f"Error processing command: {e}", "ERROR")
+
     except Exception as e:
         log_simple(f"Error handling CRUD message: {e}", "ERROR")
         send_error_log(f"CRUD message handling error: {e}", ERROR_TYPE_MINOR)
@@ -339,7 +335,7 @@ def handle_get_request(client):
             "data": config,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        client.publish(RESPONSE_GET_DATA_TOPIC, json.dumps(response))
+        client.publish(topic_response, json.dumps(response))
         log_simple("Configuration data sent to client", "SUCCESS")
     except Exception as e:
         error_response = {
@@ -347,42 +343,41 @@ def handle_get_request(client):
             "message": str(e),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        client.publish(RESPONSE_GET_DATA_TOPIC, json.dumps(error_response))
+        client.publish(topic_response, json.dumps(error_response))
         log_simple(f"Error sending config data: {e}", "ERROR")
 
-def handle_crud_request(client, topic, message_data):
+def handle_crud_request(client, action, message_data):
     """Handle CRUD operations"""
     try:
-        action = message_data.get('action')
         data = message_data.get('data', {})
-        
+
         success = False
         message = ""
-        
-        if topic == AUTOMATION_LOGIC_CREATE_TOPIC and action == "add":
+
+        if action == "add":
             success, message = create_logic_rule(data)
-        elif topic == AUTOMATION_LOGIC_UPDATE_TOPIC and action == "set":
+        elif action == "set":
             success, message = update_logic_rule(data)
-        elif topic == AUTOMATION_LOGIC_DELETE_TOPIC and action == "delete":
+        elif action == "delete":
             success, message = delete_logic_rule(data.get('id'))
         else:
             message = f"Unknown action: {action}"
-            
+
         # Send response
         response = {
             "status": "success" if success else "error",
             "message": message,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        client.publish(RESPONSE_AUTOMATION_LOGIC_TOPIC, json.dumps(response))
-        
+        client.publish(topic_response, json.dumps(response))
+
     except Exception as e:
         error_response = {
             "status": "error",
             "message": str(e),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        client.publish(RESPONSE_AUTOMATION_LOGIC_TOPIC, json.dumps(error_response))
+        client.publish(topic_response, json.dumps(error_response))
         log_simple(f"Error handling CRUD request: {e}", "ERROR")
 
 def create_logic_rule(rule_data):
@@ -390,13 +385,13 @@ def create_logic_rule(rule_data):
     try:
         rule_data['id'] = str(uuid.uuid4())
         rule_data['created_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        config['logic_rules'].append(rule_data)
+
+        config.append(rule_data)
         save_logic_config()
-        
+
         log_simple(f"Logic rule created: {rule_data.get('rule_name', 'Unknown')}")
         return True, f"Logic rule '{rule_data.get('rule_name', 'Unknown')}' created successfully"
-        
+
     except Exception as e:
         log_simple(f"Error creating logic rule: {e}", "ERROR")
         send_error_log(f"Logic rule creation error: {e}", ERROR_TYPE_MAJOR)
@@ -408,18 +403,18 @@ def update_logic_rule(rule_data):
         rule_id = rule_data.get('id')
         if not rule_id:
             return False, "Rule ID is required for update"
-            
-        for i, rule in enumerate(config['logic_rules']):
+
+        for i, rule in enumerate(config):
             if rule.get('id') == rule_id:
                 rule_data['updated_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                config['logic_rules'][i] = rule_data
+                config[i] = rule_data
                 save_logic_config()
-                
+
                 log_simple(f"Logic rule updated: {rule_data.get('rule_name', 'Unknown')}")
                 return True, f"Logic rule '{rule_data.get('rule_name', 'Unknown')}' updated successfully"
-        
+
         return False, f"Logic rule with ID {rule_id} not found"
-        
+
     except Exception as e:
         log_simple(f"Error updating logic rule: {e}", "ERROR")
         send_error_log(f"Logic rule update error: {e}", ERROR_TYPE_MAJOR)
@@ -430,17 +425,17 @@ def delete_logic_rule(rule_id):
     try:
         if not rule_id:
             return False, "Rule ID is required for deletion"
-            
-        initial_count = len(config['logic_rules'])
-        config['logic_rules'] = [rule for rule in config['logic_rules'] if rule.get('id') != rule_id]
-        
-        if len(config['logic_rules']) < initial_count:
+
+        initial_count = len(config)
+        config[:] = [rule for rule in config if rule.get('id') != rule_id]
+
+        if len(config) < initial_count:
             save_logic_config()
             log_simple(f"Logic rule deleted: {rule_id}")
             return True, "Logic rule deleted successfully"
         else:
             return False, f"Logic rule with ID {rule_id} not found"
-            
+
     except Exception as e:
         log_simple(f"Error deleting logic rule: {e}", "ERROR")
         send_error_log(f"Logic rule deletion error: {e}", ERROR_TYPE_MAJOR)
@@ -457,7 +452,7 @@ def process_device_data(device_data):
         device_states[device_name] = data
         
         # Evaluate all logic rules
-        for rule in config.get('logic_rules', []):
+        for rule in config:
             evaluate_rule(rule, device_name, data)
             
     except Exception as e:
@@ -663,14 +658,24 @@ def execute_relay_control(action):
         send_error_log(f"Relay control execution error: {e}", ERROR_TYPE_MINOR)
 
 def execute_send_message(action, rule):
-    """Execute send message action"""
+    """Execute send message action (WhatsApp only)"""
+    try:
+        # Always use WhatsApp for send_message actions
+        execute_whatsapp_message(action, rule)
+
+    except Exception as e:
+        log_simple(f"Error executing send message: {e}", "ERROR")
+        send_error_log(f"Send message execution error: {e}", ERROR_TYPE_MINOR)
+
+def execute_mqtt_message(action, rule):
+    """Execute MQTT message action"""
     try:
         if not (client_crud and client_crud.is_connected()):
-            log_simple("CRUD client not connected for message action", "WARNING")
+            log_simple("CRUD client not connected for MQTT message action", "WARNING")
             return
-            
+
         message = action.get('message', 'Logic rule triggered')
-        
+
         message_payload = {
             "rule_name": rule.get('rule_name', 'Unknown'),
             "group_rule_name": rule.get('group_rule_name', 'Unknown'),
@@ -679,14 +684,115 @@ def execute_send_message(action, rule):
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "rule_id": rule.get('id', '')
         }
-        
+
         # Send message to result topic
         client_crud.publish(RESULT_MESSAGE_TOPIC, json.dumps(message_payload))
-        log_simple(f"Message sent: {message}", "SUCCESS")
-        
+        log_simple(f"MQTT Message sent: {message}", "SUCCESS")
+
     except Exception as e:
-        log_simple(f"Error executing send message: {e}", "ERROR")
-        send_error_log(f"Send message execution error: {e}", ERROR_TYPE_MINOR)
+        log_simple(f"Error executing MQTT message: {e}", "ERROR")
+        send_error_log(f"MQTT message execution error: {e}", ERROR_TYPE_MINOR)
+
+def load_whatsapp_config():
+    """Load WhatsApp configuration from file"""
+    default_config = {
+        "whatsapp": {
+            "api_url": "https://service-chat.qontak.com/api/open/v1/broadcasts/whatsapp/direct",
+            "bearer_token": "1Bs4cNxWFLUWUEd-3WSUKJOOmfeis8z4VrHU73v6_1Q",
+            "default_template_id": "300d84f2-d962-4451-bc27-870fb99d18e7",
+            "default_channel_id": "662f9fcb-7e2b-4c1a-8eda-9aeb4a388004",
+            "language": "id",
+            "timeout": 30,
+            "retry_attempts": 3,
+            "retry_delay": 5
+        }
+    }
+
+    try:
+        with open(whatsapp_config_file, 'r') as file:
+            content = file.read().strip()
+            if not content:
+                log_simple("WhatsApp config file is empty. Using defaults.", "WARNING")
+                return default_config["whatsapp"]
+            config = json.load(file)
+            return config.get("whatsapp", default_config["whatsapp"])
+    except FileNotFoundError:
+        log_simple(f"WhatsApp config file not found: {whatsapp_config_file}. Using defaults.", "WARNING")
+        return default_config["whatsapp"]
+    except json.JSONDecodeError as e:
+        log_simple(f"Error decoding WhatsApp config: {e}. Using defaults.", "WARNING")
+        return default_config["whatsapp"]
+    except Exception as e:
+        log_simple(f"Unexpected error loading WhatsApp config: {e}. Using defaults.", "WARNING")
+        return default_config["whatsapp"]
+
+def execute_whatsapp_message(action, rule):
+    """Execute WhatsApp message action using Qontak API"""
+    try:
+        import requests
+
+        # Load WhatsApp configuration
+        whatsapp_config = load_whatsapp_config()
+
+        # Get WhatsApp configuration from action with defaults
+        to_number = action.get('whatsapp_number', '')
+        to_name = action.get('whatsapp_name', '')
+        message_template_id = action.get('message_template_id', whatsapp_config.get('default_template_id'))
+        channel_integration_id = action.get('channel_integration_id', whatsapp_config.get('default_channel_id'))
+        message_text = action.get('message', 'Logic rule triggered')
+        language_code = whatsapp_config.get('language', 'id')
+        timeout = whatsapp_config.get('timeout', 30)
+
+        if not to_number:
+            log_simple("WhatsApp number not configured", "WARNING")
+            return
+
+        # Prepare WhatsApp payload
+        whatsapp_payload = {
+            "to_number": to_number,
+            "to_name": to_name or "User",
+            "message_template_id": message_template_id,
+            "channel_integration_id": channel_integration_id,
+            "language": {
+                "code": language_code
+            },
+            "parameters": {
+                "body": [
+                    {
+                        "key": "1",
+                        "value": "full_name",
+                        "value_text": to_name or "User"
+                    },
+                    {
+                        "key": "2",
+                        "value": "messagetext",
+                        "value_text": message_text
+                    }
+                ]
+            }
+        }
+
+        # Set headers
+        headers = {
+            "Authorization": f"Bearer {whatsapp_config.get('bearer_token')}",
+            "Content-Type": "application/json"
+        }
+
+        # Send WhatsApp message
+        response = requests.post(whatsapp_config.get('api_url'), json=whatsapp_payload, headers=headers, timeout=timeout)
+
+        if response.status_code == 200:
+            log_simple(f"WhatsApp message sent to {to_number}: {message_text}", "SUCCESS")
+        else:
+            log_simple(f"WhatsApp API error: {response.status_code} - {response.text}", "ERROR")
+            send_error_log(f"WhatsApp API error: {response.status_code}", ERROR_TYPE_MINOR)
+
+    except ImportError:
+        log_simple("Requests library not available for WhatsApp API", "ERROR")
+        send_error_log("Requests library missing for WhatsApp", ERROR_TYPE_MAJOR)
+    except Exception as e:
+        log_simple(f"Error executing WhatsApp message: {e}", "ERROR")
+        send_error_log(f"WhatsApp message execution error: {e}", ERROR_TYPE_MINOR)
 
 # --- MQTT Client Setup ---
 def connect_mqtt(client_id, broker, port, username="", password="", on_connect_callback=None, on_disconnect_callback=None, on_message_callback=None):

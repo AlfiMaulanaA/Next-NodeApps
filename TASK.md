@@ -1,12 +1,81 @@
-7. Analisa pada halaman /settings/system MQTT Broker yang digunakan untuk aplikasi ini tidak muncul dicard MQTT Broker, seharusnya muncul dari pilihan MQTT Connection Mode baik dari ENV file atau dari Database. Yang muncul saat ini hanyalah Status Disconnected, Connected No, Name : Current Active Configuration, Broker : Manage by MQTT Client.
-   seharusnya broker dan statusnya dimunculkan sesuai dengan MQTT Connction mode
+1. Buatkan fungsi wifi
+2. Munculkan local time dan fungsi untuk set RTC sudo timedatectl set-timezone Asia/Jakarta
 
-Modifikasi file deploy.sh untuk fitur deploy aplikasi ini ke server
+[INFO] Received message: {'action': 'set', 'data': {'id': 'fcfcf8bd-596c-4aed-a56f-c8f0bb2b96aa', 'customName': 'Control Kipas', 'deviceName': 'RelayMini1', 'name': 'RelayMini1', 'mac': '02:81:dd:6e:0f:11', 'address': 37, 'device_bus': 0, 'part_number': 'RELAYMINI', 'startDay': 'Mon', 'endDay': 'Sun', 'controls': [{'pin': 1, 'customName': 'tset', 'onTime': '08:30', 'offTime': '17:00'}, {'pin': 2, 'customName': 'giuh', 'onTime': '08:33', 'offTime': '17:00'}]}}
+[INFO] Processing action: set
+Updated device with ID: fcfcf8bd-596c-4aed-a56f-c8f0bb2b96aa
+Configuration saved to ./JSON/automationSchedulerConfig.json
+[CRITICAL] Error in restart_service: Failed to restart service: Failed to restart scheduler_control.service: Unit scheduler_control.service not found.
+Failed to restart service: Failed to restart scheduler_control.service: Unit scheduler_control.service not found.
+[INFO] === MQTT DEBUG === Topic: command_control_scheduler | Payload: '{"action":"get"}'
+[INFO] Attempting to parse JSON message...
+[INFO] Parsed JSON successfully: {'action': 'get'}
+[INFO] Received message: {'action': 'get'}
+[INFO] Processing action: get
 
-1. Buat pengecekan untuk package dan Library Dulu, lakukan pengecekan untuk Library, mosquitto, ngnix, node, pm2 dan jika ada yang belum terinstall maka install tersebut dahulu hingga benar benar semuanya terinstall. Tapi jika ada yang gagal terus bisa skip saja
-2. Lakukan command untuk npm install lalu npm build untuk membuild frontend ini lalu running di pm2 jika berhasil, jika gagal skip saja dan bisa lanjut ke step ke 3.
-3. buat konfigurasi agar frontend ini menggunakan proxy reverve nginx dari port 3000 ke 8080
-4. Buat konfigurasi untuk pindahkan file dari /middleware/SERVICE_FILE/multiprocessing.service ke /etc/systemd/system dan aktifkan servicenya.
-5. Buat resume apa saja yang berhasil berapa portnya dll, dan buat handling jika gagal disalah satu stepnya maka skip dan lanjutkan ke step berikutnya.
-6. Lakukan juga untuk install requirment.txt pada /middleware/CONFIG_SYSTEM_DEVICE
-7. Buat kan fitur tersebut dan modifikasi file deploy.sh
+hapuskan fungsi restart scheduler_control.service, dan modifikasi agar menjadi multiprocessing.service
+
+kenapa saat kondisi terpenuhi, [
+{
+"id": "fcfcf8bd-596c-4aed-a56f-c8f0bb2b96aa",
+"customName": "Control Kipas",
+"deviceName": "RelayMini1",
+"name": "RelayMini1",
+"mac": "02:81:dd:6e:0f:11",
+"address": 37,
+"device_bus": 0,
+"part_number": "RELAYMINI",
+"startDay": "Mon",
+"endDay": "Sun",
+"controls": [
+{
+"pin": 1,
+"customName": "tset",
+"onTime": "08:30",
+"offTime": "17:00"
+},
+{
+"pin": 2,
+"customName": "giuh",
+"onTime": "08:33",
+"offTime": "17:00"
+}
+]
+}
+]
+
+kondiisi tersebut terpenuhi jika hari dan waktu sesuai dengan waktu dan hari yang diset realtme. Lalu seharusnya akan publish data control ini
+
+def send_control_signal(client, device, pin, data):
+if not config.get('autoControl', True):
+logger.info(f"Auto control is disabled. Not sending signal to {device.get('name', device.get('id'))}, pin {pin}, data {data}.")
+return
+
+    try:
+        # Basic validation for critical device info
+        if not all(key in device for key in ['mac', 'part_number', 'address', 'device_bus']):
+            logger.error(f"Missing critical device information for sending control signal: {device.get('id', 'unknown')}")
+            send_error_log("send_control_signal", "Missing critical device information.", ERROR_TYPE_CRITICAL, {"device_data": device})
+            return
+
+        message = {
+            "mac": device['mac'],
+            "protocol_type": "Modular",
+            "device": device['part_number'],
+            "function": "write",
+            "value": {
+                "pin": pin,
+                "data": data
+            },
+            "address": device['address'],
+            "device_bus": device['device_bus'],
+            "Timestamp": datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        }
+        publish_control(client, json.dumps(message), "modular")
+        logger.info(f"Sent control signal to {device.get('customName', device.get('name', device['id']))}, pin {pin}, data {data}")
+    except Exception as e:
+        send_error_log("send_control_signal", f"Failed to send control signal: {e}", ERROR_TYPE_CRITICAL, {"device_id": device.get('id', 'unknown'), "pin": pin, "data": data})
+
+tapi kenapa tidak tercontrol atau tidak terpublish?
+
+Add Variable Button disable

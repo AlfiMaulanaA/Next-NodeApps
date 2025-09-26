@@ -63,9 +63,9 @@ local_broker_connected = False
 
 # MQTT Topic Definitions (Local Broker)
 VOICE_CONTROL_TOPIC = "voice_control/data"
-VOICE_CONTROL_CREATE = "voice_control/create"
-VOICE_CONTROL_UPDATE = "voice_control/update"
-VOICE_CONTROL_DELETE = "voice_control/delete"
+# Simplified Topics (like AutomationValue)
+VOICE_CONTROL_COMMAND_TOPIC = "command_control_voice"
+VOICE_CONTROL_RESPONSE_TOPIC = "response_control_voice"
 
 # MQTT Topic Definitions (Other)
 ERROR_LOG_TOPIC = "subrack/error/log" # Topic for centralized error logging
@@ -239,12 +239,10 @@ def on_local_connect(client, userdata, flags, rc):
     if rc == 0:
         local_broker_connected = True
         log_simple("Local MQTT broker connected", "SUCCESS")
-        # Subscribe to local CRUD topics after successful connection
-        client.subscribe(VOICE_CONTROL_CREATE, qos=QOS)
-        client.subscribe(VOICE_CONTROL_UPDATE, qos=QOS)
-        client.subscribe(VOICE_CONTROL_DELETE, qos=QOS)
+        # Subscribe to simplified command topic
+        client.subscribe(VOICE_CONTROL_COMMAND_TOPIC, qos=QOS)
         if DEBUG_MODE:
-            logger.debug("[DEBUG] Subscribed to voice control CRUD topics.")
+            logger.debug(f"[DEBUG] Subscribed to simplified command topic: {VOICE_CONTROL_COMMAND_TOPIC}")
     else:
         local_broker_connected = False
         log_simple(f"Local MQTT broker connection failed (code {rc})", "ERROR")
@@ -254,21 +252,122 @@ def on_local_message(client, userdata, msg):
     if DEBUG_MODE:
         logger.debug(f"[DEBUG] Local MQTT message received on topic '{msg.topic}'")
     try:
-        payload = json.loads(msg.payload.decode("utf-8"))
-        if msg.topic == VOICE_CONTROL_CREATE:
-            add_voice_control(payload)
-        elif msg.topic == VOICE_CONTROL_UPDATE:
-            # Pass payload directly as update_voice_control expects full new_data
-            update_voice_control(payload.get("uuid"), payload) 
-        elif msg.topic == VOICE_CONTROL_DELETE:
-            delete_voice_control(payload.get("uuid"))
+        topic = msg.topic
+        payload = msg.payload.decode("utf-8")
+
+        if topic == VOICE_CONTROL_COMMAND_TOPIC:
+            try:
+                message_data = json.loads(payload)
+                action = message_data.get('action')
+
+                if action == "get":
+                    handle_get_request(client)
+                elif action in ["add", "set", "delete"]:
+                    handle_crud_request(client, action, message_data)
+                else:
+                    log_simple(f"Unknown action: {action}", "WARNING")
+
+            except json.JSONDecodeError:
+                log_simple(f"Invalid JSON in command message: {payload}", "ERROR")
         else:
-            logger.warning(f"Received unexpected message on local topic: {msg.topic}")
-            send_error_log("on_local_message", f"Unexpected topic: {msg.topic}", "warning", {"topic": msg.topic})
+            logger.warning(f"Received unexpected message on local topic: {topic}")
+            send_error_log("on_local_message", f"Unexpected topic: {topic}", "warning", {"topic": topic})
+
     except json.JSONDecodeError as e:
         send_error_log("on_local_message", f"Invalid JSON payload on topic {msg.topic}: {e}", "minor", {"topic": msg.topic, "payload_preview": msg.payload.decode('utf-8')[:100]})
     except Exception as e:
         send_error_log("on_local_message", f"Error handling local message on topic {msg.topic}: {e}", "major", {"topic": msg.topic})
+
+# --- CRUD Request Handlers ---
+def handle_get_request(client):
+    """Handle get data request"""
+    try:
+        response = {
+            "status": "success",
+            "data": read_json(VOICE_CONTROL_PATH) or [],
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        client.publish(VOICE_CONTROL_RESPONSE_TOPIC, json.dumps(response))
+        log_simple("Configuration data sent to client", "SUCCESS")
+    except Exception as e:
+        error_response = {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        client.publish(VOICE_CONTROL_RESPONSE_TOPIC, json.dumps(error_response))
+        log_simple(f"Error sending config data: {e}", "ERROR")
+
+def handle_crud_request(client, action, message_data):
+    """Handle CRUD operations"""
+    try:
+        data = message_data.get('data', {})
+
+        success = False
+        message = ""
+
+        if action == "add":
+            success, message = create_voice_control(data)
+        elif action == "set":
+            success, message = update_voice_control_crud(data)
+        elif action == "delete":
+            success, message = delete_voice_control_crud(data.get('id') or data.get('uuid'))
+        else:
+            message = f"Unknown action: {action}"
+
+        # Send response
+        response = {
+            "status": "success" if success else "error",
+            "message": message,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        client.publish(VOICE_CONTROL_RESPONSE_TOPIC, json.dumps(response))
+
+    except Exception as e:
+        error_response = {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        client.publish(VOICE_CONTROL_RESPONSE_TOPIC, json.dumps(error_response))
+        log_simple(f"Error handling CRUD request: {e}", "ERROR")
+
+def create_voice_control(rule_data):
+    """Create new voice control"""
+    try:
+        add_voice_control(rule_data)
+        return True, f"Voice control '{rule_data.get('data', {}).get('custom_name', 'Unknown')}' created successfully"
+    except Exception as e:
+        log_simple(f"Error creating voice control: {e}", "ERROR")
+        send_error_log(f"Voice control creation error: {e}", "major")
+        return False, str(e)
+
+def update_voice_control_crud(rule_data):
+    """Update existing voice control"""
+    try:
+        rule_id = rule_data.get('id') or rule_data.get('uuid')
+        if not rule_id:
+            return False, "Voice control ID or UUID is required for update"
+
+        update_voice_control(rule_id, rule_data)
+        return True, f"Voice control '{rule_id}' updated successfully"
+    except Exception as e:
+        log_simple(f"Error updating voice control: {e}", "ERROR")
+        send_error_log(f"Voice control update error: {e}", "major")
+        return False, str(e)
+
+def delete_voice_control_crud(rule_id):
+    """Delete voice control"""
+    try:
+        if not rule_id:
+            return False, "Voice control ID or UUID is required for deletion"
+
+        delete_voice_control(rule_id)
+        return True, "Voice control deleted successfully"
+    except Exception as e:
+        log_simple(f"Error deleting voice control: {e}", "ERROR")
+        send_error_log(f"Voice control deletion error: {e}", "major")
+        return False, str(e)
 
 # --- PUBLISHER THREAD FUNCTIONS ---
 def run_voice_publisher_loop():

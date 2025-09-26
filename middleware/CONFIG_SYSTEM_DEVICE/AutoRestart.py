@@ -24,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger("AutoRestartService")
 
 # Configuration
-SERVICE_NAME = "Multiprocesing.service"
+SERVICE_NAME = "multiprocessing.service"
 RESTART_INTERVAL_HOURS = 6
 MAX_RESTART_ATTEMPTS = 3
 
@@ -35,7 +35,13 @@ class ServiceAutoRestart:
         self.restart_count = 0
         
     def check_sudo_access(self):
-        """Check if current user can run sudo systemctl without password"""
+        """Check if current user can run systemctl commands (either as root or with sudo)"""
+        # Check if we're already running as root
+        if os.geteuid() == 0:
+            logger.info("Running as root, no sudo needed")
+            return True
+
+        # If not root, check if we can run sudo without password
         try:
             result = subprocess.run(
                 ["sudo", "-n", "systemctl", "status", SERVICE_NAME],
@@ -52,57 +58,61 @@ class ServiceAutoRestart:
         """Restart the specified service"""
         try:
             logger.info(f"Attempting to restart {SERVICE_NAME}...")
-            
+
+            # Determine if we need to use sudo
+            use_sudo = os.geteuid() != 0
+            cmd_prefix = ["sudo"] if use_sudo else []
+
             # Check service status first
             status_result = subprocess.run(
-                ["sudo", "systemctl", "is-active", SERVICE_NAME],
+                cmd_prefix + ["systemctl", "is-active", SERVICE_NAME],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 timeout=10
             )
-            
+
             current_status = status_result.stdout.strip()
             logger.info(f"Current service status: {current_status}")
-            
+
             # Restart the service
             restart_result = subprocess.run(
-                ["sudo", "systemctl", "restart", SERVICE_NAME],
+                cmd_prefix + ["systemctl", "restart", SERVICE_NAME],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 timeout=30
             )
-            
+
             if restart_result.returncode == 0:
-                logger.info(f"✅ Successfully restarted {SERVICE_NAME}")
+                logger.info(f"Successfully restarted {SERVICE_NAME}")
                 self.last_restart = datetime.now()
                 self.restart_count += 1
-                
+
                 # Wait a moment and verify service is running
                 time.sleep(3)
                 verify_result = subprocess.run(
-                    ["sudo", "systemctl", "is-active", SERVICE_NAME],
+                    cmd_prefix + ["systemctl", "is-active", SERVICE_NAME],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True
                 )
-                
+
                 if verify_result.stdout.strip() == "active":
-                    logger.info(f"✅ Service {SERVICE_NAME} is running after restart")
+                    logger.info(f"Service {SERVICE_NAME} is running after restart")
                     return True
                 else:
-                    logger.warning(f"⚠️ Service {SERVICE_NAME} may not be running properly after restart")
+                    logger.warning(f"Service {SERVICE_NAME} may not be running properly after restart")
                     return False
             else:
-                logger.error(f"❌ Failed to restart {SERVICE_NAME}: {restart_result.stderr}")
+                logger.error(f"Failed to restart {SERVICE_NAME}: {restart_result.stderr}")
                 return False
-                
+
         except subprocess.TimeoutExpired:
-            logger.error(f"❌ Timeout while restarting {SERVICE_NAME}")
+            logger.error(f"Timeout while restarting {SERVICE_NAME}")
             return False
         except Exception as e:
-            logger.error(f"❌ Unexpected error restarting {SERVICE_NAME}: {e}")
+            logger.error(f"Unexpected error restarting {SERVICE_NAME}: {e}")
             return False
     
     def get_next_restart_time(self):
@@ -114,50 +124,50 @@ class ServiceAutoRestart:
     
     def run_scheduler(self):
         """Main scheduler loop"""
-        logger.info(f"🚀 Auto Restart Service started for {SERVICE_NAME}")
-        logger.info(f"📅 Restart interval: {RESTART_INTERVAL_HOURS} hours")
-        
+        logger.info(f"Auto Restart Service started for {SERVICE_NAME}")
+        logger.info(f"Restart interval: {RESTART_INTERVAL_HOURS} hours")
+
         # Check sudo access on startup
         if not self.check_sudo_access():
-            logger.error("❌ No sudo access available. Please configure sudoers or run as root.")
+            logger.error("No sudo access available. Please configure sudoers or run as root.")
             return
-        
+
         # Initial restart to ensure service is fresh
-        logger.info("🔄 Performing initial service restart...")
+        logger.info("Performing initial service restart...")
         self.restart_service()
-        
+
         while self.running:
             try:
                 next_restart = self.get_next_restart_time()
                 current_time = datetime.now()
-                
+
                 if current_time >= next_restart:
-                    logger.info(f"⏰ Time for scheduled restart #{self.restart_count + 1}")
+                    logger.info(f"Time for scheduled restart #{self.restart_count + 1}")
                     success = self.restart_service()
-                    
+
                     if not success:
-                        logger.warning(f"⚠️ Restart attempt failed, will retry in 10 minutes")
+                        logger.warning(f"Restart attempt failed, will retry in 10 minutes")
                         time.sleep(600)  # Wait 10 minutes before retry
                         continue
                 else:
                     # Calculate sleep time until next restart
                     sleep_seconds = (next_restart - current_time).total_seconds()
                     sleep_minutes = int(sleep_seconds / 60)
-                    
-                    logger.info(f"⏳ Next restart in {sleep_minutes} minutes at {next_restart.strftime('%Y-%m-%d %H:%M:%S')}")
-                    
+
+                    logger.info(f"Next restart in {sleep_minutes} minutes at {next_restart.strftime('%Y-%m-%d %H:%M:%S')}")
+
                     # Sleep in smaller chunks to allow for graceful shutdown
                     chunk_size = min(300, sleep_seconds)  # 5 minutes or remaining time
                     time.sleep(chunk_size)
-                    
+
             except KeyboardInterrupt:
-                logger.info("🛑 Received interrupt signal, stopping scheduler...")
+                logger.info("Received interrupt signal, stopping scheduler...")
                 break
             except Exception as e:
-                logger.error(f"❌ Unexpected error in scheduler: {e}")
+                logger.error(f"Unexpected error in scheduler: {e}")
                 time.sleep(60)  # Wait 1 minute before continuing
-        
-        logger.info("🏁 Auto Restart Service stopped")
+
+        logger.info("Auto Restart Service stopped")
     
     def stop(self):
         """Stop the scheduler"""
@@ -189,17 +199,17 @@ WantedBy=multi-user.target
     try:
         with open(service_file_path, 'w') as f:
             f.write(service_content)
-        
-        logger.info(f"✅ Created systemd service file: {service_file_path}")
+
+        logger.info(f"Created systemd service file: {service_file_path}")
         logger.info("To enable the service, run:")
         logger.info("sudo systemctl daemon-reload")
         logger.info("sudo systemctl enable auto-restart.service")
         logger.info("sudo systemctl start auto-restart.service")
-        
+
     except PermissionError:
-        logger.error("❌ Permission denied. Run as root to create systemd service file.")
+        logger.error("Permission denied. Run as root to create systemd service file.")
     except Exception as e:
-        logger.error(f"❌ Failed to create systemd service file: {e}")
+        logger.error(f"Failed to create systemd service file: {e}")
 
 def main():
     """Main function"""
@@ -217,7 +227,7 @@ def main():
     try:
         restart_service.run_scheduler()
     except KeyboardInterrupt:
-        logger.info("🛑 Keyboard interrupt received")
+        logger.info("Keyboard interrupt received")
         signal_handler()
 
 if __name__ == "__main__":

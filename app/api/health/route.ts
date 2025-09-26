@@ -4,6 +4,7 @@ import {
   connectMQTT,
   isClientConnected,
   getConnectionState,
+  getMQTTClient,
 } from "@/lib/mqttClient";
 
 // Health check response interface
@@ -36,8 +37,12 @@ interface HealthCheckResponse {
 }
 
 // GET /api/health - Comprehensive system health check
-export async function GET() {
+export async function GET(request: Request) {
   const startTime = Date.now();
+
+  // Get MQTT mode from headers
+  const mqttMode = request.headers.get("X-MQTT-Mode") || "env";
+
   const health: HealthCheckResponse = {
     status: "healthy",
     timestamp: new Date().toISOString(),
@@ -113,53 +118,85 @@ export async function GET() {
         // Use setImmediate to make it non-blocking
         setImmediate(async () => {
           try {
-            const connectionState = getConnectionState();
-            const isConnected = isClientConnected();
+            // Get MQTT status from our new status API endpoint
+            let mqttStatusData = null;
+            try {
+              const statusResponse = await fetch("http://localhost:3000/api/mqtt/status", {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              });
+              if (statusResponse.ok) {
+                const statusResult = await statusResponse.json();
+                if (statusResult.success) {
+                  mqttStatusData = statusResult.data;
+                  console.log(`Health check: Got MQTT status from API:`, mqttStatusData);
+                }
+              }
+            } catch (error) {
+              console.warn("Failed to fetch MQTT status from API, using fallback");
+            }
 
-            // Get actual MQTT configuration based on current mode
+            // Fallback to direct client check if API call failed
+            const connectionState = mqttStatusData?.connection_state || getConnectionState();
+            const isConnected = mqttStatusData?.is_connected || isClientConnected();
+
+            console.log(`Health check: MQTT state=${connectionState}, connected=${isConnected}`);
+
+            // Get actual MQTT configuration based on the specified mode
             let activeConfig = null;
 
             try {
-              // Check current MQTT mode from localStorage (simulate client-side check)
-              // Since this is server-side, we'll check both possible configurations
-              const db = DatabaseService.getInstance();
+              // Use broker URL from status API if available, otherwise derive from mode
+              const brokerUrl = mqttStatusData?.broker_url;
+              const currentMode = mqttStatusData?.mode || mqttMode;
 
-              // First try to get enabled configuration (database mode)
-              const enabledConfigs = db
-                .getAllMQTTConfigurations()
-                .filter((c) => c.enabled);
-              if (enabledConfigs.length > 0) {
-                const config = enabledConfigs[0];
+              if (brokerUrl) {
+                // We have real broker URL from client-side
                 activeConfig = {
-                  id: config.id,
-                  name: config.name,
-                  broker_url: config.broker_url,
+                  id: currentMode === "database" ? 1 : 0,
+                  name: currentMode === "database" ? "Database Configuration" : "Environment Configuration",
+                  broker_url: brokerUrl,
                   connection_status: connectionState,
                 };
-              } else {
-                // Fall back to active configuration
-                const activeDbConfig = db.getActiveMQTTConfiguration();
-                if (activeDbConfig) {
+              } else if (currentMode === "database") {
+                // Database mode: Get from database configuration
+                const db = DatabaseService.getInstance();
+
+                // First try to get enabled configuration
+                const enabledConfigs = db
+                  .getAllMQTTConfigurations()
+                  .filter((c) => c.enabled);
+                if (enabledConfigs.length > 0) {
+                  const config = enabledConfigs[0];
                   activeConfig = {
-                    id: activeDbConfig.id,
-                    name: activeDbConfig.name,
-                    broker_url: activeDbConfig.broker_url,
+                    id: config.id,
+                    name: config.name,
+                    broker_url: config.broker_url,
                     connection_status: connectionState,
                   };
                 } else {
-                  // Fall back to ENV configuration
-                  const { getEnvMQTTBrokerUrl } = await import("@/lib/config");
-                  activeConfig = {
-                    id: 0,
-                    name: "Environment Configuration",
-                    broker_url: getEnvMQTTBrokerUrl(),
-                    connection_status: connectionState,
-                  };
+                  // Fall back to active configuration in database mode
+                  const activeDbConfig = db.getActiveMQTTConfiguration();
+                  if (activeDbConfig) {
+                    activeConfig = {
+                      id: activeDbConfig.id,
+                      name: activeDbConfig.name,
+                      broker_url: activeDbConfig.broker_url,
+                      connection_status: connectionState,
+                    };
+                  } else {
+                    activeConfig = {
+                      id: 0,
+                      name: "No Database Configuration",
+                      broker_url: "Not configured",
+                      connection_status: connectionState,
+                    };
+                  }
                 }
-              }
-            } catch (configError) {
-              // If database check fails, fall back to ENV
-              try {
+              } else {
+                // ENV mode: Use environment configuration
                 const { getEnvMQTTBrokerUrl } = await import("@/lib/config");
                 activeConfig = {
                   id: 0,
@@ -167,14 +204,15 @@ export async function GET() {
                   broker_url: getEnvMQTTBrokerUrl(),
                   connection_status: connectionState,
                 };
-              } catch (envError) {
-                activeConfig = {
-                  id: 0,
-                  name: "Configuration Error",
-                  broker_url: "Unknown",
-                  connection_status: connectionState,
-                };
               }
+            } catch (configError) {
+              // If configuration retrieval fails, provide error info
+              activeConfig = {
+                id: 0,
+                name: "Configuration Error",
+                broker_url: "Error loading configuration",
+                connection_status: connectionState,
+              };
             }
 
             resolve({

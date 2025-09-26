@@ -177,11 +177,30 @@ def update_mqtt_config():
         with open(MQTT_CONFIG_PATH, 'r') as file:
             mqtt_config = json.load(file)
 
-        # Update broker_address, broker_port, username, and password
-        mqtt_config['broker_address'] = data.get('broker_address', mqtt_config['broker_address'])
-        mqtt_config['broker_port'] = data.get('broker_port', mqtt_config['broker_port'])
-        mqtt_config['username'] = data.get('username', mqtt_config.get('username', ""))
-        mqtt_config['password'] = data.get('password', mqtt_config.get('password', ""))
+        # FIXED: Only update fields that are actually provided, preserve all existing fields
+        if 'broker_address' in data:
+            mqtt_config['broker_address'] = data['broker_address']
+        if 'broker_port' in data:
+            mqtt_config['broker_port'] = data['broker_port']
+        if 'username' in data:
+            mqtt_config['username'] = data['username']
+        if 'password' in data:
+            mqtt_config['password'] = data['password']
+
+        # Ensure all required fields exist with defaults if missing
+        default_fields = {
+            'enable': True,
+            'pub_interval': 10,
+            'broker_address_local': 'localhost',
+            'qos': 1,
+            'retain': True,
+            'username': '',
+            'password': ''
+        }
+
+        for key, default_value in default_fields.items():
+            if key not in mqtt_config:
+                mqtt_config[key] = default_value
 
         # Save the updated mqtt_config.json
         with open(MQTT_CONFIG_PATH, 'w') as file:

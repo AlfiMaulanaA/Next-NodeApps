@@ -6,6 +6,7 @@ import operator
 import uuid
 from datetime import datetime
 import logging
+import requests
 
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -63,6 +64,7 @@ MODBUS_FILE_PATH = "../MODBUS_SNMP/JSON/Config/installed_devices.json"
 MODULAR_FILE_PATH = "../MODULAR_I2C/JSON/Config/installed_devices.json"
 AUTOMATION_FILE_PATH = "./JSON/automationValueConfig.json"
 MQTT_CONFIG_PATH = "../MODBUS_SNMP/JSON/Config/mqtt_config.json"
+WHATSAPP_CONFIG_PATH = "./whatsapp_config.json"
 # VOICE_CONTROL_PATH moved to automationVoice.py
 
 # MQTT Local Broker Configuration
@@ -95,9 +97,9 @@ except Exception as e:
 MODBUS_TOPIC = "modbus_value/data"
 MODULAR_TOPIC = "modular_value/data"
 AUTOMATION_TOPIC = "automation_value/data"
-AUTOMATION_CREATE_TOPIC = "automation_value/create"
-AUTOMATION_UPDATE_TOPIC = "automation_value/update"
-AUTOMATION_DELETE_TOPIC = "automation_value/delete"
+# Simplified Topics (like AutomationLogic)
+AUTOMATION_COMMAND_TOPIC = "command_control_value"
+AUTOMATION_RESPONSE_TOPIC = "response_control_value"
 AUTOMATION_STATUS_TOPIC = "automation_value/status"
 HEARTBEAT_TOPIC = "automation_value/heartbeat"
 # Voice control topics moved to automationVoice.py
@@ -249,44 +251,90 @@ def publish_mqtt_broker_info_loop():
 # --- CRUD FUNCTIONS: AUTOMATION VALUES ---
 def add_automation_value(data):
     try:
-        # Validate required fields
-        required_fields = ['name', 'topic', 'config', 'relay']
-        for field in required_fields:
-            if field not in data:
-                send_error_log("add_automation_value", f"Missing required field: {field}", "major", {"data": data})
-                return False
-        
-        # Validate config structure
-        config_fields = ['key_value', 'logic', 'value', 'auto']
-        for field in config_fields:
-            if field not in data['config']:
-                send_error_log("add_automation_value", f"Missing config field: {field}", "major", {"data": data})
-                return False
-        
-        # Validate relay structure
-        relay_fields = ['name', 'pin', 'logic']
-        for field in relay_fields:
-            if field not in data['relay']:
-                send_error_log("add_automation_value", f"Missing relay field: {field}", "major", {"data": data})
-                return False
+        # Validate required fields - support both old and new structure
+        if 'name' in data and 'topic' in data and 'config' in data:
+            # Legacy structure - convert to new structure
+            rule_name = data.get('name', f"Rule-{uuid.uuid4()}")
+            new_data = {
+                "id": str(uuid.uuid4()),
+                "rule_name": rule_name,
+                "description": f"Legacy rule: {rule_name}",
+                "group_rule_name": "Legacy Rules",
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "trigger_groups": [
+                    {
+                        "group_name": f"{rule_name} Group",
+                        "group_operator": "AND",
+                        "triggers": [
+                            {
+                                "device_name": f"Device-{rule_name}",
+                                "device_mac": MAC_ADDRESS,
+                                "device_address": 1,
+                                "device_bus": 0,
+                                "trigger_type": "drycontact",
+                                "pin_number": 1,
+                                "condition_operator": "is",
+                                "target_value": True,
+                                "expected_value": True,
+                                "delay_on": 0,
+                                "delay_off": 0
+                            }
+                        ]
+                    }
+                ],
+                "actions": [
+                    {
+                        "action_type": "control_relay",
+                        "target_device": data.get('relay', {}).get('name', 'Unknown'),
+                        "target_mac": MAC_ADDRESS,
+                        "target_address": data.get('relay', {}).get('address', 1),
+                        "target_bus": data.get('relay', {}).get('bus', 0),
+                        "relay_pin": data.get('relay', {}).get('pin', 1),
+                        "target_value": data.get('relay', {}).get('logic', True),
+                        "description": f"Control relay for {rule_name}"
+                    }
+                ],
+                # Keep legacy fields for backward compatibility
+                "name": data.get('name'),
+                "topic": data.get('topic'),
+                "config": data.get('config'),
+                "relay": data.get('relay')
+            }
+            data = new_data
+        else:
+            # New structure - validate required fields
+            required_fields = ['rule_name', 'trigger_groups', 'actions']
+            for field in required_fields:
+                if field not in data:
+                    send_error_log("add_automation_value", f"Missing required field: {field}", "major", {"data": data})
+                    return False
 
         items = read_json(AUTOMATION_FILE_PATH)
         if items is None:
             send_error_log("add_automation_value", "Failed to read existing automation data.", "critical")
             return False
 
-        # Check for duplicate names
-        existing_names = [item.get('name') for item in items]
-        if data.get('name') in existing_names:
-            send_error_log("add_automation_value", f"Automation with name '{data.get('name')}' already exists.", "warning")
+        # Check for duplicate rule names
+        existing_names = [item.get('rule_name') or item.get('name') for item in items]
+        rule_name = data.get('rule_name') or data.get('name', '')
+        if rule_name in existing_names:
+            send_error_log("add_automation_value", f"Automation with name '{rule_name}' already exists.", "warning")
             return False
+
+        # Generate ID if not provided
+        if 'id' not in data:
+            data['id'] = str(uuid.uuid4())
+
+        # Set created_at if not provided
+        if 'created_at' not in data:
+            data['created_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         items.append(data)
         write_json(AUTOMATION_FILE_PATH, items)
-        logger.info(f"Automation Added: {data.get('name', 'N/A')}")
-        
+        logger.info(f"Automation Added: {rule_name}")
+
         # Publish status update
-        publish_automation_status("created", data.get('name'))
+        publish_automation_status("created", rule_name)
         return True
     except Exception as e:
         send_error_log("add_automation_value", f"Failed to add automation value: {e}", "major", {"data": data})
@@ -362,13 +410,10 @@ def on_local_connect(client, userdata, flags, rc):
     if rc == 0:
         local_broker_connected = True
         log_simple("Local MQTT broker connected", "SUCCESS")
-        # Subscribe to local CRUD topics after successful connection
-        client.subscribe(AUTOMATION_CREATE_TOPIC, qos=QOS)
-        client.subscribe(AUTOMATION_UPDATE_TOPIC, qos=QOS)
-        client.subscribe(AUTOMATION_DELETE_TOPIC, qos=QOS)
-        # Voice control subscriptions moved to automationVoice.py
+        # Subscribe to simplified command topic
+        client.subscribe(AUTOMATION_COMMAND_TOPIC, qos=QOS)
         if DEBUG_MODE:
-            logger.debug("[DEBUG] Subscribed to local CRUD topics.")
+            logger.debug(f"[DEBUG] Subscribed to simplified command topic: {AUTOMATION_COMMAND_TOPIC}")
     else:
         local_broker_connected = False
         log_simple(f"Local MQTT broker connection failed (code {rc})", "ERROR")
@@ -378,41 +423,131 @@ def on_local_message(client, userdata, msg):
     if DEBUG_MODE:
         logger.debug(f"[DEBUG] Local MQTT message received on topic '{msg.topic}'")
     try:
-        payload = json.loads(msg.payload.decode("utf-8"))
-        success = False
-        
-        if msg.topic == AUTOMATION_CREATE_TOPIC:
-            success = add_automation_value(payload)
-            if success:
-                # Re-subscribe to new device topics if needed
-                subscribe_all_device_topics()
-        elif msg.topic == AUTOMATION_UPDATE_TOPIC:
-            success = update_automation_value(payload.get("name"), payload)
-            if success:
-                # Re-subscribe to device topics in case topic changed
-                subscribe_all_device_topics()
-        elif msg.topic == AUTOMATION_DELETE_TOPIC:
-            success = delete_automation_value(payload.get("name"))
+        topic = msg.topic
+        payload = msg.payload.decode("utf-8")
+
+        if topic == AUTOMATION_COMMAND_TOPIC:
+            try:
+                message_data = json.loads(payload)
+                action = message_data.get('action')
+
+                if action == "get":
+                    handle_get_request(client)
+                elif action in ["add", "set", "delete"]:
+                    handle_crud_request(client, action, message_data)
+                else:
+                    log_simple(f"Unknown action: {action}", "WARNING")
+
+            except json.JSONDecodeError:
+                log_simple(f"Invalid JSON in command message: {payload}", "ERROR")
         else:
-            logger.warning(f"Received unexpected message on local topic: {msg.topic}")
-            send_error_log("on_local_message", f"Unexpected topic: {msg.topic}", "warning", {"topic": msg.topic})
-        
-        # Send response back to frontend
-        if msg.topic in [AUTOMATION_CREATE_TOPIC, AUTOMATION_UPDATE_TOPIC, AUTOMATION_DELETE_TOPIC]:
-            response_payload = {
-                "success": success,
-                "action": msg.topic.split("/")[-1],  # create/update/delete
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-            if not success:
-                response_payload["error"] = "Operation failed"
-            
-            client.publish(f"{msg.topic}/response", json.dumps(response_payload), qos=QOS)
-            
+            logger.warning(f"Received unexpected message on local topic: {topic}")
+            send_error_log("on_local_message", f"Unexpected topic: {topic}", "warning", {"topic": topic})
+
     except json.JSONDecodeError as e:
         send_error_log("on_local_message", f"Invalid JSON payload on topic {msg.topic}: {e}", "minor", {"topic": msg.topic, "payload_preview": msg.payload.decode('utf-8')[:100]})
     except Exception as e:
         send_error_log("on_local_message", f"Error handling local message on topic {msg.topic}: {e}", "major", {"topic": msg.topic})
+
+# --- CRUD Request Handlers ---
+def handle_get_request(client):
+    """Handle get data request"""
+    try:
+        response = {
+            "status": "success",
+            "data": read_json(AUTOMATION_FILE_PATH) or [],
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        client.publish(AUTOMATION_RESPONSE_TOPIC, json.dumps(response))
+        log_simple("Configuration data sent to client", "SUCCESS")
+    except Exception as e:
+        error_response = {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        client.publish(AUTOMATION_RESPONSE_TOPIC, json.dumps(error_response))
+        log_simple(f"Error sending config data: {e}", "ERROR")
+
+def handle_crud_request(client, action, message_data):
+    """Handle CRUD operations"""
+    try:
+        data = message_data.get('data', {})
+
+        success = False
+        message = ""
+
+        if action == "add":
+            success, message = create_automation_rule(data)
+        elif action == "set":
+            success, message = update_automation_rule(data)
+        elif action == "delete":
+            success, message = delete_automation_rule(data.get('id') or data.get('name'))
+        else:
+            message = f"Unknown action: {action}"
+
+        # Send response
+        response = {
+            "status": "success" if success else "error",
+            "message": message,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        client.publish(AUTOMATION_RESPONSE_TOPIC, json.dumps(response))
+
+    except Exception as e:
+        error_response = {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        client.publish(AUTOMATION_RESPONSE_TOPIC, json.dumps(error_response))
+        log_simple(f"Error handling CRUD request: {e}", "ERROR")
+
+def create_automation_rule(rule_data):
+    """Create new automation rule"""
+    try:
+        success = add_automation_value(rule_data)
+        if success:
+            return True, f"Automation rule '{rule_data.get('rule_name', rule_data.get('name', 'Unknown'))}' created successfully"
+        else:
+            return False, "Failed to create automation rule"
+    except Exception as e:
+        log_simple(f"Error creating automation rule: {e}", "ERROR")
+        send_error_log(f"Automation rule creation error: {e}", "major")
+        return False, str(e)
+
+def update_automation_rule(rule_data):
+    """Update existing automation rule"""
+    try:
+        rule_id = rule_data.get('id') or rule_data.get('name')
+        if not rule_id:
+            return False, "Rule ID or name is required for update"
+
+        success = update_automation_value(rule_id, rule_data)
+        if success:
+            return True, f"Automation rule '{rule_id}' updated successfully"
+        else:
+            return False, f"Automation rule '{rule_id}' not found"
+    except Exception as e:
+        log_simple(f"Error updating automation rule: {e}", "ERROR")
+        send_error_log(f"Automation rule update error: {e}", "major")
+        return False, str(e)
+
+def delete_automation_rule(rule_id):
+    """Delete automation rule"""
+    try:
+        if not rule_id:
+            return False, "Rule ID or name is required for deletion"
+
+        success = delete_automation_value(rule_id)
+        if success:
+            return True, "Automation rule deleted successfully"
+        else:
+            return False, f"Automation rule '{rule_id}' not found"
+    except Exception as e:
+        log_simple(f"Error deleting automation rule: {e}", "ERROR")
+        send_error_log(f"Automation rule deletion error: {e}", "major")
+        return False, str(e)
 
 # --- MQTT SERVER CLIENT CALLBACKS ---
 def on_server_connect(client, userdata, flags, rc):
@@ -425,6 +560,113 @@ def on_server_connect(client, userdata, flags, rc):
         server_broker_connected = False
         log_simple(f"Server MQTT broker connection failed (code {rc})", "ERROR")
         send_error_log("on_server_connect", f"Failed to connect to server MQTT broker, return code {rc}", "critical", {"return_code": rc, "broker": SERVER_BROKER, "port": SERVER_PORT})
+
+def evaluate_trigger_groups(trigger_groups, sensor_data):
+    """Evaluate trigger groups and return overall trigger status"""
+    if not trigger_groups:
+        return False
+
+    group_results = []
+
+    for group in trigger_groups:
+        trigger_results = []
+
+        for trigger in group.get("triggers", []):
+            # For value-based automation, we evaluate sensor data against trigger conditions
+            key = trigger.get("device_name", "").lower()  # Use device_name as key for simplicity
+            expected = trigger.get("target_value")
+            condition = trigger.get("condition_operator", "is")
+
+            actual = sensor_data.get(key)
+
+            if actual is None:
+                if DEBUG_MODE:
+                    logger.debug(f"[DEBUG] Key '{key}' not found in sensor data")
+                continue
+
+            # Evaluate condition with proper type coercion
+            try:
+                # Type coercion for comparison
+                if isinstance(expected, (int, float)):
+                    actual = float(actual)
+                elif isinstance(expected, str):
+                    actual = str(actual)
+
+                # Use logic operators mapping
+                op = logic_ops.get(condition)
+                if op:
+                    result = op(actual, expected)
+                else:
+                    # Fallback to simple comparisons
+                    if condition == "is":
+                        result = actual == expected
+                    elif condition == "more_than" or condition == ">":
+                        result = float(actual) > float(expected) if actual and expected else False
+                    elif condition == "less_than" or condition == "<":
+                        result = float(actual) < float(expected) if actual and expected else False
+                    elif condition == ">=":
+                        result = float(actual) >= float(expected) if actual and expected else False
+                    elif condition == "<=":
+                        result = float(actual) <= float(expected) if actual and expected else False
+                    elif condition == "==":
+                        result = actual == expected
+                    elif condition == "!=":
+                        result = actual != expected
+                    else:
+                        result = False
+
+                trigger_results.append(result)
+
+            except (ValueError, TypeError) as e:
+                if DEBUG_MODE:
+                    logger.debug(f"[DEBUG] Type conversion failed for trigger evaluation: {e}")
+                trigger_results.append(False)
+
+        # Evaluate group logic (AND/OR)
+        group_operator = group.get("group_operator", "AND")
+        if group_operator == "AND":
+            group_result = all(trigger_results) if trigger_results else False
+        else:  # OR
+            group_result = any(trigger_results) if trigger_results else False
+
+        group_results.append(group_result)
+
+    # Overall result (OR between groups for now)
+    return any(group_results)
+
+def execute_actions(actions, rule):
+    """Execute all actions for a triggered rule"""
+    for action in actions:
+        action_type = action.get("action_type")
+
+        if action_type == "control_relay":
+            # Execute relay control
+            relay_payload = {
+                "mac": MAC_ADDRESS,
+                "protocol_type": "Modular",
+                "device": "RELAYMINI",
+                "function": "write",
+                "value": {
+                    "pin": action.get("relay_pin", 1),
+                    "data": action.get("target_value", True)
+                },
+                "address": action.get("target_address", 1),
+                "device_bus": action.get("target_bus", 0),
+                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+
+            if mqtt_server and mqtt_server.is_connected():
+                mqtt_server.publish(RELAY_COMMAND_TOPIC, json.dumps(relay_payload), qos=QOS)
+                logger.info(f"Relay action executed: {action.get('description', 'Control relay')}")
+                if DEBUG_MODE:
+                    logger.debug(f"[DEBUG] Published relay command: {relay_payload}")
+            else:
+                logger.warning("Server MQTT client not connected, unable to execute relay action.")
+                send_error_log("execute_actions", "Server MQTT client not connected for relay action.", "warning")
+
+        elif action_type == "send_message":
+            # Execute message action (WhatsApp)
+            execute_send_message(action, rule)
 
 def on_server_message(client, userdata, msg):
     if DEBUG_MODE:
@@ -440,108 +682,82 @@ def on_server_message(client, userdata, msg):
             return
 
         for rule in automation_values:
-            # Basic validation of rule structure
-            if not all(k in rule for k in ["topic", "config"]) or not isinstance(rule["config"], dict):
-                logger.warning(f"Skipping malformed automation rule: {rule}")
-                send_error_log("on_server_message", "Malformed automation rule skipped.", "warning", {"rule_data": rule})
-                continue
+            rule_name = rule.get('rule_name') or rule.get('name', str(uuid.uuid4()))
 
-            if rule.get("topic") == topic:
-                # Safely access nested dictionary values
-                sensor_data = json.loads(payload.get("value", "{}"))
-                key = rule["config"].get("key_value")
-                expected = rule["config"].get("value")
-                logic = rule["config"].get("logic")
-                auto = rule["config"].get("auto", False)
-                actual = sensor_data.get(key)
+            # Check if rule has legacy structure (simple sensor monitoring)
+            if rule.get("topic") and rule.get("config"):
+                # Legacy structure - handle simple sensor monitoring
+                if rule.get("topic") == topic:
+                    sensor_data = json.loads(payload.get("value", "{}"))
+                    key = rule["config"].get("key_value")
+                    expected = rule["config"].get("value")
+                    logic = rule["config"].get("logic")
+                    auto = rule["config"].get("auto", False)
+                    actual = sensor_data.get(key)
 
-                if actual is None:
-                    if DEBUG_MODE:
-                        logger.debug(f"[DEBUG] Key '{key}' not found in sensor data from {topic} for rule {rule.get('name')}")
-                    send_error_log("on_server_message", f"Key '{key}' not found in sensor data.", "minor", {"rule_name": rule.get('name'), "topic": topic})
-                    continue
-
-                op = logic_ops.get(logic)
-                if not op:
-                    if DEBUG_MODE:
-                        logger.debug(f"[DEBUG] Invalid logic operator '{logic}' for rule {rule.get('name')}")
-                    send_error_log("on_server_message", f"Invalid logic operator '{logic}'.", "warning", {"rule_name": rule.get('name')})
-                    continue
-
-                # --- Type Coercion for Comparison ---
-                try:
-                    # Attempt to convert actual to float if expected is numeric
-                    if isinstance(expected, (int, float)):
-                        actual = float(actual)
-                    # If expected is string, ensure actual is also string for comparison
-                    elif isinstance(expected, str):
-                        actual = str(actual)
-                except ValueError:
-                    if DEBUG_MODE:
-                        logger.debug(f"[DEBUG] Type conversion failed for comparison in rule {rule.get('name')}: actual={actual} ({type(actual).__name__}), expected={expected} ({type(expected).__name__})")
-                    send_error_log("on_server_message", f"Type mismatch for comparison.", "minor", {"rule_name": rule.get('name'), "actual_type": type(actual).__name__, "expected_type": type(expected).__name__})
-                    continue
-                except Exception as type_e:
-                    send_error_log("on_server_message", f"Error during type coercion: {type_e}", "minor", {"rule_name": rule.get('name')})
-                    continue
-                # --- End Type Coercion ---
-
-                current_status = op(actual, expected)
-                
-                # Use rule name for trigger state key
-                rule_name = rule.get("name", str(uuid.uuid4())) # Ensure a fallback key
-                prev_status = trigger_states.get(rule_name)
-
-                if prev_status == current_status and prev_status is not None: # Only skip if state is truly unchanged and already known
-                    if DEBUG_MODE:
-                        logger.debug(f"[DEBUG] Rule '{rule_name}' state unchanged. Skipping.")
-                    continue
-
-                trigger_states[rule_name] = current_status
-
-                relay_data = None
-                if auto:
-                    relay_data = 1 if current_status else 0
-                elif not auto and current_status and rule.get("relay", {}).get("logic") is True:
-                    # If not auto, only trigger ON if current_status is true AND relay logic is explicitly true
-                    relay_data = 1
-                elif not auto and not current_status and rule.get("relay", {}).get("logic") is False:
-                     # If not auto, only trigger OFF if current_status is false AND relay logic is explicitly false
-                     relay_data = 0
-                else:
-                    if DEBUG_MODE:
-                        logger.debug(f"[DEBUG] Automation rule '{rule_name}' not triggered (auto={auto}, current_status={current_status}, relay_logic={rule.get('relay', {}).get('logic')})")
-                    continue # Skip if no relay_data determined
-
-                if relay_data is not None:
-                    logger.info(f"Automation Triggered: {rule_name}. Setting relay to {relay_data}")
-
-                    relay = rule.get("relay", {})
-                    if not all(k in relay for k in ["pin", "address", "bus"]):
-                        logger.warning(f"Skipping relay command due to missing info in rule {rule_name}: {relay}")
-                        send_error_log("on_server_message", "Missing relay configuration info.", "warning", {"rule_name": rule_name, "relay_config": relay})
+                    if actual is None:
+                        if DEBUG_MODE:
+                            logger.debug(f"[DEBUG] Key '{key}' not found in sensor data from {topic} for rule {rule_name}")
                         continue
 
-                    relay_payload = {
-                        "mac": MAC_ADDRESS,
-                        "protocol_type": "Modular",
-                        "device": "RELAYMINI", # Assuming this is fixed for modular relays
-                        "function": "write",
-                        "value": {
-                            "pin": relay.get("pin"),
-                            "data": relay_data
-                        },
-                        "address": relay.get("address"),
-                        "device_bus": relay.get("bus"),
-                        "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    if mqtt_server and mqtt_server.is_connected():
-                        mqtt_server.publish(RELAY_COMMAND_TOPIC, json.dumps(relay_payload), qos=QOS)
+                    op = logic_ops.get(logic)
+                    if not op:
                         if DEBUG_MODE:
-                            logger.debug(f"[DEBUG] Published relay command: {relay_payload}")
-                    else:
-                        logger.warning("Server MQTT client not connected, unable to publish relay command.")
-                        send_error_log("on_server_message", "Server MQTT client not connected, failed to publish relay command.", "warning", {"relay_payload": relay_payload})
+                            logger.debug(f"[DEBUG] Invalid logic operator '{logic}' for rule {rule_name}")
+                        continue
+
+                    # Type coercion
+                    try:
+                        if isinstance(expected, (int, float)):
+                            actual = float(actual)
+                        elif isinstance(expected, str):
+                            actual = str(actual)
+                    except (ValueError, TypeError):
+                        continue
+
+                    current_status = op(actual, expected)
+                    prev_status = trigger_states.get(rule_name)
+
+                    if prev_status == current_status and prev_status is not None:
+                        continue
+
+                    trigger_states[rule_name] = current_status
+
+                    # Execute legacy relay action
+                    if auto and current_status:
+                        relay = rule.get("relay", {})
+                        relay_payload = {
+                            "mac": MAC_ADDRESS,
+                            "protocol_type": "Modular",
+                            "device": "RELAYMINI",
+                            "function": "write",
+                            "value": {
+                                "pin": relay.get("pin", 1),
+                                "data": 1 if current_status else 0
+                            },
+                            "address": relay.get("address", 1),
+                            "device_bus": relay.get("bus", 0),
+                            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        }
+
+                        if mqtt_server and mqtt_server.is_connected():
+                            mqtt_server.publish(RELAY_COMMAND_TOPIC, json.dumps(relay_payload), qos=QOS)
+                            logger.info(f"Legacy automation triggered: {rule_name}")
+                        else:
+                            logger.warning("Server MQTT client not connected for legacy automation.")
+
+            # Check if rule has new structure (trigger_groups and actions)
+            elif rule.get("trigger_groups") and rule.get("actions"):
+                # New structure - evaluate trigger groups
+                sensor_data = json.loads(payload.get("value", "{}"))
+                trigger_result = evaluate_trigger_groups(rule["trigger_groups"], sensor_data)
+
+                if trigger_result:
+                    logger.info(f"Automation rule triggered: {rule_name}")
+                    execute_actions(rule["actions"], rule)
+                else:
+                    if DEBUG_MODE:
+                        logger.debug(f"[DEBUG] Rule '{rule_name}' conditions not met")
 
     except json.JSONDecodeError as e:
         send_error_log("on_server_message", f"Invalid JSON payload on server topic {msg.topic}: {e}", "minor", {"topic": msg.topic, "payload_preview": msg.payload.decode('utf-8')[:100]})
@@ -557,7 +773,25 @@ def subscribe_all_device_topics():
             return
 
         if automation:
-            topics = {item.get("topic") for item in automation if item.get("topic")}
+            topics = set()
+
+            for rule in automation:
+                # Legacy structure - get topic directly
+                if rule.get("topic"):
+                    topics.add(rule["topic"])
+
+                # New structure - extract topics from trigger_groups
+                elif rule.get("trigger_groups"):
+                    for group in rule["trigger_groups"]:
+                        for trigger in group.get("triggers", []):
+                            # For now, we'll create topic patterns based on device names
+                            # This can be enhanced to use actual topic mappings
+                            device_name = trigger.get("device_name", "").lower()
+                            if device_name:
+                                # Create topic pattern (this should match actual sensor topics)
+                                topic_pattern = f"modbus/sensor/{device_name}"
+                                topics.add(topic_pattern)
+
             for topic in topics:
                 if mqtt_server and mqtt_server.is_connected():
                     mqtt_server.subscribe(topic, qos=QOS)
@@ -655,6 +889,117 @@ def run_heartbeat_loop():
             time.sleep(HEARTBEAT_INTERVAL)
         except Exception as e:
             send_error_log("run_heartbeat_loop", f"Error in heartbeat loop: {e}", "minor")
+
+# --- WHATSAPP CONFIGURATION ---
+def load_whatsapp_config():
+    """Load WhatsApp configuration from file"""
+    default_config = {
+        "whatsapp": {
+            "api_url": "https://service-chat.qontak.com/api/open/v1/broadcasts/whatsapp/direct",
+            "bearer_token": "1Bs4cNxWFLUWUEd-3WSUKJOOmfeis8z4VrHU73v6_1Q",
+            "default_template_id": "300d84f2-d962-4451-bc27-870fb99d18e7",
+            "default_channel_id": "662f9fcb-7e2b-4c1a-8eda-9aeb4a388004",
+            "language": "id",
+            "timeout": 30,
+            "retry_attempts": 3,
+            "retry_delay": 5
+        }
+    }
+
+    try:
+        with open(WHATSAPP_CONFIG_PATH, 'r') as file:
+            content = file.read().strip()
+            if not content:
+                log_simple("WhatsApp config file is empty. Using defaults.", "WARNING")
+                return default_config["whatsapp"]
+            config = json.load(file)
+            return config.get("whatsapp", default_config["whatsapp"])
+    except FileNotFoundError:
+        log_simple(f"WhatsApp config file not found: {WHATSAPP_CONFIG_PATH}. Using defaults.", "WARNING")
+        return default_config["whatsapp"]
+    except json.JSONDecodeError as e:
+        log_simple(f"Error decoding WhatsApp config: {e}. Using defaults.", "WARNING")
+        return default_config["whatsapp"]
+    except Exception as e:
+        log_simple(f"Unexpected error loading WhatsApp config: {e}. Using defaults.", "WARNING")
+        return default_config["whatsapp"]
+
+# --- WHATSAPP MESSAGING ---
+def execute_whatsapp_message(action, rule):
+    """Execute WhatsApp message action using Qontak API"""
+    try:
+        # Load WhatsApp configuration
+        whatsapp_config = load_whatsapp_config()
+
+        # Get WhatsApp configuration from action with defaults
+        to_number = action.get('whatsapp_number', '')
+        to_name = action.get('whatsapp_name', '')
+        message_template_id = action.get('message_template_id', whatsapp_config.get('default_template_id'))
+        channel_integration_id = action.get('channel_integration_id', whatsapp_config.get('default_channel_id'))
+        message_text = action.get('message', 'Logic rule triggered')
+        language_code = whatsapp_config.get('language', 'id')
+        timeout = whatsapp_config.get('timeout', 30)
+
+        if not to_number:
+            log_simple("WhatsApp number not configured", "WARNING")
+            return
+
+        # Prepare WhatsApp payload
+        whatsapp_payload = {
+            "to_number": to_number,
+            "to_name": to_name or "User",
+            "message_template_id": message_template_id,
+            "channel_integration_id": channel_integration_id,
+            "language": {
+                "code": language_code
+            },
+            "parameters": {
+                "body": [
+                    {
+                        "key": "1",
+                        "value": "full_name",
+                        "value_text": to_name or "User"
+                    },
+                    {
+                        "key": "2",
+                        "value": "messagetext",
+                        "value_text": message_text
+                    }
+                ]
+            }
+        }
+
+        # Set headers
+        headers = {
+            "Authorization": f"Bearer {whatsapp_config.get('bearer_token')}",
+            "Content-Type": "application/json"
+        }
+
+        # Send WhatsApp message
+        response = requests.post(whatsapp_config.get('api_url'), json=whatsapp_payload, headers=headers, timeout=timeout)
+
+        if response.status_code == 200:
+            log_simple(f"WhatsApp message sent to {to_number}: {message_text}", "SUCCESS")
+        else:
+            log_simple(f"WhatsApp API error: {response.status_code} - {response.text}", "ERROR")
+            send_error_log(f"WhatsApp API error: {response.status_code}", "minor")
+
+    except ImportError:
+        log_simple("Requests library not available for WhatsApp API", "ERROR")
+        send_error_log("Requests library missing for WhatsApp", "major")
+    except Exception as e:
+        log_simple(f"Error executing WhatsApp message: {e}", "ERROR")
+        send_error_log(f"WhatsApp message execution error: {e}", "minor")
+
+def execute_send_message(action, rule):
+    """Execute send message action (WhatsApp only)"""
+    try:
+        # Always use WhatsApp for send_message actions
+        execute_whatsapp_message(action, rule)
+
+    except Exception as e:
+        log_simple(f"Error executing send message: {e}", "ERROR")
+        send_error_log(f"Send message execution error: {e}", "minor")
 
 # --- MAIN EXECUTION BLOCK ---
 def main():

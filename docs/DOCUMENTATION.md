@@ -151,90 +151,7 @@ MAX_RESTART_ATTEMPTS = 3
 
 ---
 
-## 4. AutomationGeofencing.py - Geofencing Automation Service
-
-### Purpose
-Handles GPS-based geofencing automation for device control based on location triggers.
-
-### **MQTT Topics:**
-
-#### **CRUD Operations:**
-- **Create**: `geofence/create`
-- **Read**: `geofence/read`  
-- **Update**: `geofence/update`
-- **Delete**: `geofence/delete`
-- **Data**: `geofence/data`
-- **Request Data**: `geofence/request_data`
-
-#### **Geofence Rule Payload:**
-```json
-{
-  "id": "unique_rule_id",
-  "name": "Office Geofence",
-  "area_id": "area_001",
-  "trigger_type": "enter|exit|both",
-  "enabled": true,
-  "actions": [
-    {
-      "device_name": "RELAYMINI",
-      "pin": 1,
-      "action": "on|off|toggle",
-      "delay": 0,
-      "address": 8,
-      "device_bus": 0
-    }
-  ],
-  "users": ["user1", "user2"],
-  "created_at": "2025-01-23T14:30:15.000Z"
-}
-```
-
-#### **Geofence Area Payload:**
-```json
-{
-  "id": "area_001",
-  "name": "Office Building",
-  "description": "Main office area",
-  "type": "polygon|circle",
-  "coordinates": [
-    {"lat": -6.2088, "lng": 106.8456},
-    {"lat": -6.2089, "lng": 106.8457}
-  ],
-  "center": {"lat": -6.2088, "lng": 106.8456},
-  "radius": 100
-}
-```
-
-#### **Location Update Topic**: `location/update`
-```json
-{
-  "user_id": "user123",
-  "latitude": -6.2088,
-  "longitude": 106.8456,
-  "timestamp": "2025-01-23T14:30:15.000Z"
-}
-```
-
-#### **Control Command**: `modular`
-```json
-{
-  "mac": "device_mac_address",
-  "protocol_type": "Modular",
-  "device": "RELAYMINI",
-  "function": "write",
-  "value": {
-    "pin": 1,
-    "data": 1
-  },
-  "address": 8,
-  "device_bus": 0,
-  "Timestamp": "2025-01-23 14:30:15"
-}
-```
-
----
-
-## 5. AutomationLogic.py - Logic-Based Automation Service
+## 4. AutomationLogic.py - Logic-Based Automation Service
 
 ### Purpose
 Handles conditional automation based on device sensor values and logical conditions.
@@ -287,7 +204,7 @@ Handles conditional automation based on device sensor values and logical conditi
 
 ---
 
-## 6. AutomationSchedule.py - Time-Based Automation Service
+## 5. AutomationSchedule.py - Time-Based Automation Service
 
 ### Purpose
 Handles time-based automation scheduling using cron-like scheduling.
@@ -329,7 +246,7 @@ Handles time-based automation scheduling using cron-like scheduling.
 
 ---
 
-## 7. DeviceConfig.py - Device Configuration Management
+## 6. DeviceConfig.py - Device Configuration Management
 
 ### Purpose
 Central device configuration management for both MODBUS and I2C devices.
@@ -390,7 +307,7 @@ Central device configuration management for both MODBUS and I2C devices.
 
 ---
 
-## 8. PayloadStatic.py - Static Data Publishing Service
+## 7. PayloadStatic.py - Static Data Publishing Service
 
 ### Purpose
 Manages static payload publishing with configurable topics and data.
@@ -427,7 +344,7 @@ Manages static payload publishing with configurable topics and data.
 
 ---
 
-## 9. PayloadDynamic.py - Dynamic Data Publishing Service
+## 8. PayloadDynamic.py - Dynamic Data Publishing Service
 
 ### Purpose
 Manages dynamic payload publishing with calculated and variable data.

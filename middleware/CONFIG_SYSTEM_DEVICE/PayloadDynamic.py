@@ -3,8 +3,14 @@ import paho.mqtt.client as mqtt
 import time
 import threading
 import os
+import logging
+import statistics
 from datetime import datetime
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
+
+# --- Setup Logging ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("PayloadDynamicService")
 
 # Paths to configuration and devices files
 summary_config_path = './JSON/payloadDynamicConfig.json'
@@ -28,7 +34,7 @@ def log_error(client, error_message, error_type):
         "type": error_type,
         "Timestamp": timestamp
     }
-    print(f"Error: {error_message}, Type: {error_type}")
+    logger.warning(f"No data to publish yet for {error_message.replace('Error No data to publish yet for ', '')}")
     client.publish(ERROR_LOG_TOPIC, json.dumps(error_payload))
 
 interval_publish =10
@@ -57,9 +63,9 @@ def save_summary_config(data):
     try:
         with open(summary_config_path, 'w') as summary_config_file:
             json.dump(data, summary_config_file, indent=4)
-        print(f"Config saved successfully to {summary_config_path}")
+        logger.info(f"Config saved successfully to {summary_config_path}")
     except IOError as e:
-        print(f"Failed to save config: {e}")
+        logger.error(f"Failed to save config: {e}")
 
 # Load installed devices information from both paths
 def load_installed_devices():
@@ -75,12 +81,46 @@ def load_installed_devices():
 # Initialize the summary config at startup
 summary_config = load_summary_config()
 groups = summary_config.get('groups', [])
-combined_data_per_group = {group['summary_topic']: {} for group in groups}
+
+# Thread-safe data storage with locks
+combined_data_lock = threading.Lock()
+combined_data_per_group = defaultdict(dict)
+
+# Performance monitoring
+class PerformanceMonitor:
+    def __init__(self):
+        self.metrics = {
+            "messages_processed": 0,
+            "calculations_performed": 0,
+            "publish_operations": 0,
+            "errors_encountered": 0,
+            "average_processing_time": 0.0
+        }
+        self.processing_times = []
+        self.lock = threading.Lock()
+
+    def record_processing_time(self, time_taken):
+        with self.lock:
+            self.processing_times.append(time_taken)
+            if len(self.processing_times) > 100:  # Keep last 100 measurements
+                self.processing_times.pop(0)
+            self.metrics["average_processing_time"] = sum(self.processing_times) / len(self.processing_times)
+
+    def increment_counter(self, metric_name):
+        with self.lock:
+            if metric_name in self.metrics:
+                self.metrics[metric_name] += 1
+
+    def get_metrics(self):
+        with self.lock:
+            return self.metrics.copy()
+
+performance_monitor = PerformanceMonitor()
 
 # MQTT Callbacks
 def on_device_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("Connected successfully to device MQTT broker")
+        logger.info("Connected successfully to device MQTT broker")
         devices = load_installed_devices()
         for device in devices:
             device_name = device['profile']['name']
@@ -92,7 +132,7 @@ def on_device_connect(client, userdata, flags, rc):
                         # print(f"Subscribed to {topic} (Device: {device_name}) for group {group['summary_topic']}")
                         break
     else:
-        print("Connection to device broker failed with code", rc)
+        logger.error(f"Connection to device broker failed with code {rc}")
 
 def on_crud_connect(client, userdata, flags, rc):
     if rc == 0:
@@ -100,7 +140,7 @@ def on_crud_connect(client, userdata, flags, rc):
         client.subscribe(TOPIC_CONFIG_DEVICE_INFO)
         # print(f"Subscribed to {TOPIC_CONFIG_SUMMARY} and {TOPIC_CONFIG_DEVICE_INFO} for configuration CRUD operations")
     else:
-        print("Connection to CRUD broker failed with code", rc)
+        logger.error(f"Connection to CRUD broker failed with code {rc}")
 
 def on_crud_message(client, userdata, msg):
     topic = msg.topic
@@ -207,7 +247,7 @@ def delete_summary_config(delete_data):
             summary_config["groups"] = [group for group in summary_config["groups"] if group["summary_topic"] != summary_topic]
             # print(f"Group {summary_topic} deleted")
     else:
-        print(f"Group {summary_topic} not found")
+        logger.warning(f"Group {summary_topic} not found")
 
 # Handle device info request
 def handle_device_info_message(client, payload):
@@ -236,94 +276,227 @@ def handle_device_message(client, userdata, msg):
             # print(f"Received message from {msg.topic}: {device_data}")
             process_device_message(device_data, msg.topic)
         else:
-            print(f"Unexpected data format in message from {msg.topic}: {device_data}")
+            logger.warning(f"Unexpected data format in message from {msg.topic}: {device_data}")
     except json.JSONDecodeError:
-        print(f"Failed to decode JSON from {msg.topic}: {msg.payload.decode()}")
+        logger.error(f"Failed to decode JSON from {msg.topic}: {msg.payload.decode()}")
 
 def perform_calculation(operation, values):
-    """Perform mathematical operations like sum, average, multiply, and divide."""
+    """Perform mathematical operations with enhanced error handling."""
     try:
+        # Filter out non-numeric values
+        numeric_values = []
+        for value in values:
+            if isinstance(value, (int, float)):
+                numeric_values.append(value)
+            elif isinstance(value, str):
+                try:
+                    numeric_values.append(float(value))
+                except (ValueError, TypeError):
+                    continue
+
+        if not numeric_values:
+            logger.warning(f"No numeric values found for operation: {operation}")
+            return None
+
         if operation == "sum":
-            return sum(values)
+            return sum(numeric_values)
         elif operation == "average":
-            return sum(values) / len(values) if values else 0
+            return sum(numeric_values) / len(numeric_values)
         elif operation == "multiply":
             result = 1
-            for value in values:
+            for value in numeric_values:
                 result *= value
             return result
         elif operation == "divide":
-            result = values[0]
-            for value in values[1:]:
+            if len(numeric_values) < 2:
+                logger.warning("Division requires at least 2 values")
+                return None
+            result = numeric_values[0]
+            for value in numeric_values[1:]:
+                if value == 0:
+                    logger.error("Division by zero encountered")
+                    return None
                 result /= value
             return result
+        elif operation == "min":
+            return min(numeric_values)
+        elif operation == "max":
+            return max(numeric_values)
+        elif operation == "median":
+            sorted_values = sorted(numeric_values)
+            n = len(sorted_values)
+            if n % 2 == 0:
+                return (sorted_values[n//2 - 1] + sorted_values[n//2]) / 2
+            else:
+                return sorted_values[n//2]
+        elif operation == "std_dev":
+            if len(numeric_values) > 1:
+                return statistics.stdev(numeric_values)
+            else:
+                return 0
+        elif operation == "count":
+            return len(numeric_values)
         else:
-            # print(f"Unsupported operation: {operation}")
+            logger.warning(f"Unsupported operation: {operation}")
             return None
-    except (ZeroDivisionError, TypeError):
-        print(f"Error during calculation: {operation}")
+    except Exception as e:
+        logger.error(f"Error during calculation {operation}: {e}")
+        performance_monitor.increment_counter("errors_encountered")
         return None
 
 def process_device_message(device_data, topic):
-    devices = load_installed_devices()
-    for device in devices:
-        if device['profile']['topic'] == topic:
-            device_name = device['profile']['name']
-            for group in groups:
-                for included_device in group['included_devices']:
-                    if device_name == included_device['name']:
-                        value_group = included_device.get("value_group")
-                        filtered_value = filter_and_rename_device_value(device_data, included_device['value_keys'])
+    """Thread-safe device message processing with performance monitoring."""
+    start_time = time.time()
 
-                        if group['summary_topic'] not in combined_data_per_group:
-                            combined_data_per_group[group['summary_topic']] = {}
+    try:
+        devices = load_installed_devices()
+        for device in devices:
+            if device['profile']['topic'] == topic:
+                device_name = device['profile']['name']
 
-                        # Update value group or general group data
-                        if value_group:
-                            if value_group not in combined_data_per_group[group['summary_topic']]:
-                                combined_data_per_group[group['summary_topic']][value_group] = {}
-                            combined_data_per_group[group['summary_topic']][value_group].update(filtered_value)
-                        else:
-                            combined_data_per_group[group['summary_topic']].update(filtered_value)
+                with combined_data_lock:
+                    for group in groups:
+                        for included_device in group['included_devices']:
+                            if device_name == included_device['name']:
+                                value_group = included_device.get("value_group")
+                                filtered_value = filter_and_rename_device_value(device_data, included_device['value_keys'])
 
-                        # Update timestamp
-                        combined_data_per_group[group['summary_topic']]["Timestamp"] = device_data.get(
-                            "Timestamp", datetime.utcnow().isoformat())
+                                # Initialize group data if not exists
+                                if group['summary_topic'] not in combined_data_per_group:
+                                    combined_data_per_group[group['summary_topic']] = {}
 
-                        # Perform calculations
-                        calculations = group.get("calculations", [])
-                        for calc in calculations:
-                            value_group_selected = calc["value_group_selected"]
-                            operation = calc["operation"]
-                            if value_group_selected in combined_data_per_group[group['summary_topic']]:
-                                values = list(combined_data_per_group[group['summary_topic']][value_group_selected].values())
-                                result = perform_calculation(operation, values)
-                                combined_data_per_group[group['summary_topic']][calc["name"]] = result
+                                group_data = combined_data_per_group[group['summary_topic']]
 
-                        print(f"Processed : {device_name} in group {group['summary_topic']}")
-            break
+                                # Update value group or general group data
+                                if value_group:
+                                    if value_group not in group_data:
+                                        group_data[value_group] = {}
+                                    group_data[value_group].update(filtered_value)
+                                else:
+                                    group_data.update(filtered_value)
+
+                                # Update timestamp
+                                group_data["Timestamp"] = device_data.get("Timestamp", datetime.utcnow().isoformat())
+
+                                # Perform calculations
+                                calculations = group.get("calculations", [])
+                                for calc in calculations:
+                                    try:
+                                        value_group_selected = calc["value_group_selected"]
+                                        operation = calc["operation"]
+                                        calc_name = calc["name"]
+
+                                        if value_group_selected in group_data:
+                                            values_group = group_data[value_group_selected]
+                                            if isinstance(values_group, dict):
+                                                # Extract numeric values only
+                                                values = []
+                                                for key, value in values_group.items():
+                                                    if isinstance(value, (int, float)):
+                                                        values.append(value)
+                                                    elif isinstance(value, str):
+                                                        try:
+                                                            values.append(float(value))
+                                                        except (ValueError, TypeError):
+                                                            continue
+
+                                                if values:
+                                                    result = perform_calculation(operation, values)
+                                                    if result is not None:
+                                                        group_data[calc_name] = result
+                                                        performance_monitor.increment_counter("calculations_performed")
+                                                        logger.debug(f"Calculation {calc_name}: {operation} = {result}")
+                                                    else:
+                                                        logger.warning(f"Calculation failed for {calc_name}")
+                                                else:
+                                                    logger.warning(f"No numeric values found for calculation {calc_name}")
+                                            else:
+                                                logger.warning(f"Value group {value_group_selected} is not a dict")
+                                        else:
+                                            logger.warning(f"Value group {value_group_selected} not found in data")
+                                    except Exception as e:
+                                        logger.error(f"Error in calculation {calc.get('name', 'unknown')}: {e}")
+
+                                logger.debug(f"Processed: {device_name} in group {group['summary_topic']}")
+                                performance_monitor.increment_counter("messages_processed")
+                break
+
+        # Record processing time
+        processing_time = time.time() - start_time
+        performance_monitor.record_processing_time(processing_time)
+
+    except Exception as e:
+        logger.error(f"Error processing device message: {e}")
+        performance_monitor.increment_counter("errors_encountered")
 
 # Extract specified key-value pairs from "value" field and rename them
 def filter_and_rename_device_value(device_data, value_keys):
+    """Improved data filtering with better error handling and type conversion."""
     filtered_value = {}
+
     try:
-        # Check if "value" key is present in device_data
-        if "value" not in device_data:
-            # print("Error: 'value' key is missing in device data")
-            return filtered_value  # Return empty filtered_value if "value" is missing
+        # Handle different data formats
+        if isinstance(device_data, dict):
+            if "value" in device_data:
+                value_data = device_data["value"]
+                if isinstance(value_data, str):
+                    value_data = json.loads(value_data)
+                elif not isinstance(value_data, dict):
+                    logger.warning(f"Unexpected value format: {type(value_data)}")
+                    return filtered_value
+            else:
+                # Direct data without "value" wrapper
+                value_data = device_data
+        else:
+            logger.warning(f"Device data is not a dict: {type(device_data)}")
+            return filtered_value
 
-        # Use value_data directly if it's a dictionary; otherwise, decode it from JSON
-        value_data = device_data["value"] if isinstance(device_data["value"], dict) else json.loads(device_data["value"])
-
-        # Rename and extract specified keys
+        # Extract specified keys with type conversion
         for original_key, custom_key in value_keys.items():
             if original_key in value_data:
-                filtered_value[custom_key] = value_data[original_key]
-    except (json.JSONDecodeError, TypeError) as e:
-        print("Error decoding value JSON:", e)
+                raw_value = value_data[original_key]
+                # Convert string numbers to float/int
+                if isinstance(raw_value, str):
+                    try:
+                        # Try float first, then int
+                        if '.' in raw_value:
+                            filtered_value[custom_key] = float(raw_value)
+                        else:
+                            filtered_value[custom_key] = int(raw_value)
+                    except ValueError:
+                        filtered_value[custom_key] = raw_value
+                else:
+                    filtered_value[custom_key] = raw_value
+
+    except (json.JSONDecodeError, TypeError, KeyError) as e:
+        logger.error(f"Error processing device data: {e}")
+        performance_monitor.increment_counter("errors_encountered")
+
     return filtered_value
 
+def cleanup_old_data(max_age_seconds=3600):
+    """Remove old data to prevent memory leaks."""
+    cutoff_time = datetime.utcnow().timestamp() - max_age_seconds
+
+    with combined_data_lock:
+        groups_to_cleanup = []
+        for group_topic, group_data in combined_data_per_group.items():
+            timestamp_str = group_data.get("Timestamp")
+            if timestamp_str:
+                try:
+                    # Parse ISO timestamp
+                    data_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00')).timestamp()
+                    if data_timestamp < cutoff_time:
+                        groups_to_cleanup.append(group_topic)
+                except (ValueError, AttributeError) as e:
+                    logger.warning(f"Could not parse timestamp for cleanup: {timestamp_str}")
+
+        for group_topic in groups_to_cleanup:
+            logger.info(f"Cleaning up old data for group: {group_topic}")
+            combined_data_per_group[group_topic] = {"Timestamp": datetime.utcnow().isoformat()}
+
 def publish_group_data(client, group):
+    """Thread-safe data publishing with performance monitoring."""
     summary_topic = group['summary_topic']
     qos = group.get('qos', 0)
     retain = group.get('retain', False)
@@ -331,34 +504,52 @@ def publish_group_data(client, group):
     calculation_only = group.get("calculation_only", False)
 
     while True:
-        combined_data = combined_data_per_group.get(summary_topic, {})
+        try:
+            with combined_data_lock:
+                combined_data = combined_data_per_group.get(summary_topic, {})
 
-        if combined_data:
-            ordered_combined_data = OrderedDict()
+            if combined_data:
+                ordered_combined_data = OrderedDict()
 
-            if calculation_only:
-                for key, value in combined_data.items():
-                    if key != "Timestamp" and not isinstance(value, dict):
+                if calculation_only:
+                    for key, value in combined_data.items():
+                        if key != "Timestamp" and not isinstance(value, dict):
+                            ordered_combined_data[key] = value
+                    ordered_combined_data["Timestamp"] = combined_data.get("Timestamp", datetime.utcnow().isoformat())
+                else:
+                    for key, value in combined_data.items():
                         ordered_combined_data[key] = value
-                ordered_combined_data["Timestamp"] = combined_data.get("Timestamp", datetime.utcnow().isoformat())
+                    ordered_combined_data["Timestamp"] = combined_data.get("Timestamp", datetime.utcnow().isoformat())
+
+                # Handle JSON formatting for "value" field
+                if "value" in ordered_combined_data:
+                    try:
+                        formatted_value = json.dumps(ordered_combined_data["value"])
+                        ordered_combined_data["value"] = formatted_value
+                    except (TypeError, ValueError) as e:
+                        logger.warning(f"Could not format 'value' field for {summary_topic}: {e}")
+
+                # Convert to JSON
+                try:
+                    combined_json = json.dumps(ordered_combined_data, separators=(',', ':'))
+
+                    # Publish to MQTT
+                    result = client.publish(summary_topic, combined_json, qos=qos, retain=retain)
+                    if result.rc == 0:
+                        performance_monitor.increment_counter("publish_operations")
+                        logger.debug(f"Published formatted data to {summary_topic}")
+                    else:
+                        logger.warning(f"Failed to publish to {summary_topic}, MQTT error code: {result.rc}")
+                except (TypeError, ValueError) as e:
+                    logger.error(f"Failed to serialize data for {summary_topic}: {e}")
+                    performance_monitor.increment_counter("errors_encountered")
             else:
-                for key, value in combined_data.items():
-                    ordered_combined_data[key] = value
-                ordered_combined_data["Timestamp"] = combined_data.get("Timestamp", datetime.utcnow().isoformat())
+                logger.debug(f"No data to publish yet for {summary_topic}")
+                log_error(client, f"No data to publish yet for {summary_topic}", "warning")
 
-            # Pisahkan bagian "value" agar hanya bagian ini yang memiliki escape character
-            if "value" in ordered_combined_data:
-                formatted_value = json.dumps(ordered_combined_data["value"])  # Encode "value" agar memiliki escape character
-                ordered_combined_data["value"] = formatted_value  # Masukkan kembali data yang sudah diformat
-
-            # Ubah ke JSON tanpa kutipan ekstra di awal
-            combined_json = json.dumps(ordered_combined_data, separators=(',', ':'))
-
-            client.publish(summary_topic, combined_json, qos=qos, retain=retain)
-            print(f"Published formatted data: {combined_json} to {summary_topic}")
-        else:
-            print(f"No data to publish yet for {summary_topic}...")
-            log_error(client, f"Error No data to publish yet for {summary_topic}", "critical")
+        except Exception as e:
+            logger.error(f"Error in publish loop for {summary_topic}: {e}")
+            performance_monitor.increment_counter("errors_encountered")
 
         time.sleep(interval)
 
@@ -393,9 +584,23 @@ def mqtt_connection_handler():
         publish_thread.daemon = True
         publish_thread.start()
 
+    # Start cleanup thread to prevent memory leaks
+    cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+    cleanup_thread.start()
+
     # Start the MQTT loops
     crud_client.loop_start()
     device_client.loop_forever()
+
+def cleanup_worker():
+    """Background worker to periodically clean up old data."""
+    while True:
+        try:
+            cleanup_old_data(max_age_seconds=3600)  # Clean data older than 1 hour
+            time.sleep(300)  # Run cleanup every 5 minutes
+        except Exception as e:
+            logger.error(f"Error in cleanup worker: {e}")
+            time.sleep(300)
 
 # Start the MQTT connection handler
 if __name__ == "__main__":

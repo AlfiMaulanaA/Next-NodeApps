@@ -107,6 +107,7 @@ const DeviceSchedulerControl = () => {
   const [editingDevice, setEditingDevice] = useState(false);
   const [selectedDeviceName, setSelectedDeviceName] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isMqttConnected, setIsMqttConnected] = useState(false);
 
   const formRef = useRef(null);
 
@@ -155,6 +156,7 @@ const DeviceSchedulerControl = () => {
           return;
         }
 
+        console.log(`[SCHEDULER] Publishing to ${topic}:`, message);
         currentClient.publish(
           topic,
           JSON.stringify(message),
@@ -166,13 +168,38 @@ const DeviceSchedulerControl = () => {
           }
         );
       } else {
-        console.error("MQTT client not connected for publishing.");
+        console.warn(
+          `[SCHEDULER] MQTT client not connected, queuing message for ${topic}:`,
+          message
+        );
+        // Try to connect and publish when connection is established
+        setTimeout(() => {
+          const retryClient = getMQTTClient();
+          if (retryClient && retryClient.connected) {
+            console.log(`[SCHEDULER] Retrying publish to ${topic}:`, message);
+            retryClient.publish(
+              topic,
+              JSON.stringify(message),
+              {},
+              (err?: Error) => {
+                if (err) {
+                  console.error("Failed to retry publish message:", err);
+                }
+              }
+            );
+          } else {
+            console.error(
+              `[SCHEDULER] Still not connected, failed to publish to ${topic}`
+            );
+          }
+        }, 1000); // Retry after 1 second
       }
     },
     []
   );
 
   const getConfig = useCallback(() => {
+    console.log("[SCHEDULER] Sending get config request");
     publishMessage({ action: "get" });
   }, [publishMessage]);
 
@@ -183,6 +210,15 @@ const DeviceSchedulerControl = () => {
   const getAvailableDevices = useCallback(() => {
     publishMessage({ action: "get_devices" });
   }, [publishMessage]);
+
+  // Auto-fetch data when MQTT connects
+  useEffect(() => {
+    if (isMqttConnected) {
+      console.log("[SCHEDULER] MQTT connected, fetching initial data");
+      getConfig();
+      getAvailableDevices();
+    }
+  }, [isMqttConnected, getConfig, getAvailableDevices]);
 
   useEffect(() => {
     let currentClient: any = null;
@@ -195,17 +231,12 @@ const DeviceSchedulerControl = () => {
           console.log("Connected to MQTT Broker via lib/mqttClient");
           setMqttConnectionStatus("Connected");
           setMqttConnectionStatusClass("text-success");
+          setIsMqttConnected(true); // Set connection status
           currentClient.subscribe("service/response", { qos: 0 });
           currentClient.subscribe(topicResponse);
           currentClient.subscribe(macAddressResponseTopic);
           currentClient.subscribe(availableDevicesTopic);
-          // Wait a moment before sending initial requests
-          setTimeout(() => {
-            console.log("[DEBUG] Sending initial config request");
-            getConfig();
-            console.log("[DEBUG] Requesting available devices");
-            getAvailableDevices();
-          }, 1000);
+          // Data fetching is now handled by the useEffect that depends on isMqttConnected
         });
 
         currentClient.on("error", (err: Error) => {
@@ -218,12 +249,16 @@ const DeviceSchedulerControl = () => {
           console.log("MQTT Connection closed (from component)");
           setMqttConnectionStatus("Disconnected from MQTT Broker");
           setMqttConnectionStatusClass("text-danger");
+          setIsMqttConnected(false); // Reset connection status
         });
 
         currentClient.on("message", (topic: string, message: Buffer) => {
           try {
             const payload: MQTTPayload = JSON.parse(message.toString());
-            // Silent processing
+            console.log(
+              `[SCHEDULER] Received message on topic ${topic}:`,
+              payload
+            );
 
             if (topic === macAddressResponseTopic && payload.mac) {
               setDeviceForm((prev) => ({ ...prev, mac: payload.mac || "" }));
@@ -232,9 +267,15 @@ const DeviceSchedulerControl = () => {
               // Handle available devices from dedicated topic (silent)
               if (Array.isArray(payload)) {
                 setAvailableDevices(payload as AvailableDevice[]);
+                console.log(
+                  `Available devices updated: ${payload.length} devices`
+                );
               }
             } else if (payload.result) {
               setMqttConnectionStatus(payload.result);
+              console.log(
+                `Operation result: ${payload.result} - ${payload.message}`
+              );
               if (payload.result === "success") {
                 Swal.fire({
                   icon: "success",
@@ -250,19 +291,33 @@ const DeviceSchedulerControl = () => {
                     "There was an error processing the request.",
                 });
               }
-            } else if (topic === topicResponse && Array.isArray(payload)) {
-              // Handle config response as array format
-              setDevices(payload as Device[]);
-            } else if (topic === topicResponse && payload.devices) {
-              // Handle config response with devices property (fallback)
-              setDevices(payload.devices || []);
+            } else if (topic === topicResponse) {
+              // Handle config response - check if it's an array directly
+              console.log(`Processing config response on ${topicResponse}`);
+              if (Array.isArray(payload)) {
+                console.log(
+                  `Setting devices from array: ${payload.length} devices`
+                );
+                setDevices(payload as Device[]);
+              } else if (payload.devices && Array.isArray(payload.devices)) {
+                console.log(
+                  `Setting devices from payload.devices: ${payload.devices.length} devices`
+                );
+                setDevices(payload.devices);
+              } else {
+                console.warn(
+                  `Unexpected payload structure on ${topicResponse}:`,
+                  payload
+                );
+              }
             } else {
               console.log(
-                "Received payload does not match expected structure or contains no relevant data."
+                `Received payload on unhandled topic ${topic} or no relevant data.`
               );
             }
           } catch (error) {
             console.error("Error parsing message:", error);
+            console.error("Raw message:", message.toString());
             Swal.fire({
               icon: "error",
               title: "Error",
@@ -292,13 +347,28 @@ const DeviceSchedulerControl = () => {
   }, [getConfig, macAddressResponseTopic, topicResponse]);
 
   const uniqueDeviceNames = useMemo(() => {
-    let names = [...new Set(availableDevices.map((device) => device.name))];
+    // Filter only relay devices for scheduling
+    const relayDevices = availableDevices.filter(
+      (device) =>
+        device.device_type?.toLowerCase().includes("relay") ||
+        device.part_number?.toLowerCase().includes("relay") ||
+        device.name?.toLowerCase().includes("relay")
+    );
 
-    // Fallback: if no available devices but we have existing scheduled devices, use those names
+    let names = [...new Set(relayDevices.map((device) => device.name))];
+
+    // Fallback: if no available relay devices but we have existing scheduled relay devices, use those names
     if (names.length === 0 && devices.length > 0) {
+      const scheduledRelayDevices = devices.filter(
+        (device) =>
+          device.part_number?.toLowerCase().includes("relay") ||
+          device.name?.toLowerCase().includes("relay") ||
+          device.deviceName?.toLowerCase().includes("relay")
+      );
+
       names = [
         ...new Set(
-          devices
+          scheduledRelayDevices
             .map((device) => device.name || device.deviceName)
             .filter((name): name is string => !!name)
         ),
@@ -311,14 +381,26 @@ const DeviceSchedulerControl = () => {
   const onDeviceNameChange = (value: string) => {
     setSelectedDeviceName(value);
 
-    // First try to find in availableDevices
-    let selectedDevice = availableDevices.find(
-      (device) => device.name === value
+    // First try to find in available relay devices only
+    const relayDevices = availableDevices.filter(
+      (device) =>
+        device.device_type?.toLowerCase().includes("relay") ||
+        device.part_number?.toLowerCase().includes("relay") ||
+        device.name?.toLowerCase().includes("relay")
     );
 
-    // Fallback: try to find in existing scheduled devices
+    let selectedDevice = relayDevices.find((device) => device.name === value);
+
+    // Fallback: try to find in existing scheduled relay devices
     if (!selectedDevice) {
-      const existingDevice = devices.find(
+      const scheduledRelayDevices = devices.filter(
+        (device) =>
+          device.part_number?.toLowerCase().includes("relay") ||
+          device.name?.toLowerCase().includes("relay") ||
+          device.deviceName?.toLowerCase().includes("relay")
+      );
+
+      const existingDevice = scheduledRelayDevices.find(
         (device) => device.name === value || device.deviceName === value
       );
       if (existingDevice) {
@@ -536,29 +618,44 @@ const DeviceSchedulerControl = () => {
         </div>
       </div>
 
-      <div className="p-4 space-y-4 min-h-screen">
-        {/* Summary Cards */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* Summary Cards - Modern Design */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              <CardTitle>Scheduler Summary</CardTitle>
+              <ClockFading className="h-5 w-5" />
+              <CardTitle>Device Scheduler Overview</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {summaryItems.map((item, index) => (
-                <div
-                  key={index}
-                  className="text-center p-4 bg-muted/50 rounded-lg"
-                >
-                  <item.icon className="h-8 w-8 mx-auto mb-2 text-primary" />
-                  <div className="text-2xl font-bold">{item.value}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {item.label}
-                  </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 rounded-xl border">
+                <Calendar className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                  {totalDevices}
                 </div>
-              ))}
+                <div className="text-sm text-blue-600 dark:text-blue-400">
+                  Scheduled Devices
+                </div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 rounded-xl border">
+                <Settings className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+                  {activeDevices}
+                </div>
+                <div className="text-sm text-green-600 dark:text-green-400">
+                  Active Schedules
+                </div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 rounded-xl border">
+                <Users className="h-8 w-8 mx-auto mb-2 text-purple-600" />
+                <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                  {totalControls}
+                </div>
+                <div className="text-sm text-purple-600 dark:text-purple-400">
+                  Control Points
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>

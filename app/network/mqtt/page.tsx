@@ -10,102 +10,128 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Server, Edit2, RefreshCw, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Server, Edit2, RefreshCw, Loader2, Wifi } from "lucide-react";
 import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
 import type { MqttClient } from "mqtt";
 import MqttStatus from "@/components/mqtt-status";
 
 interface MqttConfig {
+  broker_address: string;
+  broker_port: number;
   username: string;
   password: string;
-  broker_host: string;
-  broker_port: number;
+}
+
+interface ConnectionStatus {
+  status: "connected" | "disconnected" | "error";
+  response_time?: number;
+  message: string;
+  error?: string;
 }
 
 export default function MqttConfigPage() {
-  const [activeTab, setActiveTab] = useState<"mqtt" | "modbus">("mqtt");
-  const [mqttConfig, setMqttConfig] = useState<MqttConfig | null>(null);
+  const [activeTab, setActiveTab] = useState<"modular" | "modbus">("modular");
+  const [modularConfig, setModularConfig] = useState<MqttConfig | null>(null);
+  const [modularConnection, setModularConnection] =
+    useState<ConnectionStatus | null>(null);
   const [modbusConfig, setModbusConfig] = useState<MqttConfig | null>(null);
-  const [editConfig, setEditConfig] = useState<MqttConfig>({ username: "", password: "", broker_host: "", broker_port: 0 });
+  const [modbusConnection, setModbusConnection] =
+    useState<ConnectionStatus | null>(null);
+  const [editConfig, setEditConfig] = useState<MqttConfig>({
+    broker_address: "",
+    broker_port: 1883,
+    username: "",
+    password: "",
+  });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const clientRef = useRef<MqttClient | null>(null);
-
-  const requestConfigs = useCallback(() => {
-    const client = getMQTTClient();
-    if (client && client.connected) {
-      setTimeout(() => {
-        client.publish("mqtt_config/request", JSON.stringify({ action: "readConfiguration" }));
-        client.publish("mqtt_config_modbus/request", JSON.stringify({ action: "readConfiguration" }));
-        toast.info("Requesting latest configurations...");
-      }, 300);
-    } else {
-      toast.warning("MQTT not connected. Cannot request configuration.");
-    }
-  }, []);
 
   useEffect(() => {
     const mqttClientInstance = connectMQTT();
     clientRef.current = mqttClientInstance;
 
-    const topicsToSubscribe = ["mqtt_config", "mqtt_config_modbus", "service/response"];
-    topicsToSubscribe.forEach(topic => {
+    // Subscribe to the new Network.py response topics
+    const topicsToSubscribe = [
+      "mqtt_config/modular/response",
+      "mqtt_config/modbus/response",
+    ];
+    topicsToSubscribe.forEach((topic) => {
       mqttClientInstance.subscribe(topic, (err) => {
         if (err) console.error(`Failed to subscribe to ${topic}:`, err);
       });
     });
 
-    if (mqttClientInstance.connected) {
-      requestConfigs();
-    }
-
-    const handleConnect = () => {
-      requestConfigs();
-    };
-
     const handleMessage = (topic: string, buf: Buffer) => {
       try {
-        const data = JSON.parse(buf.toString());
-        if (topic === "mqtt_config") {
-          setMqttConfig(data);
-          toast.success("MQTT Modular Config Loaded! 🎉");
-        } else if (topic === "mqtt_config_modbus") {
-          setModbusConfig(data);
-          toast.success("MQTT Modbus Config Loaded! 🚀");
-        } else if (topic === "service/response" && data.message) {
-          toast.success(data.message);
+        const response = JSON.parse(buf.toString());
+
+        if (topic === "mqtt_config/modular/response") {
+          if (response.status === "success" && response.data) {
+            setModularConfig(response.data);
+            if (response.connection) {
+              setModularConnection(response.connection);
+            }
+            toast.success("MQTT Modular Config Updated! 🎉");
+          } else if (response.status === "error") {
+            toast.error(`Modular Config Error: ${response.message}`);
+          }
+        } else if (topic === "mqtt_config/modbus/response") {
+          if (response.status === "success" && response.data) {
+            setModbusConfig(response.data);
+            if (response.connection) {
+              setModbusConnection(response.connection);
+            }
+            toast.success("MQTT Modbus Config Updated! 🚀");
+          } else if (response.status === "error") {
+            toast.error(`Modbus Config Error: ${response.message}`);
+          }
         }
       } catch (err) {
-        toast.error("Invalid response format from MQTT. Check backend payload.");
-        console.error("Error parsing MQTT message. Raw string:", buf.toString(), "Error:", err);
+        toast.error(
+          "Invalid response format from MQTT. Check backend payload."
+        );
+        console.error(
+          "Error parsing MQTT message. Raw string:",
+          buf.toString(),
+          "Error:",
+          err
+        );
       }
     };
 
-    mqttClientInstance.on("connect", handleConnect);
     mqttClientInstance.on("message", handleMessage);
 
     return () => {
       if (clientRef.current) {
-        topicsToSubscribe.forEach(topic => {
+        topicsToSubscribe.forEach((topic) => {
           clientRef.current?.unsubscribe(topic);
         });
-        clientRef.current.off("connect", handleConnect);
         clientRef.current.off("message", handleMessage);
       }
     };
-  }, [requestConfigs]);
+  }, []);
 
   const handleInput = (field: keyof MqttConfig, value: string | number) => {
-    setEditConfig(prev => ({ ...prev, [field]: value }));
+    setEditConfig((prev) => ({ ...prev, [field]: value }));
   };
 
   const openEditModal = () => {
-    const cfg = activeTab === "mqtt" ? mqttConfig : modbusConfig;
+    const cfg = activeTab === "modular" ? modularConfig : modbusConfig;
     if (cfg) {
       setEditConfig(cfg);
       setDialogOpen(true);
     } else {
-      toast.error("Configuration not loaded yet. Ensure MQTT connection and try refreshing. ⏳");
+      toast.error(
+        "Configuration not loaded yet. Auto-publishing from backend may take a few seconds. ⏳"
+      );
     }
   };
 
@@ -116,24 +142,36 @@ export default function MqttConfigPage() {
       return;
     }
 
-    const topic = activeTab === "mqtt" ? "mqtt_config/update" : "mqtt_config_modbus/update";
-    client.publish(topic, JSON.stringify(editConfig), (err) => {
+    setIsLoading(true);
+
+    // Prepare the command payload for Network.py
+    const commandPayload = {
+      command:
+        activeTab === "modular" ? "updateMqttModular" : "updateMqttModbus",
+      data: {
+        broker_address: editConfig.broker_address,
+        broker_port: editConfig.broker_port,
+        username: editConfig.username,
+        password: editConfig.password,
+      },
+    };
+
+    const topic =
+      activeTab === "modular"
+        ? "mqtt_config/modular/command"
+        : "mqtt_config/modbus/command";
+
+    client.publish(topic, JSON.stringify(commandPayload), (err) => {
       if (err) {
-        toast.error(`Failed to publish config: ${err.message} 😭`);
+        toast.error(`Failed to publish config update: ${err.message} 😭`);
+        setIsLoading(false);
       } else {
+        toast.success(
+          "Configuration update sent. Waiting for confirmation... 📡"
+        );
         setDialogOpen(false);
-        const serviceName = activeTab === "mqtt" ? "mqtt_config.service" : "mqtt_modbus.service";
-        client.publish("service/command", JSON.stringify({
-          action: "restart",
-          services: [serviceName]
-        }), (restartErr) => {
-            if (restartErr) {
-                toast.error(`Failed to send restart command: ${restartErr.message} 😵‍💫`);
-            } else {
-                toast.success("Configuration updated & service restarted. Refreshing data... ✨");
-                requestConfigs();
-            }
-        });
+        // The response will come via the auto-publishing mechanism
+        setTimeout(() => setIsLoading(false), 2000);
       }
     });
   };
@@ -144,29 +182,40 @@ export default function MqttConfigPage() {
         <div className="flex items-center gap-2">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
-          <Server className="w-5 h-5 text-muted-foreground" />
+          <Wifi className="w-5 h-5 text-muted-foreground" />
           <h1 className="text-lg font-semibold">MQTT Configuration</h1>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+            Auto-refresh every 3s
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <MqttStatus />
-          <Button variant="outline" size="icon" onClick={requestConfigs}>
-            <RefreshCw className="w-4 h-4" />
-          </Button>
         </div>
       </header>
 
       <div className="p-6">
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "mqtt" | "modbus")}>
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as "modular" | "modbus")}
+        >
           <TabsList>
-            <TabsTrigger value="mqtt">MQTT Modular</TabsTrigger>
+            <TabsTrigger value="modular">MQTT Modular</TabsTrigger>
             <TabsTrigger value="modbus">MQTT Modbus</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="mqtt">
-            <ConfigView config={mqttConfig} onEdit={openEditModal} />
+          <TabsContent value="modular">
+            <ConfigView
+              config={modularConfig}
+              connection={modularConnection}
+              onEdit={openEditModal}
+            />
           </TabsContent>
           <TabsContent value="modbus">
-            <ConfigView config={modbusConfig} onEdit={openEditModal} />
+            <ConfigView
+              config={modbusConfig}
+              connection={modbusConnection}
+              onEdit={openEditModal}
+            />
           </TabsContent>
         </Tabs>
 
@@ -177,27 +226,12 @@ export default function MqttConfigPage() {
               <DialogTitle>Edit Configuration</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="broker_address">Broker Address</Label>
               <Input
-                id="username"
-                placeholder="Username"
-                value={editConfig.username}
-                onChange={e => handleInput("username", e.target.value)}
-              />
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                placeholder="Password"
-                value={editConfig.password}
-                type="password"
-                onChange={e => handleInput("password", e.target.value)}
-              />
-              <Label htmlFor="broker_host">Broker Host</Label>
-              <Input
-                id="broker_host"
+                id="broker_address"
                 placeholder="localhost or 192.168.1.100 or broker.example.com"
-                value={editConfig.broker_host}
-                onChange={e => handleInput("broker_host", e.target.value)}
+                value={editConfig.broker_address}
+                onChange={(e) => handleInput("broker_address", e.target.value)}
               />
               <Label htmlFor="broker_port">Broker Port</Label>
               <Input
@@ -205,10 +239,36 @@ export default function MqttConfigPage() {
                 placeholder="Broker Port"
                 type="number"
                 value={editConfig.broker_port}
-                onChange={e => handleInput("broker_port", Number(e.target.value))}
+                onChange={(e) =>
+                  handleInput("broker_port", Number(e.target.value))
+                }
               />
-              <Button onClick={saveConfig}>
-                <Edit2 className="w-4 h-4 mr-1" /> Save
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                placeholder="Username (optional)"
+                value={editConfig.username}
+                onChange={(e) => handleInput("username", e.target.value)}
+              />
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                placeholder="Password (optional)"
+                value={editConfig.password}
+                type="password"
+                onChange={(e) => handleInput("password", e.target.value)}
+              />
+              <Button onClick={saveConfig} disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />{" "}
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Edit2 className="w-4 h-4 mr-1" /> Update Configuration
+                  </>
+                )}
               </Button>
             </div>
           </DialogContent>
@@ -220,11 +280,41 @@ export default function MqttConfigPage() {
 
 function ConfigView({
   config,
-  onEdit
+  connection,
+  onEdit,
 }: {
   config: MqttConfig | null;
+  connection: ConnectionStatus | null;
   onEdit: () => void;
 }) {
+  const getConnectionIcon = (status: string) => {
+    switch (status) {
+      case "connected":
+        return <Wifi className="w-4 h-4 text-green-500" />;
+      case "disconnected":
+        return <Wifi className="w-4 h-4 text-red-500" />;
+      case "error":
+        return <Server className="w-4 h-4 text-red-500" />;
+      default:
+        return <Loader2 className="w-4 h-4 text-gray-500 animate-spin" />;
+    }
+  };
+
+  const getConnectionText = (status: ConnectionStatus | null) => {
+    if (!status) return "Checking...";
+
+    switch (status.status) {
+      case "connected":
+        return `Connected (${status.response_time}ms)`;
+      case "disconnected":
+        return "Disconnected";
+      case "error":
+        return `Error: ${status.error || "Unknown error"}`;
+      default:
+        return "Checking...";
+    }
+  };
+
   if (!config) {
     return (
       <Card>
@@ -239,31 +329,54 @@ function ConfigView({
       </Card>
     );
   }
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>MQTT Broker</CardTitle>
+        <CardTitle className="flex items-center justify-between">
+          <span>MQTT Broker</span>
+          <div className="flex items-center gap-2 text-sm">
+            {getConnectionIcon(connection?.status || "loading")}
+            <span
+              className={`text-xs ${
+                connection?.status === "connected"
+                  ? "text-green-600"
+                  : connection?.status === "disconnected"
+                  ? "text-red-600"
+                  : "text-gray-500"
+              }`}
+            >
+              {getConnectionText(connection)}
+            </span>
+          </div>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <table className="text-sm w-full">
           <tbody>
             <tr>
-              <td className="font-medium pr-4 py-1">Username</td><td className="py-1">{config.username || "—"}</td>
+              <td className="font-medium pr-4 py-1">Broker Address</td>
+              <td className="py-1">{config.broker_address}</td>
             </tr>
             <tr>
-              <td className="font-medium pr-4 py-1">Password</td><td className="py-1">{config.password ? "••••••" : "—"}</td>
+              <td className="font-medium pr-4 py-1">Broker Port</td>
+              <td className="py-1">{config.broker_port}</td>
             </tr>
             <tr>
-              <td className="font-medium pr-4 py-1">Broker Host</td><td className="py-1">{config.broker_host}</td>
+              <td className="font-medium pr-4 py-1">Username</td>
+              <td className="py-1">{config.username || "—"}</td>
             </tr>
             <tr>
-              <td className="font-medium pr-4 py-1">Broker Port</td><td className="py-1">{config.broker_port}</td>
+              <td className="font-medium pr-4 py-1">Password</td>
+              <td className="py-1">{config.password ? "••••••" : "—"}</td>
             </tr>
           </tbody>
         </table>
-        <Button className="mt-4" onClick={onEdit}>
-          <Edit2 className="w-4 h-4 mr-1" /> Update Configuration
-        </Button>
+        <div className="flex gap-2 mt-4">
+          <Button onClick={onEdit}>
+            <Edit2 className="w-4 h-4 mr-1" /> Update Configuration
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

@@ -16,39 +16,20 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  LayoutDashboard,
-  Users,
-  History,
-  Wifi,
-  Server,
-  Activity,
-  BarChart,
-  Settings,
   LogOut,
-  SlidersHorizontal,
+  BarChart3,
+  Settings,
+  Wifi,
+  Database,
+  Users,
+  FileText,
+  Activity,
+  Zap,
   Network,
-  Code,
-  Cpu,
-  ScanLine,
-  FileWarning,
-  Library,
-  Cloud,
-  Globe,
-  Video,
-  AudioLines,
-  FileBarChart,
-  Radar,
-  CircuitBoard,
-  Orbit,
-  Atom,
-  ShieldAlert,
-  HardDriveUpload,
-  InfoIcon,
-  Mail,
-  User2,
-  MapPin,
-  School,
-  BookText,
+  Play,
+  Send,
+  Shield,
+  HardDrive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -69,100 +50,177 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@radix-ui/react-separator";
 import { deleteCookie } from "cookies-next";
-import { useRouter } from "next/navigation"; // Keep the import here
+import { useRouter } from "next/navigation";
 
 const appName = process.env.NEXT_PUBLIC_APP_NAME || "MQTT Gateway Dashboard";
 
 const avatarIcon =
   process.env.NEXT_PUBLIC_APP_AVATAR_URL || "/images/avatar-user.png";
 
-const navigation = [
-  {
-    title: "Main",
-    items: [
-      { title: "Dashboard Overview", url: "/", icon: LayoutDashboard },
-      { title: "System Dashboard", url: "/dashboard", icon: Activity },
-    ],
-  },
-  {
-    title: "Device Management",
-    items: [
-      // { title: "Modular Devices", url: "/devices/modular", icon: Cpu },
-      { title: "Modbus Devices", url: "/devices/modbus", icon: Server },
-      // { title: "Battery Threshold", url: "/devices/threshold", icon: ShieldAlert },
-      { title: "Modbus Data", url: "/modbus-data", icon: BookText },
-    ],
-  },
-  // {
-  //   title: "Control Center",
-  //   items: [
-  //     {
-  //       title: "Manual Control",
-  //       url: "/control/manual",
-  //       icon: SlidersHorizontal,
-  //     },
-  //     { title: "Scheduled Control", url: "/control/schedule", icon: BarChart },
-  //     { title: "Logic Control", url: "/control/logic", icon: FileBarChart },
-  //     { title: "Voice Control", url: "/control/voice", icon: AudioLines },
-  //     {
-  //       title: "Value-Based Control",
-  //       url: "/control/value",
-  //       icon: FileBarChart,
-  //     },
-  //     {
-  //       title: "Geofence Control",
-  //       url: "/control/geofence",
-  //       icon: MapPin,
-  //     },
-  //   ],
-  // },
-  // {
-  //   title: "Payload Configuration",
-  //   items: [
-  //     { title: "Dynamic Payloads", url: "/payload/dynamic", icon: Code },
-  //     { title: "Static Payloads", url: "/payload/static", icon: Code },
-  //     { title: "MQTT Discovery", url: "/payload/discover", icon: Radar },
-  //   ],
-  // },
-  {
-    title: "Network Settings",
-    items: [
-      { title: "WiFi Scanner", url: "/network/wifi", icon: Wifi },
-      { title: "IP Configuration", url: "/network/ip-address", icon: Network },
-      { title: "MQTT Broker", url: "/network/mqtt", icon: Server },
-      {
-        title: "Comm Out Modbus TCP",
-        url: "/network/protocol/modbus",
-        icon: HardDriveUpload,
-      },
-      {
-        title: "Comm Out SNMP",
-        url: "/network/protocol/snmp",
-        icon: HardDriveUpload,
-      },
-    ],
-  },
-  {
-    title: "System Settings",
-    items: [
-      { title: "System Health", url: "/settings/system", icon: Activity },
-      { title: "MQTT Configuration", url: "/settings/mqtt", icon: Server },
-      { title: "User Management", url: "/settings/users", icon: Users },
-      { title: "Error Logs", url: "/settings/error-log", icon: FileWarning },
-      { title: "Library Manager", url: "/settings/library", icon: Library },
-      { title: "General Settings", url: "/settings/setting", icon: Settings },
-    ],
-  },
-  {
-    title: "FAQ & About",
-    items: [{ title: "Information", url: "/info", icon: InfoIcon }],
-  },
-];
+// Static menu configuration
+const menuData = {
+  groups: [
+    {
+      title: "Overview",
+      items: [
+        {
+          title: "Dashboard",
+          url: "/",
+          icon: BarChart3,
+        },
+        {
+          title: "Systems Health",
+          url: "/dashboard",
+          icon: BarChart3,
+        },
+      ],
+    },
+    {
+      title: "Device Management",
+      items: [
+        {
+          title: "Modbus Devices",
+          url: "/devices/modbus",
+          icon: Database,
+        },
+        {
+          title: "Modular I2C",
+          url: "/devices/modular",
+          icon: Zap,
+        },
+        {
+          title: "Threshold Settings",
+          url: "/devices/threshold",
+          icon: Shield,
+        },
+      ],
+    },
+    {
+      title: "Control Center",
+      items: [
+        {
+          title: "Manual Control",
+          url: "/control/manual",
+          icon: Play,
+        },
+        {
+          title: "Scheduled Tasks",
+          url: "/control/schedule",
+          icon: Activity,
+        },
+        {
+          title: "Logic Control",
+          url: "/control/logic",
+          icon: Settings,
+        },
+        {
+          title: "Visual Automation",
+          url: "/control/logic/visual",
+          icon: Zap,
+        },
+        {
+          title: "Value Control",
+          url: "/control/value",
+          icon: Database,
+        },
+        {
+          title: "Voice Control",
+          url: "/control/voice",
+          icon: Wifi,
+        },
+      ],
+    },
+    {
+      title: "Network Configuration",
+      items: [
+        {
+          title: "WiFi Settings",
+          url: "/network/wifi",
+          icon: Wifi,
+        },
+        {
+          title: "IP Configuration",
+          url: "/network/ip-address",
+          icon: Network,
+        },
+        {
+          title: "MQTT Broker",
+          url: "/network/mqtt",
+          icon: Send,
+        },
+        {
+          title: "Modbus Protocol",
+          url: "/network/protocol/modbus",
+          icon: Database,
+        },
+        {
+          title: "SNMP Protocol",
+          url: "/network/protocol/snmp",
+          icon: Network,
+        },
+      ],
+    },
+    {
+      title: "Data Payload",
+      items: [
+        {
+          title: "Static Payload",
+          url: "/payload/static",
+          icon: FileText,
+        },
+        {
+          title: "Dynamic Payload",
+          url: "/payload/dynamic",
+          icon: Activity,
+        },
+        {
+          title: "Device Discovery",
+          url: "/payload/discover",
+          icon: Send,
+        },
+      ],
+    },
+    {
+      title: "System Settings",
+      items: [
+        {
+          title: "General Settings",
+          url: "/settings/setting",
+          icon: Settings,
+        },
+        {
+          title: "System Health",
+          url: "/settings/system",
+          icon: Activity,
+        },
+        {
+          title: "MQTT Configuration",
+          url: "/settings/mqtt",
+          icon: Send,
+        },
+        {
+          title: "Device Library",
+          url: "/settings/library",
+          icon: HardDrive,
+        },
+        {
+          title: "User Management",
+          url: "/settings/users",
+          icon: Users,
+        },
+        {
+          title: "Error Logs",
+          url: "/settings/error-log",
+          icon: FileText,
+        },
+      ],
+    },
+  ],
+};
 
 export function AppSidebar() {
   const pathname = usePathname();
   const totalErrors = useTotalErrorCount();
-  // Move useRouter inside the functional component
   const router = useRouter();
   const { logout } = useAuth();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -198,32 +256,35 @@ export function AppSidebar() {
         className="bg-background overflow-auto scrollbar-hide"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
-        {navigation.map((group) => (
-          <SidebarGroup key={group.title}>
+        {menuData.groups.map((group, groupIndex) => (
+          <SidebarGroup key={groupIndex}>
             <SidebarGroupLabel className="text-sidebar-foreground/80">
               {group.title}
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.title} className="relative">
-                    <SidebarMenuButton
-                      asChild
-                      isActive={pathname === item.url}
-                      className="group flex items-center gap-2 px-3 py-2 rounded-md w-full transition-colors text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
-                    >
-                      <Link href={item.url}>
-                        <item.icon className="h-4 w-4 text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground" />
-                        <span>{item.title}</span>
-                        {item.title === "Error Logs" && totalErrors > 0 && (
-                          <SidebarMenuBadge className="ml-auto bg-destructive text-white">
-                            {totalErrors}
-                          </SidebarMenuBadge>
-                        )}
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {group.items.map((item, itemIndex) => {
+                  const IconComponent = item.icon;
+                  return (
+                    <SidebarMenuItem key={itemIndex} className="relative">
+                      <SidebarMenuButton
+                        asChild
+                        isActive={pathname === item.url}
+                        className="group flex items-center gap-2 px-3 py-2 rounded-md w-full transition-colors text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
+                      >
+                        <Link href={item.url}>
+                          <IconComponent className="h-4 w-4 text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground" />
+                          <span>{item.title}</span>
+                          {item.title === "Error Logs" && totalErrors > 0 && (
+                            <SidebarMenuBadge className="ml-auto bg-destructive text-white">
+                              {totalErrors}
+                            </SidebarMenuBadge>
+                          )}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
