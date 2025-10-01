@@ -1,0 +1,4 @@
+{
+    "SNMP"          : true,
+    "MODBUS_TCP"    : true
+}

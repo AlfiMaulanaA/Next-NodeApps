@@ -113,11 +113,18 @@ def send_error_log(function_name, error_detail, error_type, additional_info=None
     Sends an error message to the centralized error log service via MQTT.
     Uses the dedicated client_error_logger. Falls back to console logging only.
     """
+    import time
+    import uuid
+
+    # Standardized error log format (compatible with ErrorLog.py)
+    unique_id = f"SchedulerService--{int(time.time())}-{uuid.uuid4().int % 10000000000}"
     error_message = {
+        "id": unique_id,
         "data": f"[{function_name}] {error_detail}",
         "type": error_type.upper(),
         "source": "SchedulerService",
-        "Timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        "Timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "status": "active"
     }
     if additional_info:
         error_message.update(additional_info)

@@ -7,6 +7,7 @@ import operator
 import subprocess
 import paho.mqtt.client as mqtt
 from datetime import datetime, timedelta
+from ErrorLogger import initialize_error_logger, send_error_log, ERROR_TYPE_MINOR, ERROR_TYPE_MAJOR, ERROR_TYPE_CRITICAL, ERROR_TYPE_WARNING
 
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -60,9 +61,14 @@ modular_devices = []
 subscribed_topics = set()  # Track subscribed device topics
 client_control = None  # For sending control commands to devices
 client_crud = None     # For handling configuration CRUD operations
-client_error_logger = None  # Dedicated client for sending error logs
+client_error_logger = None  # For unified error logger MQTT client
+error_logger = None
 device_states = {}  # Track current device states for trigger evaluation
+trigger_states = {}  # Track trigger states for auto-off functionality
 trigger_timers = {}  # Track delay timers for triggers
+
+# --- Logging Control ---
+device_topic_logging_enabled = False  # Control device topic message logging
 
 # --- Connection Status Tracking ---
 crud_broker_connected = False
@@ -94,22 +100,7 @@ ERROR_TYPE_WARNING = "WARNING"
 # --- Error Log Helper Function ---
 ERROR_LOG_BROKER = "localhost"
 ERROR_LOG_PORT = 1883
-ERROR_LOG_TOPIC = "subrack/error/log"
-ERROR_LOG_CLIENT_ID = f'automation-logic-error-logger-{uuid.uuid4()}'
-
-def send_error_log(error_msg, error_type):
-    """Send error log to MQTT topic"""
-    try:
-        if client_error_logger and client_error_logger.is_connected():
-            error_message = {
-                "data": f"[AutomationLogic] {error_msg}",
-                "type": error_type.upper(),
-                "source": "AutomationLogicService",
-                "Timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
-            client_error_logger.publish(ERROR_LOG_TOPIC, json.dumps(error_message))
-    except Exception as e:
-        log_simple(f"Failed to send error log: {e}", "ERROR")
+# Removed old error logging - using unified ErrorLogger now
 
 def get_active_mac_address():
     """Get MAC address from active network interface (prioritize wlan0, then eth0)"""
@@ -208,7 +199,7 @@ def get_active_mac_address():
 
 # --- Configuration Management ---
 def load_mqtt_config():
-    """Load MQTT config with graceful error handling"""
+    """Load MQTT config with graceful error handling and retry loop"""
     default_config = {
         "enable": True,
         "broker_address": "localhost",
@@ -219,23 +210,39 @@ def load_mqtt_config():
         "retain": True,
         "mac_address": "00:00:00:00:00:00"
     }
-    
-    try:
-        with open(mqtt_config_file, 'r') as file:
-            content = file.read().strip()
-            if not content:
-                log_simple(f"MQTT config file is empty. Using defaults.", "WARNING")
-                return default_config
-            return json.load(file)
-    except FileNotFoundError:
-        log_simple(f"MQTT config file not found. Using defaults.", "WARNING")
-        return default_config
-    except json.JSONDecodeError as e:
-        log_simple(f"Error decoding MQTT config: {e}. Using defaults.", "WARNING")
-        return default_config
-    except Exception as e:
-        log_simple(f"Unexpected error loading MQTT config: {e}. Using defaults.", "WARNING")
-        return default_config
+
+    while True:
+        try:
+            with open(mqtt_config_file, 'r') as file:
+                content = file.read().strip()
+                if not content:
+                    log_simple(f"MQTT config file is empty. Retrying in 5 seconds...", "WARNING")
+                    time.sleep(5)
+                    continue
+                # FIX: Use json.loads with content instead of json.load with file
+                return json.loads(content)
+        except FileNotFoundError:
+            log_simple(f"MQTT config file not found. Creating default config and retrying in 5 seconds...", "WARNING")
+            try:
+                # Create directory if not exists
+                import os
+                os.makedirs(os.path.dirname(mqtt_config_file), exist_ok=True)
+                # Create default config file
+                with open(mqtt_config_file, 'w') as file:
+                    json.dump(default_config, file, indent=4)
+                log_simple(f"Created default MQTT config file: {mqtt_config_file}", "INFO")
+            except Exception as create_error:
+                log_simple(f"Failed to create config file: {create_error}. Retrying in 5 seconds...", "WARNING")
+                time.sleep(5)
+                continue
+        except json.JSONDecodeError as e:
+            log_simple(f"Error decoding MQTT config file: {e}. Using default configuration.", "WARNING")
+            log_simple(f"Error in load_mqtt_config: Error decoding MQTT config file: {e}", "WARNING")
+            return default_config
+        except Exception as e:
+            log_simple(f"Unexpected error loading MQTT config: {e}. Retrying in 5 seconds...", "WARNING")
+            time.sleep(5)
+            continue
 
 def load_logic_config():
     """Load automation logic configuration"""
@@ -258,11 +265,11 @@ def load_logic_config():
     except json.JSONDecodeError as e:
         log_simple(f"Failed to load config (JSON decode error): {e}. Using default.", "ERROR")
         config = []
-        send_error_log(f"Config JSON decode error: {e}", ERROR_TYPE_MAJOR)
+        send_error_log("load_logic_config", f"Config JSON decode error: {e}", ERROR_TYPE_MAJOR)
     except Exception as e:
         log_simple(f"Failed to load config: {e}", "ERROR")
         config = []
-        send_error_log(f"Config load error: {e}", ERROR_TYPE_MAJOR)
+        send_error_log("load_logic_config", f"Config load error: {e}", ERROR_TYPE_MAJOR)
 
 def save_logic_config():
     """Save automation logic configuration"""
@@ -288,15 +295,15 @@ def load_modular_devices():
     except FileNotFoundError:
         log_simple(f"Modular devices file not found: {modular_devices_file}")
         modular_devices = []
-        send_error_log(f"Modular devices file not found", ERROR_TYPE_WARNING)
+        send_error_log("load_modular_devices", f"Modular devices file not found", ERROR_TYPE_WARNING)
     except json.JSONDecodeError as e:
         log_simple(f"Failed to load modular devices (JSON decode error): {e}")
         modular_devices = []
-        send_error_log(f"Modular devices JSON decode error: {e}", ERROR_TYPE_MAJOR)
+        send_error_log("load_modular_devices", f"Modular devices JSON decode error: {e}", ERROR_TYPE_MAJOR)
     except Exception as e:
         log_simple(f"Failed to load modular devices: {e}", "ERROR")
         modular_devices = []
-        send_error_log(f"Modular devices load error: {e}", ERROR_TYPE_MAJOR)
+        send_error_log("load_modular_devices", f"Modular devices load error: {e}", ERROR_TYPE_MAJOR)
 
 def publish_available_devices():
     """Publish available modular devices to MODULAR_DEVICE/AVAILABLES topic"""
@@ -313,12 +320,16 @@ def publish_available_devices():
                     'mac': device.get('mac', '00:00:00:00:00:00'),
                     'device_type': device.get('profile', {}).get('device_type', ''),
                     'manufacturer': device.get('profile', {}).get('manufacturer', ''),
-                    'topic': device.get('topic', '')
+                    'topic': device.get('profile', {}).get('topic', '')  # Fixed: get topic from profile object
                 }
                 available_devices.append(available_device)
 
-            client_crud.publish(MODULAR_AVAILABLES_TOPIC, json.dumps(available_devices))
-            log_simple(f"Published {len(available_devices)} available devices", "SUCCESS")
+            # FIXED: Add connection check for safety
+            if client_crud and client_crud.is_connected():
+                client_crud.publish(MODULAR_AVAILABLES_TOPIC, json.dumps(available_devices))
+                log_simple(f"Published {len(available_devices)} available devices", "SUCCESS")
+            else:
+                log_simple("CRUD client not connected, cannot publish available devices", "WARNING")
         else:
             log_simple("Cannot publish available devices - CRUD client not connected", "WARNING")
 
@@ -419,6 +430,52 @@ def on_disconnect_control(client, userdata, rc):
     if rc != 0:
         log_simple("Control MQTT broker disconnected unexpectedly", "WARNING")
 
+def on_message_control(client, userdata, msg):
+    """Handle control messages (device data from subscribed topics)"""
+    try:
+        topic = msg.topic
+        payload = msg.payload.decode()
+
+        # Log device topic messages only if enabled
+        if device_topic_logging_enabled:
+            log_simple(f"Control Message: {topic} - {payload}")
+
+        # Handle device data from subscribed topics
+        try:
+            device_message = json.loads(payload)
+
+            # Extract device information from topic
+            # Topic format: "Limbah/Modular/drycontact/1" or similar
+            topic_parts = topic.split('/')
+            if len(topic_parts) >= 3:
+                device_type = topic_parts[-2]  # e.g., "drycontact"
+                device_id = topic_parts[-1]    # e.g., "1"
+                device_name = f"{device_type.capitalize()}{device_id}"  # e.g., "Drycontact1"
+
+                # Extract data from the message
+                if 'value' in device_message:
+                    # The value field contains JSON string with device data
+                    if isinstance(device_message['value'], str):
+                        device_data = json.loads(device_message['value'])
+                    else:
+                        device_data = device_message['value']
+
+                    # Process the device data for automation logic
+                    process_modular_device_data({
+                        'device_name': device_name,
+                        'data': device_data
+                    })
+
+        except json.JSONDecodeError as e:
+            log_simple(f"Failed to parse device message JSON: {e}", "ERROR")
+        except Exception as e:
+            log_simple(f"Error processing device message: {e}", "ERROR")
+            send_error_log(f"Device message processing error: {e}", ERROR_TYPE_MINOR)
+
+    except Exception as e:
+        log_simple(f"Error handling control message: {e}", "ERROR")
+        send_error_log(f"Control message handling error: {e}", ERROR_TYPE_MINOR)
+
 # --- Message Handling ---
 def on_message_crud(client, userdata, msg):
     """Handle CRUD messages"""
@@ -443,6 +500,10 @@ def on_message_crud(client, userdata, msg):
                     handle_get_request(client)
                 elif command in ["add", "set", "delete"]:
                     handle_crud_request(client, command, message_data)
+                elif command == "enable_device_logging":
+                    handle_device_logging_control(client, True)
+                elif command == "disable_device_logging":
+                    handle_device_logging_control(client, False)
                 else:
                     log_simple(f"Unknown command: {command}", "WARNING")
 
@@ -455,40 +516,6 @@ def on_message_crud(client, userdata, msg):
         log_simple(f"Error handling CRUD message: {e}", "ERROR")
         send_error_log(f"CRUD message handling error: {e}", ERROR_TYPE_MINOR)
 
-def on_message_control(client, userdata, msg):
-    """Handle control and device data messages"""
-    try:
-        topic = msg.topic
-        payload = msg.payload.decode()
-
-        if topic == MODULAR_AVAILABLES_TOPIC:
-            # Handle available devices update
-            try:
-                available_devices = json.loads(payload)
-                handle_available_devices_update(client, available_devices)
-            except json.JSONDecodeError:
-                log_simple(f"Invalid JSON in available devices: {payload}", "ERROR")
-
-        elif topic.startswith("Limbah/Modular/"):
-            # Process device data from individual device topics
-            try:
-                device_data = json.loads(payload)
-                process_modular_device_data(device_data)
-            except json.JSONDecodeError:
-                log_simple(f"Invalid JSON in device data: {payload}", "ERROR")
-
-        elif topic == MODULAR_DATA_TOPIC:
-            # Process device data for trigger evaluation (legacy)
-            try:
-                device_data = json.loads(payload)
-                process_device_data(device_data)
-            except json.JSONDecodeError:
-                log_simple(f"Invalid JSON in device data: {payload}", "ERROR")
-
-    except Exception as e:
-        log_simple(f"Error handling control message: {e}", "ERROR")
-        send_error_log(f"Control message handling error: {e}", ERROR_TYPE_MINOR)
-
 # --- CRUD Operations ---
 def handle_get_request(client):
     """Handle get data request"""
@@ -498,8 +525,43 @@ def handle_get_request(client):
             "data": config,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
+        # FIXED: Add connection check for safety
+        if client and client.is_connected():
+            client.publish(topic_response, json.dumps(response))
+            log_simple("Configuration data sent to client", "SUCCESS")
+        else:
+            log_simple("Client not connected, cannot send configuration data", "WARNING")
+    except Exception as e:
+        error_response = {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        # FIXED: Add connection check for safety
+        if client and client.is_connected():
+            client.publish(topic_response, json.dumps(error_response))
+        else:
+            log_simple("Client not connected, cannot send error response", "WARNING")
+        log_simple(f"Error sending config data: {e}", "ERROR")
+
+def handle_device_logging_control(client, enable):
+    """Handle device topic logging enable/disable commands"""
+    global device_topic_logging_enabled
+
+    try:
+        device_topic_logging_enabled = enable
+        status = "enabled" if enable else "disabled"
+        log_simple(f"Device topic message logging {status}", "SUCCESS")
+
+        # Send response
+        response = {
+            "status": "success",
+            "message": f"Device topic logging {status}",
+            "data": {"device_topic_logging_enabled": device_topic_logging_enabled},
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
         client.publish(topic_response, json.dumps(response))
-        log_simple("Configuration data sent to client", "SUCCESS")
+
     except Exception as e:
         error_response = {
             "status": "error",
@@ -507,7 +569,7 @@ def handle_get_request(client):
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         client.publish(topic_response, json.dumps(error_response))
-        log_simple(f"Error sending config data: {e}", "ERROR")
+        log_simple(f"Error handling device logging control: {e}", "ERROR")
 
 def handle_crud_request(client, command, message_data):
     """Handle CRUD operations"""
@@ -560,6 +622,10 @@ def create_logic_rule(rule_data):
         config.append(rule_data)
         save_logic_config()
 
+        # Update device topic subscriptions after rule creation
+        if client_control and client_control.is_connected():
+            subscribe_to_device_topics(client_control)
+
         log_simple(f"Logic rule created: {rule_data.get('rule_name', 'Unknown')}")
         return True, f"Logic rule '{rule_data.get('rule_name', 'Unknown')}' created successfully"
 
@@ -590,6 +656,10 @@ def update_logic_rule(rule_data):
                 config[i] = rule_data
                 save_logic_config()
 
+                # Update device topic subscriptions after rule update
+                if client_control and client_control.is_connected():
+                    subscribe_to_device_topics(client_control)
+
                 log_simple(f"Logic rule updated: {rule_data.get('rule_name', 'Unknown')}")
                 return True, f"Logic rule '{rule_data.get('rule_name', 'Unknown')}' updated successfully"
 
@@ -611,6 +681,11 @@ def delete_logic_rule(rule_id):
 
         if len(config) < initial_count:
             save_logic_config()
+
+            # Update device topic subscriptions after rule deletion
+            if client_control and client_control.is_connected():
+                subscribe_to_device_topics(client_control)
+
             log_simple(f"Logic rule deleted: {rule_id}")
             return True, "Logic rule deleted successfully"
         else:
@@ -627,9 +702,6 @@ def process_device_data(device_data):
     try:
         device_name = device_data.get('device_name', '')
         data = device_data.get('data', {})
-
-        # DEBUG: Log received device data
-        log_simple(f"DEBUG: Received device data - {device_name}: {data}", "INFO")
 
         # Update device state
         device_states[device_name] = data
@@ -649,9 +721,6 @@ def process_modular_device_data(device_data):
         device_name = device_data.get('device_name', '')
         data = device_data.get('data', {})
 
-        # DEBUG: Log received modular device data
-        log_simple(f"DEBUG: Received modular device data - {device_name}: {data}", "INFO")
-
         # Update device state
         device_states[device_name] = data
 
@@ -664,35 +733,38 @@ def process_modular_device_data(device_data):
         send_error_log(f"Modular device data processing error: {e}", ERROR_TYPE_MINOR)
 
 def evaluate_rule(rule, device_name, device_data):
-    """Evaluate a single logic rule"""
+    """Evaluate a single logic rule with auto-off functionality"""
     try:
         rule_id = rule.get('id', '')
         rule_name = rule.get('rule_name', '')
         trigger_groups = rule.get('trigger_groups', [])
 
-        # DEBUG: Log rule evaluation start
-        log_simple(f"DEBUG: Evaluating rule '{rule_name}' ({rule_id}) for device '{device_name}'", "INFO")
-
         if not trigger_groups:
-            log_simple(f"DEBUG: Rule '{rule_name}' has no trigger groups", "WARNING")
             return
 
         group_results = []
 
-        for i, group in enumerate(trigger_groups):
+        for group in trigger_groups:
             group_result = evaluate_trigger_group(group, device_name, device_data)
             group_results.append(group_result)
-            log_simple(f"DEBUG: Rule '{rule_name}' group {i+1} result: {group_result}", "INFO")
 
         # All groups must be true for rule to trigger
         all_groups_true = all(group_results)
-        log_simple(f"DEBUG: Rule '{rule_name}' all groups true: {all_groups_true} (results: {group_results})", "INFO")
 
-        if all_groups_true:
-            log_simple(f"Logic rule triggered: {rule_name} ({rule_id})")
+        # Track rule state for auto-off functionality
+        rule_key = f"{rule_id}_{device_name}"
+        previous_state = trigger_states.get(rule_key, False)
+
+        if all_groups_true and not previous_state:
+            # Rule just became active - execute ON actions
+            log_simple(f"Logic rule triggered (ON): {rule_name}")
             execute_rule_actions(rule)
-        else:
-            log_simple(f"DEBUG: Rule '{rule_name}' NOT triggered - conditions not met", "WARNING")
+            trigger_states[rule_key] = True
+        elif not all_groups_true and previous_state:
+            # Rule just became inactive - execute OFF actions
+            log_simple(f"Logic rule triggered (OFF): {rule_name}")
+            execute_rule_actions_off(rule)
+            trigger_states[rule_key] = False
 
     except Exception as e:
         log_simple(f"Error evaluating rule: {e}", "ERROR")
@@ -733,7 +805,6 @@ def evaluate_trigger_condition(trigger, device_data):
         pin_number = trigger.get('pin_number', 1)
         condition_operator = trigger.get('condition_operator', 'is')
         target_value = trigger.get('target_value', False)
-        expected_value = trigger.get('expected_value', False)
         delay_on = trigger.get('delay_on', 0)
         delay_off = trigger.get('delay_off', 0)
         
@@ -821,18 +892,40 @@ def execute_rule_actions(rule):
     """Execute actions for a triggered rule"""
     try:
         actions = rule.get('actions', [])
-        
+
         for action in actions:
             action_type = action.get('action_type', '')
-            
+
             if action_type == 'control_relay':
                 execute_relay_control(action)
             elif action_type == 'send_message':
                 execute_send_message(action, rule)
-                
+
     except Exception as e:
         log_simple(f"Error executing rule actions: {e}", "ERROR")
         send_error_log(f"Rule action execution error: {e}", ERROR_TYPE_MINOR)
+
+def execute_rule_actions_off(rule):
+    """Execute OFF actions when rule condition stops being met"""
+    try:
+        actions = rule.get('actions', [])
+
+        for action in actions:
+            action_type = action.get('action_type', '')
+
+            if action_type == 'control_relay':
+                # Create OFF action by inverting target_value
+                off_action = action.copy()
+                off_action['target_value'] = not action.get('target_value', False)
+                execute_relay_control(off_action)
+            elif action_type == 'send_message':
+                # For messages, we might want to send a different message or skip
+                # For now, we'll skip message actions for OFF events
+                pass
+
+    except Exception as e:
+        log_simple(f"Error executing rule OFF actions: {e}", "ERROR")
+        send_error_log(f"Rule OFF action execution error: {e}", ERROR_TYPE_MINOR)
 
 def execute_relay_control(action):
     """Execute relay control action"""
@@ -865,9 +958,12 @@ def execute_relay_control(action):
             "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
-        # Send control command
-        client_control.publish(MODULAR_CONTROL_TOPIC, json.dumps(control_payload))
-        log_simple(f"Relay control sent: {target_device} pin {relay_pin} = {target_value} (using active MAC: {local_controller_mac})", "SUCCESS")
+        # FIXED: Add connection check for safety
+        if client_control and client_control.is_connected():
+            client_control.publish(MODULAR_CONTROL_TOPIC, json.dumps(control_payload))
+            log_simple(f"Relay control sent: {target_device} pin {relay_pin} = {target_value} (using active MAC: {local_controller_mac})", "SUCCESS")
+        else:
+            log_simple("Control client not connected, cannot send relay control command", "WARNING")
 
     except Exception as e:
         log_simple(f"Error executing relay control: {e}", "ERROR")
@@ -1056,15 +1152,12 @@ def run():
     username = mqtt_config.get('username', '')
     password = mqtt_config.get('password', '')
     
-    # Initialize error logger
-    log_simple("Initializing error logger...")
-    client_error_logger = connect_mqtt(
-        ERROR_LOG_CLIENT_ID,
-        ERROR_LOG_BROKER,
-        ERROR_LOG_PORT
-    )
-    if client_error_logger:
-        client_error_logger.loop_start()
+    # Initialize unified error logger
+    log_simple("Initializing unified error logger...")
+    global error_logger
+    error_logger = initialize_error_logger("AutomationLogicService", broker, port)
+    # Assign the MQTT client for reconnection handling
+    client_error_logger = error_logger.client if error_logger else None
     
     # Connect to CRUD broker
     log_simple("Connecting to CRUD MQTT broker...")
@@ -1074,7 +1167,7 @@ def run():
         on_connect_crud, on_disconnect_crud, on_message_crud
     )
     
-    # Connect to Control broker  
+    # Connect to Control broker
     log_simple("Connecting to Control MQTT broker...")
     client_control = connect_mqtt(
         f'automation-logic-control-{uuid.uuid4()}',
@@ -1126,7 +1219,7 @@ def run():
         log_simple("Service stopped by user", "WARNING")
     except Exception as e:
         log_simple(f"Critical error: {e}", "ERROR")
-        send_error_log(f"Critical service error: {e}", ERROR_TYPE_CRITICAL)
+        send_error_log("run", f"Critical service error: {e}", ERROR_TYPE_CRITICAL)
     finally:
         log_simple("Shutting down services...")
         if client_control:

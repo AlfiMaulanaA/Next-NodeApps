@@ -19,19 +19,19 @@ def run_script(script_name):
 if __name__ == '__main__':
     # Daftar file Python yang ingin dijalankan
     scripts = [
-        'AutoRestart.py',
         'AutomationLogic.py',
-        'AutomationSchedule.py',
         'AutomationValue.py',
+        'AutomationSchedule.py',
+        'AutomationVoice.py',
         'Button.py',
         'DeviceConfig.py',
-        'ErrorLog.py',
+        'ErrorLogger.py',
         'LibraryConfig.py',
         'Network.py',
-        'PayloadDynamic.py',
-        'PayloadStatic.py',
         'Settings.py',
+        'UserManagement.py',
         'rpi_config_manager.py',
+        'ApiCombined.py'
     ]
 
     # Membuat dan menjalankan proses untuk setiap file

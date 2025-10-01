@@ -5,7 +5,7 @@ import paho.mqtt.client as mqtt
 import os
 import subprocess
 import logging
-import threading
+import threading 
 from getmac import get_mac_address
 import netifaces as ni
 from datetime import datetime
@@ -31,7 +31,7 @@ def print_broker_status(broker_status=False):
         print("MQTT Broker Local is Running")
     else:
         print("MQTT Broker Local connection failed")
-
+    
     print("\n" + "="*34)
     print("Log print Data")
     print("")
@@ -91,81 +91,31 @@ DEFAULT_SCHEDULER_CONFIG = {"autoControl": True, "devices": []}
 DEFAULT_DRYCONTACT_CONFIG = {"control": True, "read_data": []}
 DEFAULT_INSTALLED_DEVICES_MODULAR = [] # Empty list for modular devices
 DEFAULT_INSTALLED_DEVICES_MODBUS = [
-  {
-    "profile": {
-      "name": "pzem017_battery",
-      "device_type": "power_meter",
-      "manufacturer": "Peacefair",
-      "part_number" : "pzem017",
-      "topic": "pzem017/1",
-      "interval_publish": 60,
-      "custom_by_customer": False,
-      "customer": "tbig",
-      "custom_payload" : False,
-      "qos": 1
-      },
-    "protocol_setting" : {
-      "protocol": "Modbus RTU",
-      "address":1,
-      "port": "/dev/ttyUSB0",
-      "baudrate": 9600,
-      "parity": "NONE",
-      "bytesize": 8,
-      "stop_bit": 1,
-      "timeout": 0.25,
-      "endianness" : "Little Endian"
+    {
+        "profile": {
+            "name": "shoto_sda10_48100_batterys",
+            "device_type": "battery",
+            "manufacturer": "Shoto",
+            "part_number": "SDA10_48100",
+            "topic": "IOT/Battery/SHOTO_SDA10_48100",
+            "interval_publish": 60,
+            "qos": 1
+        },
+        "protocol_setting": {
+            "protocol": "Modbus RTU",
+            "address": 1,
+            "ip_address": "",
+            "port": "/dev/ttyUSB0",
+            "baudrate": 9600,
+            "parity": "NONE",
+            "bytesize": 8,
+            "stop_bit": 1,
+            "timeout": 0.25,
+            "endianness": "Big Endian",
+            "snmp_version": 1,
+            "read_community": "public"
+        }
     }
-  },
-  {
-    "profile": {
-      "name": "pzem017_output",
-      "device_type": "power_meter",
-      "manufacturer": "Peacefair",
-      "part_number" : "pzem017",
-      "topic": "pzem017/2",
-      "interval_publish": 60,
-      "custom_by_customer": False,
-      "customer": "tbig",
-      "custom_payload" : False,
-      "qos": 1
-      },
-    "protocol_setting" : {
-      "protocol": "Modbus RTU",
-      "address":5,
-      "port": "/dev/ttyUSB0",
-      "baudrate": 9600,
-      "parity": "NONE",
-      "bytesize": 8,
-      "stop_bit": 1,
-      "timeout": 0.25,
-      "endianness" : "Little Endian"
-    }
-  },
-  {
-    "profile": {
-      "name": "pzem016_input",
-      "device_type": "power_meter",
-      "manufacturer": "Peacefair",
-      "part_number" : "pzem016",
-      "topic": "pzem016/1",
-      "interval_publish": 60,
-      "custom_by_customer": False,
-      "customer": "tbig",
-      "custom_payload" : False,
-      "qos": 1
-      },
-    "protocol_setting" : {
-      "protocol": "Modbus RTU",
-      "address":13,
-      "port": "/dev/ttyUSB0",
-      "baudrate": 9600,
-      "parity": "NONE",
-      "bytesize": 8,
-      "stop_bit": 1,
-      "timeout": 0.25,
-      "endianness" : "Little Endian"
-    }
-  }
 ]
 
 DEFAULT_MQTT_CONFIG_MODULAR = {
@@ -246,8 +196,7 @@ DEFAULT_SNMP_CONFIG = {
 
 # --- Logging Setup ---
 # Basic logging configuration for console output.
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("SettingsService")
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Helper Functions for File Operations ---
 def save_json_config(filepath, config_data):
@@ -278,7 +227,7 @@ def load_json_config(filepath, default_config=None):
                 if save_json_config(filepath, default_config):
                     return default_config
             return default_config # Return default even if saving fails
-
+            
         with open(filepath, 'r') as file:
             return json.load(file)
     except json.JSONDecodeError as e:
@@ -294,13 +243,22 @@ def send_error_log(client, function_name, error_detail, error_type):
     Sends an error log message to the MQTT broker on ERROR_LOG_TOPIC.
     Also logs the error locally.
     """
+    import uuid
+    import time
+
     # Clean up error detail for better readability in logs
     cleaned_error = str(error_detail).split("] ")[-1] if isinstance(error_detail, Exception) else str(error_detail)
     human_readable_function = function_name.replace("_", " ").title()
+
+    # Standardized error log format (compatible with ErrorLog.py)
+    unique_id = f"SettingsService--{int(time.time())}-{uuid.uuid4().int % 10000000000}"
     error_message = {
+        "id": unique_id,
         "data": f"[{human_readable_function}] {cleaned_error}",
-        "type": error_type, # e.g., "minor", "major", "critical"
-        "Timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        "type": error_type.upper(),
+        "source": "SettingsService",
+        "Timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "status": "active"
     }
     try:
         # Publish to MQTT if client is connected
@@ -326,13 +284,14 @@ def get_uptime(client=None):
 def get_ip_addresses(client=None):
     """Returns a dictionary of IP addresses for eth0 and wlan0."""
     ip_addresses = {"eth0_ip": "N/A", "wlan0_ip": "N/A"}
-
+    
     try:
         # Attempt to get eth0 IP
         eth0_ip = ni.ifaddresses('eth0')[ni.AF_INET][0]['addr']
         ip_addresses["eth0_ip"] = eth0_ip
     except (KeyError, ValueError): # KeyError if interface not found, ValueError if AF_INET not found
-        logging.info("eth0 interface or IP not found.")
+        # Skip logging - eth0 not existing is normal and shouldn't spam logs
+        pass
     except Exception as e:
         send_error_log(client, "get_ip_addresses_eth0", e, "minor")
 
@@ -344,7 +303,7 @@ def get_ip_addresses(client=None):
         logging.info("wlan0 interface or IP not found.")
     except Exception as e:
         send_error_log(client, "get_ip_addresses_wlan0", e, "minor")
-
+    
     return ip_addresses
 
 def get_cpu_temperature(client=None):
@@ -367,7 +326,7 @@ def get_system_info(client=None):
         cpu_usage = psutil.cpu_percent(interval=None) # Non-blocking call for instantaneous usage
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
-
+        
         cpu_temp = get_cpu_temperature(client)
         ip_addresses = get_ip_addresses(client)
 
@@ -390,6 +349,208 @@ def get_system_info(client=None):
         send_error_log(client, "get_system_info", e, "critical")
         return {} # Return empty dict on critical failure
 
+
+
+def detect_network_method():
+    """Detect which network configuration method is used"""
+    try:
+        # Priority 1: Check NetworkManager
+        result = subprocess.run(['systemctl', 'is-active', 'NetworkManager'], 
+                               capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip() == 'active':
+            logging.info("Detected network method: NetworkManager")
+            return 'networkmanager'
+        
+        # Priority 2: Check dhcpcd
+        result = subprocess.run(['systemctl', 'is-active', 'dhcpcd'], 
+                               capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip() == 'active':
+            logging.info("Detected network method: dhcpcd")
+            return 'dhcpcd'
+        
+        # Priority 3: Check systemd-networkd
+        result = subprocess.run(['systemctl', 'is-active', 'systemd-networkd'], 
+                               capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip() == 'active':
+            logging.info("Detected network method: systemd-networkd")
+            return 'systemd-networkd'
+        
+        # Default fallback
+        logging.info("Network method detection failed, defaulting to NetworkManager")
+        return 'networkmanager'
+        
+    except Exception as e:
+        logging.error(f"Error detecting network method: {e}")
+        return 'networkmanager'
+
+
+def get_active_ethernet_connection():
+    """Auto-detect active ethernet connection name"""
+    try:
+        # Get active connections first
+        result = subprocess.run([
+            'nmcli', '-t', '-f', 'NAME,TYPE,DEVICE', 'connection', 'show', '--active'
+        ], capture_output=True, text=True, check=True)
+        
+        logging.info(f"Active connections scan: {result.stdout.strip()}")
+        
+        # Look for active ethernet connection on eth0
+        for line in result.stdout.strip().split('\n'):
+            if line:
+                parts = line.split(':')
+                if len(parts) >= 3:
+                    name, conn_type, device = parts[:3]
+                    if conn_type == '802-3-ethernet' and device == 'eth0':
+                        logging.info(f"Found active ethernet connection: '{name}' on {device}")
+                        return name
+        
+        # Fallback: get all ethernet connections if no active found
+        result = subprocess.run([
+            'nmcli', '-t', '-f', 'NAME,TYPE,DEVICE', 'connection', 'show'
+        ], capture_output=True, text=True, check=True)
+        
+        logging.info(f"All connections scan: {result.stdout.strip()}")
+        
+        for line in result.stdout.strip().split('\n'):
+            if line:
+                parts = line.split(':')
+                if len(parts) >= 3:
+                    name, conn_type, device = parts[:3]
+                    if conn_type == '802-3-ethernet' and device == 'eth0':
+                        logging.info(f"Found ethernet connection: '{name}' on {device}")
+                        return name
+        
+        # If still no luck, look for any ethernet connection
+        for line in result.stdout.strip().split('\n'):
+            if line:
+                parts = line.split(':')
+                if len(parts) >= 2 and parts[1] == '802-3-ethernet':
+                    logging.info(f"Found ethernet connection (fallback): '{parts[0]}'")
+                    return parts[0]
+        
+        # Last resort
+        logging.warning("No ethernet connection found, using default name")
+        return "eth0-static"
+        
+    except Exception as e:
+        logging.error(f"Error getting active ethernet connection: {e}")
+        return "eth0-static"
+
+def auto_reset_ethernet_to_static(target_ip="192.168.0.100", client=None):
+    """Auto-detect network method and reset ethernet to static IP"""
+    try:
+        network_method = detect_network_method()
+        
+        if network_method == 'networkmanager':
+            return reset_ethernet_networkmanager(target_ip, client)
+        elif network_method == 'dhcpcd':
+            return reset_ethernet_dhcpcd(target_ip, client)
+        else:
+            error_msg = f"Network method {network_method} not fully supported for auto-reset"
+            logging.error(error_msg)
+            if client:
+                send_error_log(client, "auto_reset_ethernet_to_static", error_msg, "major")
+            return False, error_msg
+            
+    except Exception as e:
+        error_msg = f"Error in auto ethernet reset: {e}"
+        logging.error(error_msg)
+        if client:
+            send_error_log(client, "auto_reset_ethernet_to_static", e, "critical")
+        return False, error_msg
+
+
+
+def reset_ethernet_networkmanager(target_ip="192.168.0.100", client=None):
+    """Reset ethernet using NetworkManager with auto-detection"""
+    try:
+        conn_name = get_active_ethernet_connection()
+        logging.info(f"Configuring ethernet connection '{conn_name}' to static IP {target_ip}")
+        
+        # Configure static IP on the detected connection
+        cmd = [
+            'sudo', 'nmcli', 'con', 'modify', conn_name,
+            'ipv4.method', 'manual',
+            'ipv4.addresses', f'{target_ip}/24',
+            'ipv4.gateway', '192.168.0.1',
+            'ipv4.dns', '8.8.8.8,8.8.4.4'
+        ]
+        
+        logging.info(f"Executing: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        
+        # Restart connection to apply changes
+        logging.info(f"Restarting connection '{conn_name}'...")
+        subprocess.run(['sudo', 'nmcli', 'con', 'down', conn_name], 
+                      capture_output=True, text=True, check=True)
+        time.sleep(2)
+        subprocess.run(['sudo', 'nmcli', 'con', 'up', conn_name], 
+                      capture_output=True, text=True, check=True)
+        
+        success_msg = f"Ethernet '{conn_name}' configured to static IP {target_ip}"
+        logging.info(success_msg)
+        return True, success_msg
+        
+    except subprocess.CalledProcessError as e:
+        error_msg = f"NetworkManager command failed: {e.stderr if e.stderr else str(e)}"
+        logging.error(error_msg)
+        if client:
+            send_error_log(client, "reset_ethernet_networkmanager", error_msg, "critical")
+        return False, error_msg
+    except Exception as e:
+        error_msg = f"Error in NetworkManager ethernet reset: {e}"
+        logging.error(error_msg)
+        if client:
+            send_error_log(client, "reset_ethernet_networkmanager", e, "critical")
+        return False, error_msg
+
+def reset_ethernet_dhcpcd(target_ip="192.168.0.100", client=None):
+    """Reset ethernet using dhcpcd method"""
+    try:
+        dhcpcd_file = "/etc/dhcpcd.conf"
+        
+        # Read current config
+        with open(dhcpcd_file, 'r') as f:
+            config_lines = f.readlines()
+        
+        # Remove existing eth0 config
+        new_lines = []
+        skip_interface = False
+        for line in config_lines:
+            if line.strip().startswith('interface eth0'):
+                skip_interface = True
+                continue
+            elif line.strip().startswith('interface ') and skip_interface:
+                skip_interface = False
+                new_lines.append(line)
+            elif not skip_interface:
+                new_lines.append(line)
+        
+        # Add new static config
+        new_lines.append(f'\n# Factory Reset - Static IP for eth0\n')
+        new_lines.append(f'interface eth0\n')
+        new_lines.append(f'static ip_address={target_ip}/24\n')
+        new_lines.append(f'static routers=192.168.0.1\n')
+        new_lines.append(f'static domain_name_servers=8.8.8.8 8.8.4.4\n')
+        
+        # Write back to file
+        with open(dhcpcd_file, 'w') as f:
+            f.writelines(new_lines)
+        
+        # Restart dhcpcd service
+        subprocess.run(['sudo', 'systemctl', 'restart', 'dhcpcd'], 
+                      check=True, capture_output=True)
+        
+        success_msg = f"dhcpcd ethernet configured to static IP {target_ip}"
+        logging.info(success_msg)
+        return True, success_msg
+        
+    except Exception as e:
+        error_msg = f"Error in dhcpcd ethernet reset: {e}"
+        logging.error(error_msg)
+        if client:
+            send_error_log(client, "reset_ethernet_dhcpcd", e, "critical")
+        return False, error_msg
 # --- Reset Configuration Functions ---
 # These functions reset specific configuration files to their default values.
 def reset_scheduler_config(client=None):
@@ -422,14 +583,7 @@ def update_mqtt_config_modbus(client=None):
     else:
         logging.info("MQTT (MODBUS) configuration reset to default.")
 
-def reset_network_config(client=None):
-    """Resets the /etc/network/interfaces file to the default static IP configuration for eth0."""
-    try:
-        with open(NETWORK_CONFIG_PATH, 'w') as file:
-            file.write(DEFAULT_NETWORK_CONFIG)
-        logging.info(f"Network configuration reset to default in {NETWORK_CONFIG_PATH}.")
-    except Exception as e:
-        send_error_log(client, "reset_network_config", e, "critical")
+
 
 def reset_wifi_config(client=None):
     """
@@ -449,7 +603,7 @@ def reset_wifi_config(client=None):
         wifi_connections_cmd = ["nmcli", "-t", "-f", "NAME,TYPE", "con", "show"]
         result = subprocess.run(wifi_connections_cmd, capture_output=True, text=True, check=True)
         connections = result.stdout.strip().split('\n')
-
+        
         for conn in connections:
             if conn and "wifi" in conn: # Filter for Wi-Fi connections
                 conn_name = conn.split(':')[0] # Extract connection name
@@ -462,8 +616,8 @@ def reset_wifi_config(client=None):
 
         # 2. Add a new Wi-Fi connection with the default SSID and password
         add_wifi_cmd = [
-            "sudo", "nmcli", "dev", "wifi", "connect", "IOTech1",
-            "password", "IOT@1868",
+            "sudo", "nmcli", "dev", "wifi", "connect", "IOTech1", 
+            "password", "IOT@1868", 
             "name", "IOTech1_default", # Assign a recognizable name to the new connection
             "--autoconnect", "yes" # Ensure it auto-connects on boot
         ]
@@ -518,9 +672,9 @@ def publish_system_info(client):
 
             system_info_json = json.dumps(system_info)
             # Publish with QoS 1 and no retain for live data (retain=False is good for live data)
-            client.publish(TOPIC_SYSTEM_STATUS, system_info_json, qos=1, retain=False)
+            client.publish(TOPIC_SYSTEM_STATUS, system_info_json, qos=1, retain=False) 
             logging.debug(f"Published system info: {system_info_json}") # Changed to debug for less verbosity
-
+            
             time.sleep(1) # Publish every 1 second
 
         except Exception as e:
@@ -533,7 +687,7 @@ def on_connect(client, userdata, flags, rc):
     """Callback function when MQTT client connects."""
     try:
         if rc == 0:
-            logging.info("Connected to MQTT broker successfully!")
+            logging.info("Connected to MQTT broker successfully! ✅")
             # Subscribe to all necessary command topics
             client.subscribe(TOPIC_COMMAND_RESET)
             client.subscribe(COMMAND_TOPIC)
@@ -543,14 +697,14 @@ def on_connect(client, userdata, flags, rc):
             client.publish("subrack/error/data/request", json.dumps({"command": "get_all"}))
             logging.info(f"Subscribed to: {TOPIC_COMMAND_RESET}, {COMMAND_TOPIC}, {TOPIC_DOWNLOAD}, {TOPIC_UPLOAD}")
         else:
-            logging.error(f"Failed to connect to MQTT broker, return code {rc}")
+            logging.error(f"Failed to connect to MQTT broker, return code {rc} ❌")
             send_error_log(client, "mqtt_on_connect", f"Connection failed with code {rc}", "critical")
     except Exception as e:
         send_error_log(client, "on_connect_callback_error", e, "critical")
 
 def on_disconnect(client, userdata, rc):
     """Callback function when MQTT client disconnects."""
-    logging.warning(f"Disconnected from MQTT broker with result code {rc}. Attempting to reconnect...")
+    logging.warning(f"Disconnected from MQTT broker with result code {rc} 🔌. Attempting to reconnect...")
     send_error_log(client, "mqtt_on_disconnect", f"Disconnected with code {rc}", "major")
 
 def on_message(client, userdata, message):
@@ -558,7 +712,7 @@ def on_message(client, userdata, message):
     General callback for messages if not handled by specific callbacks.
     This should ideally not be hit if all topics are explicitly handled by message_callback_add.
     """
-    logging.warning(f"Received message on unhandled topic: {message.topic} with payload: {message.payload.decode()}")
+    logging.warning(f"Received message on unhandled topic: {message.topic} with payload: {message.payload.decode()} ❓")
     send_error_log(client, "on_message_unhandled", f"Unhandled topic: {message.topic}", "minor")
 
 def on_message_command(client, userdata, message):
@@ -568,7 +722,7 @@ def on_message_command(client, userdata, message):
         action = payload.get("action")
         services = payload.get("services", [])
 
-        logging.info(f"Received command: {action} for services: {services}")
+        logging.info(f"Received command: {action} for services: {services} ⚙️")
 
         response_payload = {"result": "error", "action": action, "services": services, "message": "Unknown error."}
 
@@ -577,28 +731,28 @@ def on_message_command(client, userdata, message):
                 try:
                     # Execute systemctl restart command for specified service
                     subprocess.run(["sudo", "systemctl", "restart", service], check=True)
-                    logging.info(f"{service} restarted successfully.")
+                    logging.info(f"{service} restarted successfully. ✅")
                 except subprocess.CalledProcessError as e:
-                    logging.error(f"Failed to restart service {service}: {e}")
+                    logging.error(f"Failed to restart service {service}: {e} ❌")
                     response_payload["message"] = f"Failed to restart {service}: {str(e)}"
                     send_error_log(client, "on_message_command_restart", e, "critical")
                     client.publish(RESPONSE_TOPIC, json.dumps(response_payload))
                     return # Exit if any service restart fails
             response_payload.update({"result": "success", "message": "Services restarted successfully."})
         elif action == "reboot":
-            response_payload.update({"result": "success", "message": "System is rebooting..."})
+            response_payload.update({"result": "success", "message": "System is rebooting... 🔄"})
             client.publish(RESPONSE_TOPIC, json.dumps(response_payload)) # Publish before rebooting
-            logging.info("System is rebooting... initiating sudo reboot.")
+            logging.info("System is rebooting... initiating sudo reboot. ⏳")
             subprocess.run(["sudo", "reboot"], check=True) # Initiate system reboot
         elif action == "reset":
             # This 'reset' action here seems to be a placeholder or partial implementation
             # The main factory reset logic is in on_message_reset
             response_payload.update({"result": "success", "message": "System reset command received. No specific action implemented beyond this command."})
-            logging.info("System reset command received. No specific action implemented here.")
+            logging.info("System reset command received. No specific action implemented here. ⚙️")
         else:
             response_payload["message"] = "Unknown action."
-            logging.error(f"Command failed: {response_payload['message']}")
-
+            logging.error(f"Command failed: {response_payload['message']} �")
+        
         client.publish(RESPONSE_TOPIC, json.dumps(response_payload))
 
     except json.JSONDecodeError as e:
@@ -614,41 +768,75 @@ def on_message_command(client, userdata, message):
         client.publish(RESPONSE_TOPIC, json.dumps(response))
         send_error_log(client, "on_message_command_unexpected_error", e, "critical")
 
+
 def on_message_reset(client, userdata, message):
     """
-    Handles the factory reset configuration command received via MQTT.
-    This function is the core of the "factory reset" functionality.
+    Enhanced factory reset with auto-detect ethernet and Shoto battery default
     """
     try:
-        logging.info(f"Received message on {message.topic}: {message.payload.decode()}")
+        logging.info(f"Received factory reset command on {message.topic}: {message.payload.decode()}")
         if message.topic == TOPIC_COMMAND_RESET:
-            logging.info("Initiating full configuration reset...")
-            # Call all individual reset functions to revert to default configurations
+            logging.info("=== INITIATING FACTORY RESET ===")
+            
+            # Step 1: Auto-detect and reset ethernet to static IP
+            logging.info("Step 1: Resetting ethernet to static IP 192.168.0.100...")
+            eth_success, eth_message = auto_reset_ethernet_to_static("192.168.0.100", client)
+            
+            if eth_success:
+                logging.info(f"✅ Ethernet reset successful: {eth_message}")
+            else:
+                logging.error(f"❌ Ethernet reset failed: {eth_message}")
+            
+            # Step 2: Reset all other configurations
+            logging.info("Step 2: Resetting configuration files...")
             reset_scheduler_config(client)
             reset_drycontact_config(client)
             reset_installed_devices_modular(client)
-            update_mqtt_config_modular(client) # Function name is 'update' but performs reset
-            reset_installed_devices_modbus(client)
-            update_mqtt_config_modbus(client) # Function name is 'update' but performs reset
-            reset_network_config(client) # Resets wired network config
-            reset_wifi_config(client) # Resets WiFi config using nmcli
-            reset_modbus_tcp_config(client) # Reset Modbus TCP configuration
-            reset_snmp_config(client) # NEW: Reset SNMP configuration
-
-            # Publish success response before rebooting
-            response = {"result": "success", "message": "All configurations have been reset to default. System will reboot."}
+            update_mqtt_config_modular(client)
+            reset_installed_devices_modbus(client)  # Now uses Shoto battery default
+            update_mqtt_config_modbus(client)
+            reset_wifi_config(client)
+            reset_modbus_tcp_config(client)
+            reset_snmp_config(client)
+            
+            # Step 3: Send detailed response
+            response = {
+                "result": "success", 
+                "message": "Factory reset completed. System will reboot in 5 seconds.",
+                "details": {
+                    "ethernet_reset": eth_success,
+                    "ethernet_message": eth_message,
+                    "new_ip": "192.168.0.100",
+                    "default_device": "Shoto SDA10_48100 Battery",
+                    "network_method": detect_network_method(),
+                    "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+            }
             client.publish(TOPIC_RESPONSE_RESET, json.dumps(response))
-            logging.info("Reset command processed successfully. Rebooting system...")
-            subprocess.run(["sudo", "reboot"], check=True) # Initiate system reboot to apply changes
+            
+            logging.info("=== FACTORY RESET COMPLETED ===")
+            logging.info("System will reboot in 5 seconds...")
+            time.sleep(5)  # Give more time for MQTT message delivery
+            subprocess.run(["sudo", "reboot"], check=True)
+            
         else:
-            response = {"result": "error", "message": "Unknown command."}
+            response = {"result": "error", "message": "Unknown reset command topic."}
             client.publish(TOPIC_RESPONSE_RESET, json.dumps(response))
-            logging.error("Unknown command received for reset.")
+            logging.error("❌ Unknown reset command received.")
+            
     except Exception as e:
-        send_error_log(client, "on_message_reset", e, "critical")
-        response = {"result": "error", "message": f"Error during reset: {str(e)}"}
+        error_msg = f"Critical error during factory reset: {e}"
+        logging.error(error_msg)
+        if client:
+            send_error_log(client, "on_message_reset", e, "critical")
+        
+        response = {
+            "result": "error", 
+            "message": f"Factory reset failed: {str(e)}",
+            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
         client.publish(TOPIC_RESPONSE_RESET, json.dumps(response))
-
+        
 # --- File Transfer Callbacks ---
 def handle_file_download(client):
     """Handles request to download a specific file (e.g., devices.json) via MQTT."""
@@ -656,7 +844,7 @@ def handle_file_download(client):
         if not os.path.exists(FILEPATH):
             error_message = {
                 "status": "error", "action": "download",
-                "message": f"File not found: {FILEPATH}"
+                "message": f"File not found: {FILEPATH} 🚫"
             }
             client.publish(TOPIC_RESPONSE_FILE, json.dumps(error_message))
             logging.error(f"File {FILEPATH} not found for download.")
@@ -668,7 +856,7 @@ def handle_file_download(client):
         response = {
             "status": "success", "action": "download",
             "content": file_content, # Send file content as string
-            "message": "File downloaded successfully."
+            "message": "File downloaded successfully. ✅"
         }
         client.publish(TOPIC_RESPONSE_FILE, json.dumps(response))
         logging.info(f"File {FILEPATH} downloaded successfully.")
@@ -676,7 +864,7 @@ def handle_file_download(client):
     except Exception as e:
         error_message = {
             "status": "error", "action": "download",
-            "message": f"Failed to download file: {str(e)}"
+            "message": f"Failed to download file: {str(e)} ❌"
         }
         client.publish(TOPIC_RESPONSE_FILE, json.dumps(error_message))
         send_error_log(client, "handle_file_download", e, "critical")
@@ -689,7 +877,7 @@ def handle_file_upload(client, payload):
 
         if not file_content:
             raise ValueError("No file content provided in payload.")
-
+        
         # Ensure directory exists before writing the file
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
@@ -698,7 +886,7 @@ def handle_file_upload(client, payload):
 
         response = {
             "status": "success", "action": "upload",
-            "message": f"File {filepath} uploaded successfully."
+            "message": f"File {filepath} uploaded successfully. ✅"
         }
         client.publish(TOPIC_RESPONSE_FILE, json.dumps(response))
         logging.info(f"File {filepath} uploaded successfully.")
@@ -706,7 +894,7 @@ def handle_file_upload(client, payload):
     except Exception as e:
         error_message = {
             "status": "error", "action": "upload",
-            "message": f"Failed to upload file: {str(e)}"
+            "message": f"Failed to upload file: {str(e)} ❌"
         }
         client.publish(TOPIC_RESPONSE_FILE, json.dumps(error_message))
         send_error_log(client, "handle_file_upload", e, "critical")
@@ -719,8 +907,8 @@ def setup_mqtt_client():
     # Hardcode broker_address dan broker_port
     broker_address = "localhost"
     broker_port = 1883
-    username = ""
-    password = ""
+    username = "" 
+    password = "" 
 
     # Create MQTT client instance with a unique client ID
     client = mqtt.Client(
@@ -751,7 +939,7 @@ def setup_mqtt_client():
         client.connect(broker_address, int(broker_port), 60) # Connect to the broker
         return client
     except Exception as e:
-        logging.critical(f"Failed to connect MQTT client: {e}. Exiting.")
+        logging.critical(f"Failed to connect MQTT client: {e}. Exiting. ❌")
         raise # Re-raise to stop execution if connection fails at startup
 
 # --- Main Execution ---
@@ -764,23 +952,23 @@ def main():
         # Start the system info publishing in a separate thread
         system_info_thread = threading.Thread(target=publish_system_info, args=(mqtt_client,), daemon=True)
         system_info_thread.start()
-        logging.info("System info publishing thread started.")
+        logging.info("System info publishing thread started. ▶️")
 
         # Keep the main thread alive, waiting for KeyboardInterrupt (Ctrl+C)
         while True:
             time.sleep(1) # Small sleep to prevent busy-waiting and allow other threads to run
     except KeyboardInterrupt:
-        logging.info("KeyboardInterrupt received. Stopping...")
+        logging.info("KeyboardInterrupt received. Stopping... 🛑")
     except Exception as e:
         send_error_log(mqtt_client, "main_function", e, "critical")
-        logging.critical(f"An unhandled error occurred in main: {e}")
+        logging.critical(f"An unhandled error occurred in main: {e} 💥")
     finally:
         # Ensure MQTT client is properly disconnected and its loop stopped on exit
         if mqtt_client:
             mqtt_client.loop_stop()
             mqtt_client.disconnect()
-            logging.info("MQTT client disconnected and loop stopped.")
-        logging.info("Application terminated.")
+            logging.info("MQTT client disconnected and loop stopped. 🔗")
+        logging.info("Application terminated. 👋")
 
 if __name__ == "__main__":
     main() # Entry point of the script

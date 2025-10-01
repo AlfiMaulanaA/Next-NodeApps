@@ -1,0 +1,38 @@
+[
+  {
+    "id": "12345678-1234-1234-1234-123456789abc",
+    "name": "System Administrator",
+    "email": "admin@gmail.com",
+    "department": "IT",
+    "status": "active",
+    "role": "admin",
+    "password_hash": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+    "created_at": "2025-10-01 10:03:10",
+    "updated_at": "2025-10-01 10:03:10",
+    "last_login": null
+  },
+  {
+    "id": "87654321-4321-4321-4321-cba987654321",
+    "name": "Regular User",
+    "email": "user@gmail.com",
+    "department": "Engineering",
+    "status": "active",
+    "role": "user",
+    "password_hash": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+    "created_at": "2025-10-01 10:03:10",
+    "updated_at": "2025-10-01 10:03:10",
+    "last_login": null
+  },
+  {
+    "id": "abcd1234-5678-9012-3456-789abcdef012",
+    "name": "John Developer",
+    "email": "developer@gmail.com",
+    "department": "Development",
+    "status": "active",
+    "role": "developer",
+    "password_hash": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+    "created_at": "2025-10-01 10:03:10",
+    "updated_at": "2025-10-01 10:03:10",
+    "last_login": null
+  }
+]

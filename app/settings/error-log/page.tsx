@@ -9,10 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import MqttStatus from "@/components/mqtt-status";
 import { toast } from "sonner";
-import Swal from 'sweetalert2';
 import {
   Trash2,
   Download,
@@ -32,7 +37,7 @@ import {
   Search,
   Activity,
   Clock,
-  Target
+  Target,
 } from "lucide-react";
 import {
   Table,
@@ -83,21 +88,25 @@ export default function ErrorLogPage() {
 
     // Search filter
     if (searchTerm) {
-      filtered = filtered.filter(log => 
-        log.data.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (log.source && log.source.toLowerCase().includes(searchTerm.toLowerCase()))
+      filtered = filtered.filter(
+        (log) =>
+          log.data.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          log.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (log.source &&
+            log.source.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
     // Type filter
     if (filterType !== "all") {
-      filtered = filtered.filter(log => log.type.toLowerCase() === filterType.toLowerCase());
+      filtered = filtered.filter(
+        (log) => log.type.toLowerCase() === filterType.toLowerCase()
+      );
     }
 
     // Status filter
     if (filterStatus !== "all") {
-      filtered = filtered.filter(log => {
+      filtered = filtered.filter((log) => {
         const status = log.status || "active";
         return status === filterStatus;
       });
@@ -121,7 +130,7 @@ export default function ErrorLogPage() {
       }
 
       if (dateRange !== "all") {
-        filtered = filtered.filter(log => {
+        filtered = filtered.filter((log) => {
           const logDate = new Date(log.Timestamp);
           return logDate >= filterDate;
         });
@@ -131,7 +140,8 @@ export default function ErrorLogPage() {
     return filtered;
   }, [logs, searchTerm, filterType, filterStatus, dateRange]);
 
-  const { sorted, handleSort, sortField, sortDirection } = useSortableTable(filteredLogs);
+  const { sorted, handleSort, sortField, sortDirection } =
+    useSortableTable(filteredLogs);
 
   const refreshLogs = useCallback(() => {
     const client = getMQTTClient();
@@ -142,7 +152,9 @@ export default function ErrorLogPage() {
     // Asumsi: Backend akan mengirim ulang semua log saat ada koneksi atau permintaan,
     // atau Anda perlu menambahkan topik/perintah spesifik untuk "refresh" jika diperlukan.
     // Saat ini, log akan otomatis di-update saat MQTT connect atau backend publish data baru.
-    toast.info("Attempting to refresh error logs (data will update automatically)...");
+    toast.info(
+      "Attempting to refresh error logs (data will update automatically)..."
+    );
   }, []);
 
   useEffect(() => {
@@ -158,7 +170,9 @@ export default function ErrorLogPage() {
     });
 
     const handleConnect = () => {
-      toast.success("MQTT Connected for Error Logs. Data will update automatically.");
+      toast.success(
+        "MQTT Connected for Error Logs. Data will update automatically."
+      );
     };
 
     const handleError = (err: Error) => {
@@ -175,9 +189,12 @@ export default function ErrorLogPage() {
         const data = JSON.parse(payload.toString());
         if (topic === "subrack/error/data") {
           if (Array.isArray(data)) {
-            const ignoredErrorPattern = "MODULAR I2C cannot connect to server broker mqtt";
+            const ignoredErrorPattern =
+              "MODULAR I2C cannot connect to server broker mqtt";
             const filteredLogs = data.filter((logItem: ErrorLog) => {
-              return logItem.data && !logItem.data.includes(ignoredErrorPattern);
+              return (
+                logItem.data && !logItem.data.includes(ignoredErrorPattern)
+              );
             });
             setLogs(filteredLogs);
             toast.success("Error logs updated. ✔️");
@@ -214,117 +231,125 @@ export default function ErrorLogPage() {
   }, []);
 
   const deleteAllLogs = useCallback(async () => {
-    const result = await Swal.fire({
-      title: 'Are you sure?',
-      text: "You are about to delete ALL error logs. This action cannot be undone!",
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#d33',
-      cancelButtonColor: '#3085d6',
-      confirmButtonText: 'Yes, delete all!',
-      reverseButtons: true, // Puts confirm button on the left
-    });
-
-    if (result.isConfirmed) {
-      if (clientRef.current?.connected) {
-        toast.info("Sending command to delete all logs...");
-        clientRef.current.publish(
-          "subrack/error/data/delete/all",
-          JSON.stringify({ command: "delete_all" }),
-          (err) => {
-            if (err) {
-              toast.error(`Failed to send delete all command: ${err.message} 🚫`);
-              console.error("Publish error:", err);
-              Swal.fire('Failed!', 'Could not send delete command.', 'error');
+    toast(
+      "Are you sure you want to delete ALL error logs? This action cannot be undone!",
+      {
+        description: "All logs will be permanently removed from the system.",
+        action: {
+          label: "Yes, delete all",
+          onClick: () => {
+            if (clientRef.current?.connected) {
+              toast.info("Sending command to delete all logs...");
+              clientRef.current.publish(
+                "subrack/error/data/delete/all",
+                JSON.stringify({ command: "delete_all" }),
+                (err) => {
+                  if (err) {
+                    toast.error(
+                      `Failed to send delete all command: ${err.message}`
+                    );
+                    console.error("Publish error:", err);
+                  } else {
+                    // Sukses toast akan muncul saat backend merespons dengan data baru (kosong)
+                    toast.success(
+                      "Delete all logs command sent. Table will refresh shortly."
+                    );
+                  }
+                }
+              );
             } else {
-              // Sukses toast akan muncul saat backend merespons dengan data baru (kosong)
-              Swal.fire('Initiated!', 'Delete all logs command sent. Table will refresh shortly.', 'success');
+              toast.error("MQTT not connected to send delete command.");
             }
-          }
-        );
-      } else {
-        toast.error("MQTT not connected to send delete command. 🚨");
-        Swal.fire('Error!', 'MQTT not connected.', 'error');
+          },
+        },
+        cancel: {
+          label: "Cancel",
+          onClick: () => {
+            toast.info("Delete all logs cancelled.");
+          },
+        },
       }
-    } else {
-        toast.info("Delete all logs cancelled.");
-    }
+    );
   }, []);
 
   const deleteErrorByMessage = useCallback(async (messageToDelete: string) => {
-    const result = await Swal.fire({
-      title: 'Delete specific logs?',
-      html: `You are about to delete all logs with the message:<br><strong>"${messageToDelete}"</strong>.<br>This action cannot be undone for these specific logs!`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#d33',
-      cancelButtonColor: '#3085d6',
-      confirmButtonText: 'Yes, delete them!',
-      reverseButtons: true,
-    });
-
-    if (result.isConfirmed) {
-      if (clientRef.current?.connected) {
-        toast.info(`Sending command to delete logs with message: "${messageToDelete}"`);
-        clientRef.current.publish(
-          "subrack/error/data/delete/by_message",
-          JSON.stringify({ message: messageToDelete }),
-          (err) => {
-            if (err) {
-              toast.error(`Failed to send delete by message command: ${err.message} 🚫`);
-              console.error("Publish error:", err);
-              Swal.fire('Failed!', 'Could not send delete by message command.', 'error');
-            } else {
-              // Sukses toast akan muncul saat backend merespons dengan data baru (tanpa log yang dihapus)
-              Swal.fire('Initiated!', 'Delete by message command sent. Table will refresh shortly.', 'success');
-            }
+    toast(`Delete logs with message: "${messageToDelete}"?`, {
+      description: "This action cannot be undone for these specific logs!",
+      action: {
+        label: "Yes, delete them",
+        onClick: () => {
+          if (clientRef.current?.connected) {
+            toast.info(
+              `Sending command to delete logs with message: "${messageToDelete}"`
+            );
+            clientRef.current.publish(
+              "subrack/error/data/delete/by_message",
+              JSON.stringify({ message: messageToDelete }),
+              (err) => {
+                if (err) {
+                  toast.error(
+                    `Failed to send delete by message command: ${err.message}`
+                  );
+                  console.error("Publish error:", err);
+                } else {
+                  // Sukses toast akan muncul saat backend merespons dengan data baru (tanpa log yang dihapus)
+                  toast.success(
+                    "Delete by message command sent. Table will refresh shortly."
+                  );
+                }
+              }
+            );
+          } else {
+            toast.error(
+              "MQTT not connected to send delete by message command."
+            );
           }
-        );
-      } else {
-        toast.error("MQTT not connected to send delete by message command. 🚨");
-        Swal.fire('Error!', 'MQTT not connected.', 'error');
-      }
-    } else {
-        toast.info("Delete by message cancelled.");
-    }
+        },
+      },
+      cancel: {
+        label: "Cancel",
+        onClick: () => {
+          toast.info("Delete by message cancelled.");
+        },
+      },
+    });
   }, []);
 
   const resolveError = useCallback(async (errorId: string) => {
-    const result = await Swal.fire({
-      title: 'Mark as Resolved?',
-      text: "This action will mark the error as resolved in the system.",
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Yes, resolve it!',
-      reverseButtons: true,
-    });
-
-    if (result.isConfirmed) {
-      if (clientRef.current?.connected) {
-        toast.info(`Sending command to resolve error ID: ${errorId}`);
-        clientRef.current.publish(
-          "subrack/error/data/resolve",
-          JSON.stringify({ id: errorId }),
-          (err) => {
-            if (err) {
-              toast.error(`Failed to send resolve command: ${err.message} 🚫`);
-              console.error("Publish error:", err);
-              Swal.fire('Failed!', 'Could not send resolve command.', 'error');
-            } else {
-              // Sukses toast akan muncul saat backend merespons dengan data baru
-              Swal.fire('Initiated!', 'Resolve command sent. Table will refresh shortly.', 'success');
-            }
+    toast("Mark error as resolved?", {
+      description: "This action will mark the error as resolved in the system.",
+      action: {
+        label: "Yes, resolve it",
+        onClick: () => {
+          if (clientRef.current?.connected) {
+            toast.info(`Sending command to resolve error ID: ${errorId}`);
+            clientRef.current.publish(
+              "subrack/error/data/resolve",
+              JSON.stringify({ id: errorId }),
+              (err) => {
+                if (err) {
+                  toast.error(`Failed to send resolve command: ${err.message}`);
+                  console.error("Publish error:", err);
+                } else {
+                  // Sukses toast akan muncul saat backend merespons dengan data baru
+                  toast.success(
+                    "Resolve command sent. Table will refresh shortly."
+                  );
+                }
+              }
+            );
+          } else {
+            toast.error("MQTT not connected to send resolve command.");
           }
-        );
-      } else {
-        toast.error("MQTT not connected to send resolve command. 🚨");
-        Swal.fire('Error!', 'MQTT not connected.', 'error');
-      }
-    } else {
-        toast.info("Resolve action cancelled.");
-    }
+        },
+      },
+      cancel: {
+        label: "Cancel",
+        onClick: () => {
+          toast.info("Resolve action cancelled.");
+        },
+      },
+    });
   }, []);
 
   const exportExcel = useCallback(() => {
@@ -340,19 +365,32 @@ export default function ErrorLogPage() {
   }, [logs]);
 
   const totalPages = Math.ceil(sorted.length / logsPerPage);
-  const currentLogs = sorted.slice((currentPage - 1) * logsPerPage, currentPage * logsPerPage);
+  const currentLogs = sorted.slice(
+    (currentPage - 1) * logsPerPage,
+    currentPage * logsPerPage
+  );
 
   const getTypeBadge = (type: string, status?: string) => {
     const t = type.toLowerCase();
     const s = status?.toLowerCase();
 
     if (s === "resolved") {
-      return <Badge variant="outline" className="bg-green-100 text-green-700 border-green-500">Resolved</Badge>;
+      return (
+        <Badge
+          variant="outline"
+          className="bg-green-100 text-green-700 border-green-500"
+        >
+          Resolved
+        </Badge>
+      );
     }
     if (t === "critical") return <Badge variant="destructive">{type}</Badge>;
     if (t === "major")
       return (
-        <Badge variant="outline" className="bg-orange-300 border-orange-600 text-orange-600">
+        <Badge
+          variant="outline"
+          className="bg-orange-300 border-orange-600 text-orange-600"
+        >
           {type}
         </Badge>
       );
@@ -363,9 +401,12 @@ export default function ErrorLogPage() {
     const t = type.toLowerCase();
     const s = status?.toLowerCase();
 
-    if (s === "resolved") return <CheckCircle className="text-green-500 w-4 h-4 mr-1" />;
-    if (t === "critical") return <CircleAlert className="text-red-500 w-4 h-4 mr-1" />;
-    if (t === "major") return <AlertTriangle className="text-orange-500 w-4 h-4 mr-1" />;
+    if (s === "resolved")
+      return <CheckCircle className="text-green-500 w-4 h-4 mr-1" />;
+    if (t === "critical")
+      return <CircleAlert className="text-red-500 w-4 h-4 mr-1" />;
+    if (t === "major")
+      return <AlertTriangle className="text-orange-500 w-4 h-4 mr-1" />;
     return <Bug className="text-muted-foreground w-4 h-4 mr-1" />;
   };
 
@@ -389,7 +430,7 @@ export default function ErrorLogPage() {
       const source = log.source || "unknown";
       const logDate = new Date(log.Timestamp);
       const hour = logDate.getHours();
-      const dayKey = logDate.toISOString().split('T')[0];
+      const dayKey = logDate.toISOString().split("T")[0];
 
       // Type counts
       counts[t] = (counts[t] || 0) + 1;
@@ -412,11 +453,16 @@ export default function ErrorLogPage() {
       }
     });
 
-    const mostCommonActive = Object.entries(activeCounts).sort((a, b) => b[1] - a[1])[0];
-    const mostActiveSource = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1])[0];
+    const mostCommonActive = Object.entries(activeCounts).sort(
+      (a, b) => b[1] - a[1]
+    )[0];
+    const mostActiveSource = Object.entries(sourceCounts).sort(
+      (a, b) => b[1] - a[1]
+    )[0];
 
     // Calculate resolution rate
-    const resolutionRate = logs.length > 0 ? (resolvedTotal / logs.length) * 100 : 0;
+    const resolutionRate =
+      logs.length > 0 ? (resolvedTotal / logs.length) * 100 : 0;
 
     return {
       total: filteredLogs.length,
@@ -445,7 +491,12 @@ export default function ErrorLogPage() {
         </div>
         <div className="flex items-center gap-2">
           <MqttStatus />
-          <Button variant="outline" size="icon" onClick={refreshLogs} title="Refresh Logs">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={refreshLogs}
+            title="Refresh Logs"
+          >
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
@@ -456,7 +507,9 @@ export default function ErrorLogPage() {
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Errors</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Total Errors
+              </CardTitle>
               <Activity className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
@@ -467,7 +520,9 @@ export default function ErrorLogPage() {
 
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Errors</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Active Errors
+              </CardTitle>
               <AlertTriangle className="h-4 w-4 text-red-500" />
             </CardHeader>
             <CardContent>
@@ -482,18 +537,26 @@ export default function ErrorLogPage() {
               <CheckCircle className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{analytics.resolvedTotal}</div>
-              <p className="text-xs text-muted-foreground">Successfully resolved</p>
+              <div className="text-2xl font-bold">
+                {analytics.resolvedTotal}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Successfully resolved
+              </p>
             </CardContent>
           </Card>
 
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Resolution Rate</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Resolution Rate
+              </CardTitle>
               <Target className="h-4 w-4 text-purple-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{analytics.resolutionRate.toFixed(1)}%</div>
+              <div className="text-2xl font-bold">
+                {analytics.resolutionRate.toFixed(1)}%
+              </div>
               <p className="text-xs text-muted-foreground">Success rate</p>
             </CardContent>
           </Card>
@@ -533,19 +596,26 @@ export default function ErrorLogPage() {
                 <CardContent>
                   <div className="space-y-3">
                     {Object.entries(analytics.counts).map(([type, count]) => (
-                      <div key={type} className="flex items-center justify-between">
+                      <div
+                        key={type}
+                        className="flex items-center justify-between"
+                      >
                         <div className="flex items-center gap-2">
                           {getTypeIcon(type)}
                           <span className="capitalize font-medium">{type}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="w-32 bg-gray-200 rounded-full h-2">
-                            <div 
+                            <div
                               className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                              style={{ width: `${(count / analytics.total) * 100}%` }}
+                              style={{
+                                width: `${(count / analytics.total) * 100}%`,
+                              }}
                             ></div>
                           </div>
-                          <span className="text-sm font-semibold w-8 text-right">{count}</span>
+                          <span className="text-sm font-semibold w-8 text-right">
+                            {count}
+                          </span>
                         </div>
                       </div>
                     ))}
@@ -562,20 +632,29 @@ export default function ErrorLogPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {Object.entries(analytics.sourceCounts).slice(0, 6).map(([source, count]) => (
-                      <div key={source} className="flex items-center justify-between">
-                        <span className="font-medium truncate">{source}</span>
-                        <div className="flex items-center gap-2">
-                          <div className="w-24 bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-purple-500 h-2 rounded-full transition-all duration-300"
-                              style={{ width: `${(count / analytics.total) * 100}%` }}
-                            ></div>
+                    {Object.entries(analytics.sourceCounts)
+                      .slice(0, 6)
+                      .map(([source, count]) => (
+                        <div
+                          key={source}
+                          className="flex items-center justify-between"
+                        >
+                          <span className="font-medium truncate">{source}</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-24 bg-gray-200 rounded-full h-2">
+                              <div
+                                className="bg-purple-500 h-2 rounded-full transition-all duration-300"
+                                style={{
+                                  width: `${(count / analytics.total) * 100}%`,
+                                }}
+                              ></div>
+                            </div>
+                            <span className="text-sm font-semibold w-8 text-right">
+                              {count}
+                            </span>
                           </div>
-                          <span className="text-sm font-semibold w-8 text-right">{count}</span>
                         </div>
-                      </div>
-                    ))}
+                      ))}
                   </div>
                 </CardContent>
               </Card>
@@ -597,24 +676,43 @@ export default function ErrorLogPage() {
                     <div>
                       <div className="flex justify-between mb-1">
                         <span className="text-sm text-red-600">Active</span>
-                        <span className="text-sm font-semibold">{analytics.activeTotal}</span>
+                        <span className="text-sm font-semibold">
+                          {analytics.activeTotal}
+                        </span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-3">
-                        <div 
+                        <div
                           className="bg-red-500 h-3 rounded-full transition-all duration-500"
-                          style={{ width: `${analytics.totalAll > 0 ? (analytics.activeTotal / analytics.totalAll) * 100 : 0}%` }}
+                          style={{
+                            width: `${
+                              analytics.totalAll > 0
+                                ? (analytics.activeTotal / analytics.totalAll) *
+                                  100
+                                : 0
+                            }%`,
+                          }}
                         ></div>
                       </div>
                     </div>
                     <div>
                       <div className="flex justify-between mb-1">
                         <span className="text-sm text-green-600">Resolved</span>
-                        <span className="text-sm font-semibold">{analytics.resolvedTotal}</span>
+                        <span className="text-sm font-semibold">
+                          {analytics.resolvedTotal}
+                        </span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-3">
-                        <div 
+                        <div
                           className="bg-green-500 h-3 rounded-full transition-all duration-500"
-                          style={{ width: `${analytics.totalAll > 0 ? (analytics.resolvedTotal / analytics.totalAll) * 100 : 0}%` }}
+                          style={{
+                            width: `${
+                              analytics.totalAll > 0
+                                ? (analytics.resolvedTotal /
+                                    analytics.totalAll) *
+                                  100
+                                : 0
+                            }%`,
+                          }}
                         ></div>
                       </div>
                     </div>
@@ -635,9 +733,15 @@ export default function ErrorLogPage() {
                       <div className="text-3xl">
                         {getTypeIcon(analytics.mostCommonActive[0], "active")}
                       </div>
-                      <div className="font-semibold capitalize">{analytics.mostCommonActive[0]}</div>
-                      <div className="text-2xl font-bold">{analytics.mostCommonActive[1]}</div>
-                      <div className="text-sm text-muted-foreground">Active errors</div>
+                      <div className="font-semibold capitalize">
+                        {analytics.mostCommonActive[0]}
+                      </div>
+                      <div className="text-2xl font-bold">
+                        {analytics.mostCommonActive[1]}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Active errors
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center text-muted-foreground">
@@ -658,9 +762,15 @@ export default function ErrorLogPage() {
                   {analytics.mostActiveSource ? (
                     <div className="text-center space-y-2">
                       <div className="text-3xl">🔧</div>
-                      <div className="font-semibold truncate">{analytics.mostActiveSource[0]}</div>
-                      <div className="text-2xl font-bold">{analytics.mostActiveSource[1]}</div>
-                      <div className="text-sm text-muted-foreground">Total errors</div>
+                      <div className="font-semibold truncate">
+                        {analytics.mostActiveSource[0]}
+                      </div>
+                      <div className="text-2xl font-bold">
+                        {analytics.mostActiveSource[1]}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Total errors
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center text-muted-foreground">
@@ -683,21 +793,35 @@ export default function ErrorLogPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {Object.entries(analytics.hourlyDistribution).map(([hour, count]) => (
-                    <div key={hour} className="flex items-center gap-3">
-                      <span className="text-xs w-8 text-right">{hour}:00</span>
-                      <div className="flex-1 bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-300"
-                          style={{ 
-                            width: `${Object.values(analytics.hourlyDistribution).length > 0 ? 
-                              (count / Math.max(...Object.values(analytics.hourlyDistribution))) * 100 : 0}%` 
-                          }}
-                        ></div>
+                  {Object.entries(analytics.hourlyDistribution).map(
+                    ([hour, count]) => (
+                      <div key={hour} className="flex items-center gap-3">
+                        <span className="text-xs w-8 text-right">
+                          {hour}:00
+                        </span>
+                        <div className="flex-1 bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full transition-all duration-300"
+                            style={{
+                              width: `${
+                                Object.values(analytics.hourlyDistribution)
+                                  .length > 0
+                                  ? (count /
+                                      Math.max(
+                                        ...Object.values(
+                                          analytics.hourlyDistribution
+                                        )
+                                      )) *
+                                    100
+                                  : 0
+                              }%`,
+                            }}
+                          ></div>
+                        </div>
+                        <span className="text-xs w-6 text-left">{count}</span>
                       </div>
-                      <span className="text-xs w-6 text-left">{count}</span>
-                    </div>
-                  ))}
+                    )
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -715,22 +839,39 @@ export default function ErrorLogPage() {
                     .sort(([a], [b]) => b.localeCompare(a))
                     .slice(0, 7)
                     .map(([date, count]) => (
-                    <div key={date} className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{new Date(date).toLocaleDateString()}</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-32 bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full transition-all duration-300"
-                            style={{ 
-                              width: `${Object.values(analytics.dailyTrends).length > 0 ? 
-                                (count / Math.max(...Object.values(analytics.dailyTrends))) * 100 : 0}%` 
-                            }}
-                          ></div>
+                      <div
+                        key={date}
+                        className="flex items-center justify-between"
+                      >
+                        <span className="text-sm font-medium">
+                          {new Date(date).toLocaleDateString()}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-32 bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full transition-all duration-300"
+                              style={{
+                                width: `${
+                                  Object.values(analytics.dailyTrends).length >
+                                  0
+                                    ? (count /
+                                        Math.max(
+                                          ...Object.values(
+                                            analytics.dailyTrends
+                                          )
+                                        )) *
+                                      100
+                                    : 0
+                                }%`,
+                              }}
+                            ></div>
+                          </div>
+                          <span className="text-sm font-semibold w-8 text-right">
+                            {count}
+                          </span>
                         </div>
-                        <span className="text-sm font-semibold w-8 text-right">{count}</span>
                       </div>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               </CardContent>
             </Card>
@@ -760,7 +901,7 @@ export default function ErrorLogPage() {
                       />
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Type</label>
                     <Select value={filterType} onValueChange={setFilterType}>
@@ -778,7 +919,10 @@ export default function ErrorLogPage() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Status</label>
-                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <Select
+                      value={filterStatus}
+                      onValueChange={setFilterStatus}
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -808,113 +952,180 @@ export default function ErrorLogPage() {
               </CardContent>
             </Card>
 
-        {/* Table Card */}
-        <Card>
-          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <CardTitle className="text-base">Error Logs</CardTitle>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="destructive" onClick={deleteAllLogs} title="Delete all logs" disabled={logs.length === 0}>
-                <Trash2 className="w-4 h-4 mr-1" /> Delete All
-              </Button>
-              <Button size="sm" variant="secondary" onClick={exportExcel} title="Export logs to Excel" disabled={logs.length === 0}>
-                <Download className="w-4 h-4 mr-1" /> Export to Excel
-              </Button>
-            </div>
-          </CardHeader>
+            {/* Table Card */}
+            <Card>
+              <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <CardTitle className="text-base">Error Logs</CardTitle>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={deleteAllLogs}
+                    title="Delete all logs"
+                    disabled={logs.length === 0}
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" /> Delete All
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={exportExcel}
+                    title="Export logs to Excel"
+                    disabled={logs.length === 0}
+                  >
+                    <Download className="w-4 h-4 mr-1" /> Export to Excel
+                  </Button>
+                </div>
+              </CardHeader>
 
-          <CardContent>
-            <Table className="bg-background mt-4">
-              <TableCaption>Error logs from your devices. Export, clear, or manage as needed.</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("source")}>
-                    Source <ArrowUpDown className="inline w-4 h-4 ml-1" />
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("data")}>
-                    Data <ArrowUpDown className="inline w-4 h-4 ml-1" />
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("type")}>
-                    Type <ArrowUpDown className="inline w-4 h-4 ml-1" />
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("Timestamp")}>
-                    Timestamp <ArrowUpDown className="inline w-4 h-4 ml-1" />
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("status")}>
-                    Status <ArrowUpDown className="inline w-4 h-4 ml-1" />
-                  </TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentLogs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
-                      <MessageSquareOff className="w-8 h-8 mx-auto mb-2" />
-                      No logs available.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  currentLogs.map((log, i) => (
-                    <TableRow key={log.id || i}>
-                      <TableCell>{(currentPage - 1) * logsPerPage + i + 1}</TableCell>
-                      <TableCell>{log.source || "N/A"}</TableCell>
-                      <TableCell className="max-w-xs truncate" title={log.data}>{log.data}</TableCell>
-                      <TableCell>{getTypeBadge(log.type, log.status)}</TableCell>
-                      <TableCell>{log.Timestamp}</TableCell>
-                      <TableCell>
-                        <Badge variant={log.status === "resolved" ? "outline" : "default"}
-                               className={log.status === "resolved" ? "bg-green-100 text-green-700 border-green-500" : "bg-red-100 text-red-700 border-red-500"}>
-                          {log.status || "active"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="space-x-2">
-                        {log.status !== "resolved" && (
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            onClick={() => resolveError(log.id)}
-                            title="Mark as Resolved"
-                          >
-                            <CheckCircle className="w-4 h-4 text-green-500" />
-                          </Button>
-                        )}
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => deleteErrorByMessage(log.data)}
-                          title="Delete all with this message"
-                        >
-                          <MessageSquareOff className="w-4 h-4 text-red-500" />
-                        </Button>
-                      </TableCell>
+              <CardContent>
+                <Table className="bg-background mt-4">
+                  <TableCaption>
+                    Error logs from your devices. Export, clear, or manage as
+                    needed.
+                  </TableCaption>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>#</TableHead>
+                      <TableHead
+                        className="cursor-pointer"
+                        onClick={() => handleSort("source")}
+                      >
+                        Source <ArrowUpDown className="inline w-4 h-4 ml-1" />
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer"
+                        onClick={() => handleSort("data")}
+                      >
+                        Data <ArrowUpDown className="inline w-4 h-4 ml-1" />
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer"
+                        onClick={() => handleSort("type")}
+                      >
+                        Type <ArrowUpDown className="inline w-4 h-4 ml-1" />
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer"
+                        onClick={() => handleSort("Timestamp")}
+                      >
+                        Timestamp{" "}
+                        <ArrowUpDown className="inline w-4 h-4 ml-1" />
+                      </TableHead>
+                      <TableHead
+                        className="cursor-pointer"
+                        onClick={() => handleSort("status")}
+                      >
+                        Status <ArrowUpDown className="inline w-4 h-4 ml-1" />
+                      </TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {currentLogs.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={7}
+                          className="text-center py-6 text-muted-foreground"
+                        >
+                          <MessageSquareOff className="w-8 h-8 mx-auto mb-2" />
+                          No logs available.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      currentLogs.map((log, i) => (
+                        <TableRow key={log.id || i}>
+                          <TableCell>
+                            {(currentPage - 1) * logsPerPage + i + 1}
+                          </TableCell>
+                          <TableCell>{log.source || "N/A"}</TableCell>
+                          <TableCell
+                            className="max-w-xs truncate"
+                            title={log.data}
+                          >
+                            {log.data}
+                          </TableCell>
+                          <TableCell>
+                            {getTypeBadge(log.type, log.status)}
+                          </TableCell>
+                          <TableCell>{log.Timestamp}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                log.status === "resolved"
+                                  ? "outline"
+                                  : "default"
+                              }
+                              className={
+                                log.status === "resolved"
+                                  ? "bg-green-100 text-green-700 border-green-500"
+                                  : "bg-red-100 text-red-700 border-red-500"
+                              }
+                            >
+                              {log.status || "active"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="space-x-2">
+                            {log.status !== "resolved" && (
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                onClick={() => resolveError(log.id)}
+                                title="Mark as Resolved"
+                              >
+                                <CheckCircle className="w-4 h-4 text-green-500" />
+                              </Button>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => deleteErrorByMessage(log.data)}
+                              title="Delete all with this message"
+                            >
+                              <MessageSquareOff className="w-4 h-4 text-red-500" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
 
-            {totalPages > 1 && (
-              <Pagination className="mt-4">
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious href="#" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} />
-                  </PaginationItem>
-                  {Array.from({ length: totalPages }).map((_, i) => (
-                    <PaginationItem key={i}>
-                      <PaginationLink href="#" isActive={currentPage === i + 1} onClick={() => setCurrentPage(i + 1)}>
-                        {i + 1}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                  <PaginationItem>
-                    <PaginationNext href="#" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            )}
-          </CardContent>
-        </Card>
+                {totalPages > 1 && (
+                  <Pagination className="mt-4">
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          href="#"
+                          onClick={() =>
+                            setCurrentPage((p) => Math.max(1, p - 1))
+                          }
+                        />
+                      </PaginationItem>
+                      {Array.from({ length: totalPages }).map((_, i) => (
+                        <PaginationItem key={i}>
+                          <PaginationLink
+                            href="#"
+                            isActive={currentPage === i + 1}
+                            onClick={() => setCurrentPage(i + 1)}
+                          >
+                            {i + 1}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ))}
+                      <PaginationItem>
+                        <PaginationNext
+                          href="#"
+                          onClick={() =>
+                            setCurrentPage((p) => Math.min(totalPages, p + 1))
+                          }
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

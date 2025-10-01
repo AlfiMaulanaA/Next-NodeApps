@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 
 export interface User {
-  id: number;
+  id: string;
   name: string;
   email: string;
   department: string;
@@ -54,26 +54,81 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
 
-      const response = await fetch("/api/auth/login/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
+      // Get existing MQTT client from the global MQTT system
+      const { connectMQTTAsync } = await import("@/lib/mqttClient");
+      const client = await connectMQTTAsync();
+
+      return new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.error("Login timeout");
+          resolve(false);
+        }, 5000);
+
+        // Subscribe to response topic
+        client.subscribe("response_user_management", { qos: 1 }, (err) => {
+          if (err) {
+            console.error("Failed to subscribe to auth response:", err);
+            resolve(false);
+            return;
+          }
+
+          // Send authentication request
+          const authRequest = {
+            command: "authenticate",
+            data: { email, password },
+          };
+
+          client.publish(
+            "command_user_management",
+            JSON.stringify(authRequest),
+            { qos: 1 },
+            (err) => {
+              if (err) {
+                console.error("Failed to publish auth request:", err);
+                resolve(false);
+                clearTimeout(timeout);
+                return;
+              }
+            }
+          );
+        });
+
+        const responseHandler = (topic: string, message: Buffer) => {
+          if (topic === "response_user_management") {
+            try {
+              const response = JSON.parse(message.toString());
+              if (
+                response.command === "authenticate" &&
+                response.success &&
+                response.data
+              ) {
+                const userData = response.data;
+                setUser(userData as User);
+                localStorage.setItem("auth_user", JSON.stringify(userData));
+                console.log("Login successful:", userData.name);
+                resolve(true);
+              } else {
+                console.error(
+                  "Login failed:",
+                  response.error || "Invalid credentials"
+                );
+                resolve(false);
+              }
+            } catch (error) {
+              console.error("Login response error:", error);
+              resolve(false);
+            } finally {
+              clearTimeout(timeout);
+              client.removeListener("message", responseHandler);
+              client.unsubscribe("response_user_management");
+            }
+          }
+        };
+
+        client.on("message", responseHandler);
       });
-
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        setUser(data.data);
-        localStorage.setItem("auth_user", JSON.stringify(data.data));
-        return true;
-      } else {
-        console.error("Login failed:", data.error);
-        return false;
-      }
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("Login setup error:", error);
       return false;
     } finally {
       setIsLoading(false);
@@ -81,48 +136,108 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    try {
-      // Call logout endpoint to perform server-side cleanup
-      await fetch("/api/auth/logout/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-    } catch (error) {
-      console.error("Logout API call failed:", error);
-      // Continue with client-side logout even if server call fails
-    } finally {
-      // Always clear client-side state
-      setUser(null);
-      localStorage.removeItem("auth_user");
-    }
+    // Static mode - client-side logout only
+    setUser(null);
+    localStorage.removeItem("auth_user");
   };
 
   const register = async (userData: RegisterData): Promise<boolean> => {
     try {
       setIsLoading(true);
 
-      const response = await fetch("/api/auth/register/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userData),
+      // Use MQTT integration instead of REST API
+      const { connectMQTTAsync } = await import("@/lib/mqttClient");
+      const client = await connectMQTTAsync();
+
+      return new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.error("Registration timeout");
+          resolve(false);
+        }, 10000);
+
+        // Subscribe to response topic
+        client.subscribe("response_user_management", { qos: 1 }, (err) => {
+          if (err) {
+            console.error("Failed to subscribe to register response:", err);
+            resolve(false);
+            return;
+          }
+
+          // Send registration request via MQTT
+          const registerRequest = {
+            command: "add",
+            data: {
+              name: userData.name,
+              email: userData.email,
+              password: userData.password,
+              department: userData.department,
+              status: "active",
+              role: userData.role || "user",
+            },
+          };
+
+          client.publish(
+            "command_user_management",
+            JSON.stringify(registerRequest),
+            { qos: 1 },
+            (err) => {
+              if (err) {
+                console.error("Failed to publish register request:", err);
+                resolve(false);
+                clearTimeout(timeout);
+                return;
+              }
+            }
+          );
+        });
+
+        const responseHandler = (topic: string, message: Buffer) => {
+          if (topic === "response_user_management") {
+            try {
+              const response = JSON.parse(message.toString());
+              if (response.command === "add") {
+                if (response.success && response.message) {
+                  console.log("Registration successful:", response.message);
+                  // Auto-login after successful registration
+                  const loginAfterRegister = async () => {
+                    try {
+                      const loginSuccess = await login(
+                        userData.email,
+                        userData.password
+                      );
+                      resolve(loginSuccess);
+                    } catch (loginErr) {
+                      console.error(
+                        "Auto-login after register failed:",
+                        loginErr
+                      );
+                      resolve(true); // Registration successful, but login failed
+                    }
+                  };
+                  loginAfterRegister();
+                } else {
+                  console.error(
+                    "Registration failed:",
+                    response.error || response.message
+                  );
+                  resolve(false);
+                }
+              }
+            } catch (error) {
+              console.error("Registration response error:", error);
+              resolve(false);
+            } finally {
+              clearTimeout(timeout);
+              client.removeListener("message", responseHandler);
+              client.unsubscribe("response_user_management");
+            }
+          }
+        };
+
+        client.on("message", responseHandler);
       });
-
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        setUser(data.data);
-        localStorage.setItem("auth_user", JSON.stringify(data.data));
-        return true;
-      } else {
-        console.error("Registration failed:", data.error);
-        return false;
-      }
     } catch (error) {
-      console.error("Registration error:", error);
+      console.error("Registration setup error:", error);
       return false;
     } finally {
       setIsLoading(false);

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import Swal from "sweetalert2";
 import { v4 as uuidv4 } from "uuid";
 import { connectMQTT, getMQTTClient, disconnectMQTT } from "@/lib/mqttClient";
 
@@ -9,10 +8,22 @@ import { connectMQTT, getMQTTClient, disconnectMQTT } from "@/lib/mqttClient";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,8 +61,13 @@ import {
   Brain,
   Activity,
   Code,
+  Eye,
+  Calendar,
+  MessageSquare,
+  Power,
 } from "lucide-react";
 import MqttStatus from "@/components/mqtt-status";
+import { toast } from "@/components/ui/use-toast";
 
 // Type definitions for updated requirements
 interface TriggerCondition {
@@ -63,7 +79,6 @@ interface TriggerCondition {
   pin_number: number;
   condition_operator: "is" | "and" | "or";
   target_value: boolean;
-  expected_value: boolean;
   delay_on?: number; // delay in seconds before trigger activates
   delay_off?: number; // delay in seconds before trigger deactivates
 }
@@ -160,6 +175,39 @@ const AutomationLogicControl = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+  const [selectedRule, setSelectedRule] = useState<AutomationLogicRule | null>(
+    null
+  );
+
+  // Alert and Confirmation Dialog States
+  const [alertDialogOpen, setAlertDialogOpen] = useState(false);
+  const [alertDialogContent, setAlertDialogContent] = useState<{
+    title: string;
+    description: string;
+  }>({ title: "", description: "" });
+
+  const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
+  const [confirmationDialogContent, setConfirmationDialogContent] = useState<{
+    title: string;
+    description: string;
+    confirmAction: () => void;
+  }>({ title: "", description: "", confirmAction: () => {} });
+
+  // Helper functions for alerts and confirmations
+  const showAlert = (title: string, description: string) => {
+    setAlertDialogContent({ title, description });
+    setAlertDialogOpen(true);
+  };
+
+  const showConfirmation = (
+    title: string,
+    description: string,
+    confirmAction: () => void
+  ) => {
+    setConfirmationDialogContent({ title, description, confirmAction });
+    setConfirmationDialogOpen(true);
+  };
 
   // Form States
   const [currentRule, setCurrentRule] = useState<AutomationLogicRule>({
@@ -188,11 +236,28 @@ const AutomationLogicControl = () => {
     label: `Pin ${i + 1}`,
   }));
 
-  // Available relay pins (1-8 based on relay modules)
-  const relayPins = Array.from({ length: 8 }, (_, i) => ({
-    value: i + 1,
-    label: `Relay Pin ${i + 1}`,
-  }));
+  // Function to get relay pins based on device PART_NUMBER
+  const getRelayPinsForDevice = useCallback(
+    (deviceName: string) => {
+      const selectedDevice = modularDevices.find(
+        (device) => device.name === deviceName
+      );
+      if (!selectedDevice) return [];
+
+      const totalPins =
+        selectedDevice.part_number === "RELAY"
+          ? 8
+          : selectedDevice.part_number === "RELAYMINI"
+          ? 6
+          : 8; // Default to 8 pins
+
+      return Array.from({ length: totalPins }, (_, i) => ({
+        value: i + 1,
+        label: `Relay Pin ${i + 1}`,
+      }));
+    },
+    [modularDevices]
+  );
 
   // MQTT Publishing Function
   const publishMQTT = useCallback((topic: string, message: any) => {
@@ -204,11 +269,10 @@ const AutomationLogicControl = () => {
       console.log(`Published to ${topic}:`, payload);
     } else {
       console.error("MQTT client not connected for publishing.");
-      Swal.fire({
-        icon: "error",
-        title: "MQTT Disconnected",
-        text: "Cannot send command, MQTT client is not connected.",
-      });
+      showAlert(
+        "MQTT Disconnected",
+        "Cannot send command, MQTT client is not connected."
+      );
     }
   }, []);
 
@@ -336,11 +400,10 @@ const AutomationLogicControl = () => {
           } catch (error) {
             console.error("Error parsing MQTT message:", error);
             setLoading(false);
-            Swal.fire({
-              icon: "error",
-              title: "Parsing Error",
-              text: "An error occurred while processing the response.",
-            });
+            showAlert(
+              "Parsing Error",
+              "An error occurred while processing the response."
+            );
           }
         });
       } catch (error) {
@@ -366,12 +429,10 @@ const AutomationLogicControl = () => {
     setLoading(false);
 
     if (payload.status === "success") {
-      Swal.fire({
-        icon: "success",
+      toast({
         title: "Success",
-        text: payload.message,
-        timer: 2000,
-        showConfirmButton: false,
+        description: payload.message,
+        duration: 2000,
       });
 
       // Refresh data after successful operation
@@ -384,11 +445,7 @@ const AutomationLogicControl = () => {
         closeModal();
       }
     } else {
-      Swal.fire({
-        icon: "error",
-        title: "Error",
-        text: payload.message || "An error occurred",
-      });
+      showAlert("Error", payload.message || "An error occurred");
     }
   };
 
@@ -415,11 +472,11 @@ const AutomationLogicControl = () => {
                 device_name: "",
                 device_address: 0,
                 device_bus: 0,
+                device_topic: "",
                 trigger_type: "drycontact",
                 pin_number: 1,
                 condition_operator: "is",
                 target_value: true,
-                expected_value: true,
                 delay_on: 0,
                 delay_off: 0,
               },
@@ -442,6 +499,16 @@ const AutomationLogicControl = () => {
     setIsModalOpen(true);
   };
 
+  const openDetailDialog = (rule: AutomationLogicRule) => {
+    setSelectedRule(rule);
+    setIsDetailDialogOpen(true);
+  };
+
+  const closeDetailDialog = () => {
+    setSelectedRule(null);
+    setIsDetailDialogOpen(false);
+  };
+
   const closeModal = () => {
     setIsModalOpen(false);
     setIsEditing(false);
@@ -462,59 +529,41 @@ const AutomationLogicControl = () => {
 
     // Validation
     if (!currentRule.rule_name.trim()) {
-      Swal.fire({
-        icon: "error",
-        title: "Validation Error",
-        text: "Please enter a rule name.",
-      });
+      showAlert("Validation Error", "Please enter a rule name.");
       return;
     }
 
     if (!currentRule.group_rule_name.trim()) {
-      Swal.fire({
-        icon: "error",
-        title: "Validation Error",
-        text: "Please enter a group rule name.",
-      });
+      showAlert("Validation Error", "Please enter a group rule name.");
       return;
     }
 
     if (currentRule.trigger_groups.length === 0) {
-      Swal.fire({
-        icon: "error",
-        title: "Validation Error",
-        text: "Please add at least one trigger group.",
-      });
+      showAlert("Validation Error", "Please add at least one trigger group.");
       return;
     }
 
     if (currentRule.actions.length === 0) {
-      Swal.fire({
-        icon: "error",
-        title: "Validation Error",
-        text: "Please add at least one action.",
-      });
+      showAlert("Validation Error", "Please add at least one action.");
       return;
     }
 
     // Validate trigger groups
     for (const group of currentRule.trigger_groups) {
       if (group.triggers.length === 0) {
-        Swal.fire({
-          icon: "error",
-          title: "Validation Error",
-          text: `Trigger group "${group.group_name}" must have at least one trigger.`,
-        });
+        showAlert(
+          "Validation Error",
+          `Trigger group "${group.group_name}" must have at least one trigger.`
+        );
         return;
       }
 
       for (const trigger of group.triggers) {
         if (!trigger.device_name) {
-          Swal.fire({
-            icon: "error",
-            title: "Validation Error",
-            text: "All triggers must have a device name.",
-          });
+          showAlert(
+            "Validation Error",
+            "All triggers must have a device name."
+          );
           return;
         }
       }
@@ -529,19 +578,11 @@ const AutomationLogicControl = () => {
   };
 
   const confirmDelete = (rule: AutomationLogicRule) => {
-    Swal.fire({
-      title: "Delete Automation Rule",
-      text: `Are you sure you want to delete "${rule.rule_name}"? This action cannot be undone.`,
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#d33",
-      cancelButtonColor: "#3085d6",
-      confirmButtonText: "Yes, delete it!",
-    }).then((result) => {
-      if (result.isConfirmed) {
-        deleteRule(rule.id);
-      }
-    });
+    showConfirmation(
+      "Delete Automation Rule",
+      `Are you sure you want to delete "${rule.rule_name}"? This action cannot be undone.`,
+      () => deleteRule(rule.id)
+    );
   };
 
   // Helper functions for trigger group management
@@ -556,14 +597,13 @@ const AutomationLogicControl = () => {
           triggers: [
             {
               device_name: "",
-              device_mac: "",
               device_address: 0,
               device_bus: 0,
+              device_topic: "",
               trigger_type: "drycontact",
               pin_number: 1,
               condition_operator: "is",
               target_value: true,
-              expected_value: true,
               delay_on: 0,
               delay_off: 0,
             },
@@ -598,11 +638,11 @@ const AutomationLogicControl = () => {
           device_name: "",
           device_address: 0,
           device_bus: 0,
+          device_topic: "",
           trigger_type: "drycontact" as const,
           pin_number: 1,
           condition_operator: "is" as const,
           target_value: true,
-          expected_value: true,
           delay_on: 0,
           delay_off: 0,
         },
@@ -782,58 +822,71 @@ const AutomationLogicControl = () => {
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Summary Cards - Modern Design */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Brain className="h-5 w-5" />
-              <CardTitle>Automation Logic Overview</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 rounded-xl border">
-                <Brain className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                  {totalRules}
-                </div>
-                <div className="text-sm text-blue-600 dark:text-blue-400">
-                  Logic Rules
-                </div>
+        {/* Summary Cards - New Clean Design */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Logic Rules</CardTitle>
+              <Brain className="h-5 w-5 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalRules}</div>
+              <p className="text-xs text-muted-foreground">
+                Active automation rules
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Trigger Groups
+              </CardTitle>
+              <Activity className="h-5 w-5 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {automationConfig?.logic_rules?.reduce(
+                  (sum, rule) => sum + (rule.trigger_groups?.length || 0),
+                  0
+                ) || 0}
               </div>
-              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 rounded-xl border">
-                <Activity className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-                  {automationConfig?.logic_rules?.reduce(
-                    (sum, rule) => sum + (rule.trigger_groups?.length || 0),
-                    0
-                  ) || 0}
-                </div>
-                <div className="text-sm text-green-600 dark:text-green-400">
-                  Trigger Groups
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 rounded-xl border">
-                <Code className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                  {totalTriggers}
-                </div>
-                <div className="text-sm text-purple-600 dark:text-purple-400">
-                  Triggers
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 rounded-xl border">
-                <Zap className="h-8 w-8 mx-auto mb-2 text-orange-600" />
-                <div className="text-2xl font-bold text-orange-700 dark:text-orange-300">
-                  {totalActions}
-                </div>
-                <div className="text-sm text-orange-600 dark:text-orange-400">
-                  Actions
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              <p className="text-xs text-muted-foreground">
+                Condition groups configured
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Total Triggers
+              </CardTitle>
+              <Code className="h-5 w-5 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalTriggers}</div>
+              <p className="text-xs text-muted-foreground">
+                Individual conditions
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Total Actions
+              </CardTitle>
+              <Zap className="h-5 w-5 text-orange-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalActions}</div>
+              <p className="text-xs text-muted-foreground">
+                Automated responses
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Logic Rules Table - Simplified */}
         <div className="rounded-lg border bg-background shadow-sm">
@@ -860,13 +913,13 @@ const AutomationLogicControl = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-16">#</TableHead>
-                      <TableHead>Rule Name</TableHead>
-                      <TableHead className="text-center w-24">
-                        Triggers
+                      <TableHead className="min-w-48">
+                        Rule Information
                       </TableHead>
-                      <TableHead className="text-center w-24">
-                        Actions
+                      <TableHead className="min-w-80">
+                        Trigger Conditions
                       </TableHead>
+                      <TableHead className="min-w-80">Actions</TableHead>
                       <TableHead className="text-center w-32">
                         Controls
                       </TableHead>
@@ -887,19 +940,43 @@ const AutomationLogicControl = () => {
                             {(currentPage - 1) * itemsPerPage + index + 1}
                           </TableCell>
                           <TableCell>
-                            <div className="font-medium">{rule.rule_name}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {rule.group_rule_name}
+                            <div className="space-y-1">
+                              <div className="font-medium text-base">
+                                {rule.rule_name}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {rule.group_rule_name}
+                              </div>
+                              {rule.description && (
+                                <div className="text-xs text-muted-foreground italic">
+                                  {rule.description}
+                                </div>
+                              )}
+                              {rule.created_at && (
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Calendar className="h-3 w-3" />
+                                  {new Date(rule.created_at).toLocaleDateString(
+                                    "id-ID",
+                                    {
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    }
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="text-left">
-                            <div className="space-y-2">
+                            <div className="space-y-2 max-w-sm">
                               {rule.trigger_groups?.map((group, groupIdx) => (
                                 <div
                                   key={groupIdx}
                                   className="border rounded-md p-2 bg-muted/20"
                                 >
-                                  <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center justify-between mb-1">
                                     <Badge
                                       variant="secondary"
                                       className="text-xs"
@@ -914,94 +991,160 @@ const AutomationLogicControl = () => {
                                     </Badge>
                                   </div>
                                   <div className="space-y-1">
-                                    {group.triggers?.map(
-                                      (trigger, triggerIdx) => (
+                                    {group.triggers
+                                      ?.slice(0, 2)
+                                      .map((trigger, triggerIdx) => (
                                         <div
                                           key={triggerIdx}
-                                          className="text-xs bg-background/50 rounded px-2 py-1"
+                                          className="text-xs bg-background/60 rounded px-2 py-1"
                                         >
-                                          <div className="font-medium">
+                                          <div className="font-medium truncate">
                                             {trigger.device_name} - Pin{" "}
                                             {trigger.pin_number}
                                           </div>
                                           <div className="text-muted-foreground">
                                             {trigger.condition_operator.toUpperCase()}{" "}
-                                            {trigger.target_value
-                                              ? "TRUE"
-                                              : "FALSE"}
-                                            {((trigger.delay_on ?? 0) > 0 ||
-                                              (trigger.delay_off ?? 0) > 0) && (
-                                              <span className="ml-2 text-orange-600">
-                                                (Delay: ON{" "}
-                                                {trigger.delay_on ?? 0}s, OFF{" "}
-                                                {trigger.delay_off ?? 0}s)
-                                              </span>
-                                            )}
+                                            <Badge
+                                              variant={
+                                                trigger.target_value
+                                                  ? "default"
+                                                  : "outline"
+                                              }
+                                              className="text-xs ml-1"
+                                            >
+                                              {trigger.target_value
+                                                ? "TRUE"
+                                                : "FALSE"}
+                                            </Badge>
                                           </div>
+                                          {((trigger.delay_on ?? 0) > 0 ||
+                                            (trigger.delay_off ?? 0) > 0) && (
+                                            <div className="text-xs text-orange-600">
+                                              Delay: {trigger.delay_on ?? 0}s/
+                                              {trigger.delay_off ?? 0}s
+                                            </div>
+                                          )}
                                         </div>
-                                      )
+                                      ))}
+                                    {(group.triggers?.length || 0) > 2 && (
+                                      <div className="text-xs text-muted-foreground text-center py-1">
+                                        +{(group.triggers?.length || 0) - 2}{" "}
+                                        more triggers
+                                      </div>
                                     )}
                                   </div>
                                 </div>
                               ))}
+                              {(rule.trigger_groups?.length || 0) === 0 && (
+                                <div className="text-xs text-muted-foreground text-center py-2">
+                                  No triggers defined
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="text-left">
-                            <div className="space-y-2">
-                              {rule.actions?.map((action, actionIdx) => (
-                                <div
-                                  key={actionIdx}
-                                  className="border rounded-md p-2 bg-muted/20"
-                                >
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-xs"
-                                    >
-                                      {action.action_type === "control_relay"
-                                        ? "Control Relay"
-                                        : "Send Message"}
-                                    </Badge>
+                            <div className="space-y-2 max-w-sm">
+                              {rule.actions
+                                ?.slice(0, 2)
+                                .map((action, actionIdx) => (
+                                  <div
+                                    key={actionIdx}
+                                    className="border rounded-md p-2 bg-muted/20"
+                                  >
+                                    <div className="flex items-center gap-2 mb-1">
+                                      {action.action_type ===
+                                      "control_relay" ? (
+                                        <Power className="h-3 w-3" />
+                                      ) : (
+                                        <MessageSquare className="h-3 w-3" />
+                                      )}
+                                      <Badge
+                                        variant="secondary"
+                                        className="text-xs"
+                                      >
+                                        {action.action_type === "control_relay"
+                                          ? "Control Relay"
+                                          : "Send Message"}
+                                      </Badge>
+                                    </div>
+                                    {action.action_type === "control_relay" ? (
+                                      <div className="text-xs bg-background/60 rounded px-2 py-1">
+                                        <div className="font-medium truncate">
+                                          {action.target_device} - Pin{" "}
+                                          {action.relay_pin}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-muted-foreground">
+                                            Set to:
+                                          </span>
+                                          <Badge
+                                            variant={
+                                              action.target_value
+                                                ? "default"
+                                                : "outline"
+                                            }
+                                            className="text-xs"
+                                          >
+                                            {action.target_value ? "ON" : "OFF"}
+                                          </Badge>
+                                        </div>
+                                        <div className="text-muted-foreground">
+                                          Addr: {action.target_address}, Bus:{" "}
+                                          {action.target_bus}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs bg-background/60 rounded px-2 py-1">
+                                        <div className="font-medium flex items-center gap-1">
+                                          <MessageSquare className="h-3 w-3" />
+                                          WhatsApp Message
+                                        </div>
+                                        <div className="text-muted-foreground truncate">
+                                          To: {action.whatsapp_name || "N/A"}
+                                        </div>
+                                        <div className="text-muted-foreground text-xs">
+                                          {action.whatsapp_number || "N/A"}
+                                        </div>
+                                        <div className="text-muted-foreground text-xs truncate">
+                                          "
+                                          {action.message?.substring(0, 40) ||
+                                            "N/A"}
+                                          {(action.message?.length || 0) > 40
+                                            ? "..."
+                                            : ""}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                  {action.action_type === "control_relay" ? (
-                                    <div className="text-xs bg-background/50 rounded px-2 py-1">
-                                      <div className="font-medium">
-                                        {action.target_device} - Pin{" "}
-                                        {action.relay_pin}
-                                      </div>
-                                      <div className="text-muted-foreground">
-                                        Set to:{" "}
-                                        {action.target_value ? "ON" : "OFF"}
-                                      </div>
-                                      <div className="text-muted-foreground">
-                                        Address: {action.target_address}, Bus:{" "}
-                                        {action.target_bus}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="text-xs bg-background/50 rounded px-2 py-1">
-                                      <div className="font-medium">
-                                        WhatsApp Message
-                                      </div>
-                                      <div className="text-muted-foreground">
-                                        To: {action.whatsapp_name || "N/A"} (
-                                        {action.whatsapp_number || "N/A"})
-                                      </div>
-                                      <div className="text-muted-foreground">
-                                        Message: {action.message || "N/A"}
-                                      </div>
-                                    </div>
-                                  )}
+                                ))}
+                              {(rule.actions?.length || 0) > 2 && (
+                                <div className="text-xs text-muted-foreground text-center py-1 border rounded-md bg-muted/10">
+                                  +{(rule.actions?.length || 0) - 2} more
+                                  actions
                                 </div>
-                              ))}
+                              )}
+                              {(rule.actions?.length || 0) === 0 && (
+                                <div className="text-xs text-muted-foreground text-center py-2">
+                                  No actions defined
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-2 justify-center">
+                            <div className="flex gap-1 justify-center">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openDetailDialog(rule)}
+                                title="View Details"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => openModal(rule)}
+                                title="Edit Rule"
                               >
                                 <Edit2 className="h-4 w-4" />
                               </Button>
@@ -1009,6 +1152,7 @@ const AutomationLogicControl = () => {
                                 size="sm"
                                 variant="destructive"
                                 onClick={() => confirmDelete(rule)}
+                                title="Delete Rule"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -1068,6 +1212,353 @@ const AutomationLogicControl = () => {
         </div>
       </div>
 
+      {/* Rule Detail Dialog */}
+      <Dialog open={isDetailDialogOpen} onOpenChange={closeDetailDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              <DialogTitle>Rule Details</DialogTitle>
+            </div>
+            <DialogDescription>
+              Detailed view of automation logic rule configuration
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedRule && (
+            <div className="space-y-6">
+              {/* Basic Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Settings2 className="h-5 w-5" />
+                    Basic Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">
+                        Rule Name
+                      </Label>
+                      <p className="text-base font-medium">
+                        {selectedRule.rule_name}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">
+                        Group Rule Name
+                      </Label>
+                      <p className="text-base">
+                        {selectedRule.group_rule_name}
+                      </p>
+                    </div>
+                    {selectedRule.description && (
+                      <div className="md:col-span-2">
+                        <Label className="text-sm font-medium text-muted-foreground">
+                          Description
+                        </Label>
+                        <p className="text-base">{selectedRule.description}</p>
+                      </div>
+                    )}
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">
+                        Rule ID
+                      </Label>
+                      <p className="text-sm font-mono bg-muted px-2 py-1 rounded">
+                        {selectedRule.id}
+                      </p>
+                    </div>
+                    {selectedRule.created_at && (
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">
+                          Created At
+                        </Label>
+                        <p className="text-base flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          {new Date(selectedRule.created_at).toLocaleDateString(
+                            "id-ID",
+                            {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Trigger Groups */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Code className="h-5 w-5" />
+                    Trigger Groups ({selectedRule.trigger_groups?.length || 0})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {selectedRule.trigger_groups?.map((group, groupIdx) => (
+                      <div
+                        key={groupIdx}
+                        className="border rounded-lg p-4 space-y-3"
+                      >
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium">{group.group_name}</h4>
+                          <Badge variant="secondary">
+                            {group.group_operator}
+                          </Badge>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium text-muted-foreground">
+                            Triggers ({group.triggers?.length || 0})
+                          </Label>
+                          {group.triggers?.map((trigger, triggerIdx) => (
+                            <div
+                              key={triggerIdx}
+                              className="bg-muted/50 rounded-md p-3"
+                            >
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">
+                                    Device
+                                  </Label>
+                                  <p className="font-medium">
+                                    {trigger.device_name}
+                                  </p>
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">
+                                    Pin Number
+                                  </Label>
+                                  <p>Pin {trigger.pin_number}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">
+                                    Condition
+                                  </Label>
+                                  <p>
+                                    {trigger.condition_operator.toUpperCase()}{" "}
+                                    {trigger.target_value ? "TRUE" : "FALSE"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">
+                                    Device Address
+                                  </Label>
+                                  <p>
+                                    Address: {trigger.device_address}, Bus:{" "}
+                                    {trigger.device_bus}
+                                  </p>
+                                </div>
+                                {trigger.device_topic && (
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">
+                                      MQTT Topic
+                                    </Label>
+                                    <p className="text-xs font-mono bg-background px-2 py-1 rounded">
+                                      {trigger.device_topic}
+                                    </p>
+                                  </div>
+                                )}
+                                {((trigger.delay_on ?? 0) > 0 ||
+                                  (trigger.delay_off ?? 0) > 0) && (
+                                  <div>
+                                    <Label className="text-xs text-muted-foreground">
+                                      Delays
+                                    </Label>
+                                    <p className="text-orange-600">
+                                      ON: {trigger.delay_on ?? 0}s, OFF:{" "}
+                                      {trigger.delay_off ?? 0}s
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Actions */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Zap className="h-5 w-5" />
+                    Actions ({selectedRule.actions?.length || 0})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {selectedRule.actions?.map((action, actionIdx) => (
+                      <div
+                        key={actionIdx}
+                        className="border rounded-lg p-4 space-y-3"
+                      >
+                        <div className="flex items-center gap-2">
+                          {action.action_type === "control_relay" ? (
+                            <Power className="h-4 w-4" />
+                          ) : (
+                            <MessageSquare className="h-4 w-4" />
+                          )}
+                          <Badge variant="secondary">
+                            {action.action_type === "control_relay"
+                              ? "Control Relay"
+                              : "Send Message"}
+                          </Badge>
+                        </div>
+
+                        {action.action_type === "control_relay" ? (
+                          <div className="bg-muted/50 rounded-md p-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                              <div>
+                                <Label className="text-xs text-muted-foreground">
+                                  Target Device
+                                </Label>
+                                <p className="font-medium">
+                                  {action.target_device}
+                                </p>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">
+                                  Relay Pin
+                                </Label>
+                                <p>Pin {action.relay_pin}</p>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">
+                                  Target Value
+                                </Label>
+                                <Badge
+                                  variant={
+                                    action.target_value ? "default" : "outline"
+                                  }
+                                >
+                                  {action.target_value
+                                    ? "ON (True)"
+                                    : "OFF (False)"}
+                                </Badge>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">
+                                  Device Address
+                                </Label>
+                                <p>
+                                  Address: {action.target_address}, Bus:{" "}
+                                  {action.target_bus}
+                                </p>
+                              </div>
+                              {action.target_mac && (
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">
+                                    MAC Address
+                                  </Label>
+                                  <p className="text-xs font-mono bg-background px-2 py-1 rounded">
+                                    {action.target_mac}
+                                  </p>
+                                </div>
+                              )}
+                              {action.description && (
+                                <div className="md:col-span-2 lg:col-span-3">
+                                  <Label className="text-xs text-muted-foreground">
+                                    Description
+                                  </Label>
+                                  <p>{action.description}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-muted/50 rounded-md p-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <Label className="text-xs text-muted-foreground">
+                                  WhatsApp Number
+                                </Label>
+                                <p className="font-medium">
+                                  {action.whatsapp_number || "N/A"}
+                                </p>
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">
+                                  Recipient Name
+                                </Label>
+                                <p>{action.whatsapp_name || "N/A"}</p>
+                              </div>
+                              <div className="md:col-span-2">
+                                <Label className="text-xs text-muted-foreground">
+                                  Message
+                                </Label>
+                                <p className="bg-background p-2 rounded border text-sm">
+                                  {action.message || "N/A"}
+                                </p>
+                              </div>
+                              {action.message_template_id && (
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">
+                                    Template ID
+                                  </Label>
+                                  <p className="text-xs font-mono bg-background px-2 py-1 rounded">
+                                    {action.message_template_id}
+                                  </p>
+                                </div>
+                              )}
+                              {action.channel_integration_id && (
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">
+                                    Channel Integration ID
+                                  </Label>
+                                  <p className="text-xs font-mono bg-background px-2 py-1 rounded">
+                                    {action.channel_integration_id}
+                                  </p>
+                                </div>
+                              )}
+                              {action.description && (
+                                <div className="md:col-span-2">
+                                  <Label className="text-xs text-muted-foreground">
+                                    Description
+                                  </Label>
+                                  <p>{action.description}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDetailDialog}>
+              Close
+            </Button>
+            {selectedRule && (
+              <Button
+                onClick={() => {
+                  closeDetailDialog();
+                  openModal(selectedRule);
+                }}
+              >
+                <Edit2 className="h-4 w-4 mr-2" />
+                Edit Rule
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Logic Rule Dialog */}
       <Dialog open={isModalOpen} onOpenChange={closeModal}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1078,9 +1569,9 @@ const AutomationLogicControl = () => {
                 {isEditing ? "Edit Logic Rule" : "Create Logic Rule"}
               </DialogTitle>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <DialogDescription>
               Configure advanced automation logic with conditions and actions
-            </p>
+            </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={saveRule} className="space-y-6">
@@ -1238,12 +1729,17 @@ const AutomationLogicControl = () => {
                       {group.triggers.map((trigger, triggerIndex) => (
                         <div
                           key={triggerIndex}
-                          className="p-3 bg-muted/30 rounded-md space-y-3"
+                          className="p-4 bg-muted/30 rounded-lg space-y-4 border border-muted"
                         >
-                          <div className="flex items-center justify-between">
-                            <Label className="text-sm font-medium">
-                              Trigger {triggerIndex + 1}
-                            </Label>
+                          <div className="flex items-center justify-between border-b border-muted pb-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                                {triggerIndex + 1}
+                              </div>
+                              <Label className="text-sm font-semibold">
+                                Trigger Condition
+                              </Label>
+                            </div>
                             <Button
                               type="button"
                               variant="ghost"
@@ -1256,156 +1752,205 @@ const AutomationLogicControl = () => {
                             </Button>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                            {/* Device Selection */}
-                            <div>
-                              <Label className="text-xs">Device</Label>
-                              <Select
-                                value={trigger.device_name}
-                                onValueChange={(value) => {
-                                  const selectedDevice = dryContactDevices.find(
-                                    (d) => d.value === value
-                                  );
-                                  updateTrigger(groupIndex, triggerIndex, {
-                                    ...trigger,
-                                    device_name: value,
-                                    device_address:
-                                      selectedDevice?.address || 0,
-                                    device_bus: selectedDevice?.device_bus || 0,
-                                    device_topic: selectedDevice?.topic || "",
-                                  });
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select drycontact device" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {dryContactDevices.map((device) => (
-                                    <SelectItem
-                                      key={device.value}
-                                      value={device.value}
-                                    >
-                                      {device.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                          {/* Device Configuration Section */}
+                          <div className="space-y-3">
+                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                              Device Configuration
+                            </Label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {/* Device Selection */}
+                              <div>
+                                <Label className="text-xs">
+                                  Dry Contact Device *
+                                </Label>
+                                <Select
+                                  value={trigger.device_name}
+                                  onValueChange={(value) => {
+                                    const selectedDevice =
+                                      dryContactDevices.find(
+                                        (d) => d.value === value
+                                      );
+                                    updateTrigger(groupIndex, triggerIndex, {
+                                      ...trigger,
+                                      device_name: value,
+                                      device_address:
+                                        selectedDevice?.address || 0,
+                                      device_bus:
+                                        selectedDevice?.device_bus || 0,
+                                      device_topic: selectedDevice?.topic || "",
+                                    });
+                                  }}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select drycontact device" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {dryContactDevices.map((device) => (
+                                      <SelectItem
+                                        key={device.value}
+                                        value={device.value}
+                                      >
+                                        {device.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
 
-                            {/* Pin Number */}
-                            <div>
-                              <Label className="text-xs">Pin Number</Label>
-                              <Select
-                                value={trigger.pin_number.toString()}
-                                onValueChange={(value) =>
-                                  updateTrigger(groupIndex, triggerIndex, {
-                                    ...trigger,
-                                    pin_number: parseInt(value),
-                                  })
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select pin" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {dryContactPins.map((pin) => (
-                                    <SelectItem
-                                      key={pin.value}
-                                      value={pin.value.toString()}
-                                    >
-                                      {pin.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                              {/* Pin Number */}
+                              <div>
+                                <Label className="text-xs">Pin Number *</Label>
+                                <Select
+                                  value={trigger.pin_number.toString()}
+                                  onValueChange={(value) =>
+                                    updateTrigger(groupIndex, triggerIndex, {
+                                      ...trigger,
+                                      pin_number: parseInt(value),
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select pin" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {dryContactPins.map((pin) => (
+                                      <SelectItem
+                                        key={pin.value}
+                                        value={pin.value.toString()}
+                                      >
+                                        {pin.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
 
-                            {/* Condition Operator */}
-                            <div>
-                              <Label className="text-xs">Operator</Label>
-                              <Select
-                                value={trigger.condition_operator}
-                                onValueChange={(value) =>
-                                  updateTrigger(groupIndex, triggerIndex, {
-                                    ...trigger,
-                                    condition_operator: value as
-                                      | "is"
-                                      | "and"
-                                      | "or",
-                                  })
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {conditionOperators.map((op) => (
-                                    <SelectItem key={op.value} value={op.value}>
-                                      {op.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            {/* Target Value */}
-                            <div>
-                              <Label className="text-xs">Condition</Label>
-                              <Select
-                                value={trigger.target_value.toString()}
-                                onValueChange={(value) =>
-                                  updateTrigger(groupIndex, triggerIndex, {
-                                    ...trigger,
-                                    target_value: value === "true",
-                                  })
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="true">True</SelectItem>
-                                  <SelectItem value="false">False</SelectItem>
-                                </SelectContent>
-                              </Select>
+                              {/* Device Topic Display */}
+                              <div className="md:col-span-2">
+                                <Label className="text-xs">MQTT Topic</Label>
+                                <Input
+                                  value={trigger.device_topic || ""}
+                                  readOnly
+                                  placeholder="Topic will be set automatically"
+                                  className="bg-muted text-xs font-mono"
+                                />
+                              </div>
                             </div>
                           </div>
 
-                          {/* Delay Settings */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div>
-                              <Label className="text-xs">
-                                Delay ON (seconds)
-                              </Label>
-                              <Input
-                                type="number"
-                                min="0"
-                                value={trigger.delay_on || 0}
-                                onChange={(e) =>
-                                  updateTrigger(groupIndex, triggerIndex, {
-                                    ...trigger,
-                                    delay_on: parseInt(e.target.value) || 0,
-                                  })
-                                }
-                                placeholder="0"
-                              />
+                          {/* Condition Configuration Section */}
+                          <div className="space-y-3">
+                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                              Condition Settings
+                            </Label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {/* Condition Operator */}
+                              <div>
+                                <Label className="text-xs">Operator *</Label>
+                                <Select
+                                  value={trigger.condition_operator}
+                                  onValueChange={(value) =>
+                                    updateTrigger(groupIndex, triggerIndex, {
+                                      ...trigger,
+                                      condition_operator: value as
+                                        | "is"
+                                        | "and"
+                                        | "or",
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {conditionOperators.map((op) => (
+                                      <SelectItem
+                                        key={op.value}
+                                        value={op.value}
+                                      >
+                                        {op.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              {/* Target Value */}
+                              <div>
+                                <Label className="text-xs">
+                                  Target Value *
+                                </Label>
+                                <Select
+                                  value={trigger.target_value.toString()}
+                                  onValueChange={(value) =>
+                                    updateTrigger(groupIndex, triggerIndex, {
+                                      ...trigger,
+                                      target_value: value === "true",
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="true">
+                                      True (ON / HIGH)
+                                    </SelectItem>
+                                    <SelectItem value="false">
+                                      False (OFF / LOW)
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             </div>
-                            <div>
-                              <Label className="text-xs">
-                                Delay OFF (seconds)
-                              </Label>
-                              <Input
-                                type="number"
-                                min="0"
-                                value={trigger.delay_off || 0}
-                                onChange={(e) =>
-                                  updateTrigger(groupIndex, triggerIndex, {
-                                    ...trigger,
-                                    delay_off: parseInt(e.target.value) || 0,
-                                  })
-                                }
-                                placeholder="0"
-                              />
+                          </div>
+
+                          {/* Delay Settings Section */}
+                          <div className="space-y-3">
+                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                              Delay Timing (Optional)
+                            </Label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <Label className="text-xs">
+                                  Delay ON (seconds)
+                                </Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={trigger.delay_on || 0}
+                                  onChange={(e) =>
+                                    updateTrigger(groupIndex, triggerIndex, {
+                                      ...trigger,
+                                      delay_on: parseInt(e.target.value) || 0,
+                                    })
+                                  }
+                                  placeholder="0"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Wait time before activating
+                                </p>
+                              </div>
+                              <div>
+                                <Label className="text-xs">
+                                  Delay OFF (seconds)
+                                </Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={trigger.delay_off || 0}
+                                  onChange={(e) =>
+                                    updateTrigger(groupIndex, triggerIndex, {
+                                      ...trigger,
+                                      delay_off: parseInt(e.target.value) || 0,
+                                    })
+                                  }
+                                  placeholder="0"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Wait time before deactivating
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1540,7 +2085,9 @@ const AutomationLogicControl = () => {
                                 <SelectValue placeholder="Select pin" />
                               </SelectTrigger>
                               <SelectContent>
-                                {relayPins.map((pin) => (
+                                {getRelayPinsForDevice(
+                                  action.target_device || ""
+                                ).map((pin) => (
                                   <SelectItem
                                     key={pin.value}
                                     value={pin.value.toString()}
@@ -1711,6 +2258,32 @@ const AutomationLogicControl = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Alert Dialog */}
+      <AlertDialog open={alertDialogOpen} onOpenChange={setAlertDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{alertDialogContent.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {alertDialogContent.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setAlertDialogOpen(false)}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        open={confirmationDialogOpen}
+        onOpenChange={setConfirmationDialogOpen}
+        title={confirmationDialogContent.title}
+        description={confirmationDialogContent.description}
+        onConfirm={confirmationDialogContent.confirmAction}
+      />
     </SidebarInset>
   );
 };

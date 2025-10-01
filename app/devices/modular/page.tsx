@@ -14,12 +14,35 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { RotateCw, Cpu, ArrowUpDown, Microchip, LayoutGrid } from "lucide-react";
+import {
+  RotateCw,
+  Cpu,
+  ArrowUpDown,
+  Microchip,
+  LayoutGrid,
+} from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import Swal from "sweetalert2";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/use-toast";
+// Import dialog components for modals
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { connectMQTT } from "@/lib/mqttClient";
 import { useSortableTable } from "@/hooks/use-sort-table";
 import { useSearchFilter } from "@/hooks/use-search-filter";
@@ -30,7 +53,7 @@ import {
   PaginationItem,
   PaginationLink,
   PaginationNext,
-  PaginationPrevious
+  PaginationPrevious,
 } from "@/components/ui/pagination";
 
 import {
@@ -67,7 +90,8 @@ export default function DeviceManagerPage() {
   const [isUpdateMode, setIsUpdateMode] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [deviceToUpdate, setDeviceToUpdate] = useState<string>("");
-  const [newDevice, setNewDevice] = useState<Device>({ // Use Device type
+  const [newDevice, setNewDevice] = useState<Device>({
+    // Use Device type
     profile: {
       name: "",
       device_type: "Modular",
@@ -82,6 +106,35 @@ export default function DeviceManagerPage() {
     },
   });
 
+  // Alert and Confirmation Dialog States
+  const [alertDialogOpen, setAlertDialogOpen] = useState(false);
+  const [alertDialogContent, setAlertDialogContent] = useState<{
+    title: string;
+    description: string;
+  }>({ title: "", description: "" });
+
+  const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
+  const [confirmationDialogContent, setConfirmationDialogContent] = useState<{
+    title: string;
+    description: string;
+    confirmAction: () => void;
+  }>({ title: "", description: "", confirmAction: () => {} });
+
+  // Helper functions for alerts and confirmations
+  const showAlert = (title: string, description: string) => {
+    setAlertDialogContent({ title, description });
+    setAlertDialogOpen(true);
+  };
+
+  const showConfirmation = (
+    title: string,
+    description: string,
+    confirmAction: () => void
+  ) => {
+    setConfirmationDialogContent({ title, description, confirmAction });
+    setConfirmationDialogOpen(true);
+  };
+
   // Dynamic device selection states
   const [deviceTypes, setDeviceTypes] = useState<string[]>([]);
   const [manufacturers, setManufacturers] = useState<string[]>([]);
@@ -91,63 +144,84 @@ export default function DeviceManagerPage() {
 
   // Dynamic device selection functions
   const requestDeviceTypes = useCallback(() => {
-    client?.publish("command_i2c_device_selection", JSON.stringify({ command: "getDeviceTypes" }));
+    client?.publish(
+      "command_i2c_device_selection",
+      JSON.stringify({ command: "getDeviceTypes" })
+    );
   }, [client]);
 
-  const requestManufacturers = useCallback((deviceType: string) => {
-    client?.publish("command_i2c_device_selection", JSON.stringify({ 
-      command: "getManufacturers", 
-      device_type: deviceType 
-    }));
-  }, [client]);
+  const requestManufacturers = useCallback(
+    (deviceType: string) => {
+      client?.publish(
+        "command_i2c_device_selection",
+        JSON.stringify({
+          command: "getManufacturers",
+          device_type: deviceType,
+        })
+      );
+    },
+    [client]
+  );
 
-  const requestPartNumbers = useCallback((deviceType: string, manufacturer: string) => {
-    client?.publish("command_i2c_device_selection", JSON.stringify({ 
-      command: "getPartNumbers", 
-      device_type: deviceType, 
-      manufacturer: manufacturer 
-    }));
-  }, [client]);
+  const requestPartNumbers = useCallback(
+    (deviceType: string, manufacturer: string) => {
+      client?.publish(
+        "command_i2c_device_selection",
+        JSON.stringify({
+          command: "getPartNumbers",
+          device_type: deviceType,
+          manufacturer: manufacturer,
+        })
+      );
+    },
+    [client]
+  );
 
-  const handleDeviceTypeChange = useCallback((deviceType: string) => {
-    setNewDevice(prev => ({
-      ...prev,
-      profile: {
-        ...prev.profile,
-        device_type: deviceType,
-        manufacturer: "",
-        part_number: ""
+  const handleDeviceTypeChange = useCallback(
+    (deviceType: string) => {
+      setNewDevice((prev) => ({
+        ...prev,
+        profile: {
+          ...prev.profile,
+          device_type: deviceType,
+          manufacturer: "",
+          part_number: "",
+        },
+      }));
+      setManufacturers([]);
+      setPartNumbers([]);
+      if (deviceType) {
+        requestManufacturers(deviceType);
       }
-    }));
-    setManufacturers([]);
-    setPartNumbers([]);
-    if (deviceType) {
-      requestManufacturers(deviceType);
-    }
-  }, [requestManufacturers]);
+    },
+    [requestManufacturers]
+  );
 
-  const handleManufacturerChange = useCallback((manufacturer: string) => {
-    setNewDevice(prev => ({
-      ...prev,
-      profile: {
-        ...prev.profile,
-        manufacturer: manufacturer,
-        part_number: ""
+  const handleManufacturerChange = useCallback(
+    (manufacturer: string) => {
+      setNewDevice((prev) => ({
+        ...prev,
+        profile: {
+          ...prev.profile,
+          manufacturer: manufacturer,
+          part_number: "",
+        },
+      }));
+      setPartNumbers([]);
+      if (manufacturer && newDevice.profile.device_type) {
+        requestPartNumbers(newDevice.profile.device_type, manufacturer);
       }
-    }));
-    setPartNumbers([]);
-    if (manufacturer && newDevice.profile.device_type) {
-      requestPartNumbers(newDevice.profile.device_type, manufacturer);
-    }
-  }, [requestPartNumbers, newDevice.profile.device_type]);
+    },
+    [requestPartNumbers, newDevice.profile.device_type]
+  );
 
   const handlePartNumberChange = useCallback((partNumber: string) => {
-    setNewDevice(prev => ({
+    setNewDevice((prev) => ({
       ...prev,
       profile: {
         ...prev.profile,
-        part_number: partNumber
-      }
+        part_number: partNumber,
+      },
     }));
   }, []);
 
@@ -168,23 +242,33 @@ export default function DeviceManagerPage() {
           } else if (payload && typeof payload === "object" && payload.status) {
             // Handle operation response (add/update/delete)
             if (payload.status === "success") {
-              // Dismiss loading toast and show success
-              toast.success(payload.message || "Operation completed successfully", {
-                id: "device-operation"
+              // Show success
+              toast({
+                title: "Success",
+                description:
+                  payload.message || "Operation completed successfully",
               });
-              
+
               // Auto refresh data after successful operation
               setTimeout(() => {
-                client?.publish("command_device_i2c", JSON.stringify({ command: "getDataI2C" }));
+                client?.publish(
+                  "command_device_i2c",
+                  JSON.stringify({ command: "getDataI2C" })
+                );
               }, 500);
             } else if (payload.status === "error") {
-              // Dismiss loading toast and show error
-              toast.error(payload.message || "Operation failed", {
-                id: "device-operation"
+              // Show error
+              toast({
+                title: "Error",
+                description: payload.message || "Operation failed",
+                variant: "destructive",
               });
             }
           } else {
-            console.warn("[MQTT] DeviceManagerPage (I2C): Unexpected payload format:", payload);
+            console.warn(
+              "[MQTT] DeviceManagerPage (I2C): Unexpected payload format:",
+              payload
+            );
           }
         } else if (topic === "response_i2c_device_selection") {
           if (payload.status === "success" && payload.data) {
@@ -196,7 +280,11 @@ export default function DeviceManagerPage() {
               setPartNumbers(payload.data || []);
             }
           } else if (payload.status === "error") {
-            toast.error(payload.message || "Failed to load device data");
+            toast({
+              title: "Error",
+              description: payload.message || "Failed to load device data",
+              variant: "destructive",
+            });
           }
         }
       } catch (error) {
@@ -213,8 +301,11 @@ export default function DeviceManagerPage() {
     client.subscribe("response_device_i2c");
     client.subscribe("response_i2c_device_selection");
 
-    client.publish("command_device_i2c", JSON.stringify({ command: "getDataI2C" }));
-    
+    client.publish(
+      "command_device_i2c",
+      JSON.stringify({ command: "getDataI2C" })
+    );
+
     // Load device types on component mount
     requestDeviceTypes();
 
@@ -233,7 +324,8 @@ export default function DeviceManagerPage() {
         ...newDevice.protocol_setting,
         protocol: "Modular",
         address: parseInt(newDevice.protocol_setting.address.toString()) || 0,
-        device_bus: parseInt(newDevice.protocol_setting.device_bus.toString()) || 0,
+        device_bus:
+          parseInt(newDevice.protocol_setting.device_bus.toString()) || 0,
       },
     };
 
@@ -242,40 +334,33 @@ export default function DeviceManagerPage() {
       device: deviceToSend,
       ...(isUpdateMode && deviceToUpdate && { old_name: deviceToUpdate }),
     });
-    
+
     // Show immediate feedback
-    toast.loading(isUpdateMode ? "Updating device..." : "Adding device...", {
-      id: "device-operation"
+    toast({
+      title: "Processing...",
+      description: isUpdateMode ? "Updating device..." : "Adding device...",
     });
-    
+
     client?.publish("command_device_i2c", command);
     setShowDialog(false);
   };
 
   const handleDelete = (name: string) => {
-    Swal.fire({
-      title: `Delete ${name}?`,
-      text: "You can't undo this!",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Yes, delete it!",
-      cancelButtonText: "No, keep it",
-    }).then((result) => {
-      if (result.isConfirmed) {
-        // Show loading toast
-        toast.loading(`Deleting ${name}...`, {
-          id: "device-operation"
-        });
-        
-        const command = JSON.stringify({ command: "deleteDevice", name });
-        client?.publish("command_device_i2c", command);
-      }
+    showConfirmation(`Delete ${name}?`, "You can't undo this action!", () => {
+      toast({
+        title: "Deleting...",
+        description: `Deleting ${name}...`,
+      });
+
+      const command = JSON.stringify({ command: "deleteDevice", name });
+      client?.publish("command_device_i2c", command);
     });
   };
 
   // The fix is applied here: added type annotation for 'prev'
   const handleSelectScannedAddress = (address: string) => {
-    setNewDevice((prev: Device) => ({ // Explicitly type 'prev' as Device
+    setNewDevice((prev: Device) => ({
+      // Explicitly type 'prev' as Device
       ...prev,
       protocol_setting: {
         ...prev.protocol_setting,
@@ -284,14 +369,18 @@ export default function DeviceManagerPage() {
     }));
   };
 
-  const { sorted, sortField, sortDirection, handleSort } = useSortableTable(devices);
-  const { searchQuery, setSearchQuery, filteredData } = useSearchFilter(sorted, [
-    "profile.name",
-    "profile.part_number",
-    "profile.topic",
-    "protocol_setting.address",
-    "protocol_setting.device_bus",
-  ]);
+  const { sorted, sortField, sortDirection, handleSort } =
+    useSortableTable(devices);
+  const { searchQuery, setSearchQuery, filteredData } = useSearchFilter(
+    sorted,
+    [
+      "profile.name",
+      "profile.part_number",
+      "profile.topic",
+      "protocol_setting.address",
+      "protocol_setting.device_bus",
+    ]
+  );
 
   const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
   const paginatedDevices = filteredData.slice(
@@ -299,11 +388,14 @@ export default function DeviceManagerPage() {
     currentPage * ITEMS_PER_PAGE
   );
 
-  const deviceTypeBreakdown = devices.reduce((acc: { [key: string]: number }, device) => {
-    const type = device.profile?.part_number || "Unknown";
-    acc[type] = (acc[type] || 0) + 1;
-    return acc;
-  }, {});
+  const deviceTypeBreakdown = devices.reduce(
+    (acc: { [key: string]: number }, device) => {
+      const type = device.profile?.part_number || "Unknown";
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    },
+    {}
+  );
 
   return (
     <SidebarInset>
@@ -334,17 +426,17 @@ export default function DeviceManagerPage() {
             variant="default"
             onClick={() => {
               setNewDevice({
-                profile: { 
-                  name: "", 
+                profile: {
+                  name: "",
                   device_type: "",
                   manufacturer: "",
-                  part_number: "", 
-                  topic: "" 
+                  part_number: "",
+                  topic: "",
                 },
-                protocol_setting: { 
+                protocol_setting: {
                   protocol: "Modular",
-                  address: 0, 
-                  device_bus: 0 
+                  address: 0,
+                  device_bus: 0,
                 },
               });
               setDeviceTypes([]);
@@ -375,7 +467,9 @@ export default function DeviceManagerPage() {
 
         <Card className="shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Device Type Breakdown</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Device Type Breakdown
+            </CardTitle>
             <LayoutGrid className="h-5 w-5 text-green-600" />
           </CardHeader>
           <CardContent>
@@ -391,18 +485,26 @@ export default function DeviceManagerPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">No device types found.</p>
+              <p className="text-xs text-muted-foreground">
+                No device types found.
+              </p>
             )}
           </CardContent>
         </Card>
 
         <Card className="shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Most Common Type</CardTitle>
-            <Badge variant="secondary" className="text-xs">Analysis</Badge>
+            <CardTitle className="text-sm font-medium">
+              Most Common Type
+            </CardTitle>
+            <Badge variant="secondary" className="text-xs">
+              Analysis
+            </Badge>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">Based on Part Number</p>
+            <p className="text-sm text-muted-foreground">
+              Based on Part Number
+            </p>
             <div className="text-xl font-semibold">
               {(() => {
                 const counts: { [key: string]: number } = {};
@@ -410,7 +512,9 @@ export default function DeviceManagerPage() {
                   const type = d.profile?.part_number || "Unknown";
                   counts[type] = (counts[type] || 0) + 1;
                 });
-                const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+                const top = Object.entries(counts).sort(
+                  (a, b) => b[1] - a[1]
+                )[0];
                 return top ? `${top[0]} (${top[1]})` : "N/A";
               })()}
             </div>
@@ -475,7 +579,9 @@ export default function DeviceManagerPage() {
               {paginatedDevices.length > 0 ? (
                 paginatedDevices.map((device, index) => (
                   <TableRow key={device.profile?.name || `device-${index}`}>
-                    <TableCell>{(currentPage - 1) * ITEMS_PER_PAGE + index + 1}</TableCell>
+                    <TableCell>
+                      {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
+                    </TableCell>
                     <TableCell>{device.profile?.name}</TableCell>
                     <TableCell>{device.profile?.part_number}</TableCell>
                     <TableCell>{device.protocol_setting?.address}</TableCell>
@@ -506,8 +612,12 @@ export default function DeviceManagerPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                    No devices found. Please add a new device or refresh the list.
+                  <TableCell
+                    colSpan={7}
+                    className="text-center py-8 text-muted-foreground"
+                  >
+                    No devices found. Please add a new device or refresh the
+                    list.
                   </TableCell>
                 </TableRow>
               )}
@@ -522,7 +632,9 @@ export default function DeviceManagerPage() {
                     onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                     href="#"
                     aria-disabled={currentPage === 1}
-                    className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                    className={
+                      currentPage === 1 ? "pointer-events-none opacity-50" : ""
+                    }
                   />
                 </PaginationItem>
                 {Array.from({ length: totalPages }, (_, i) => (
@@ -538,10 +650,16 @@ export default function DeviceManagerPage() {
                 ))}
                 <PaginationItem>
                   <PaginationNext
-                    onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(p + 1, totalPages))
+                    }
                     href="#"
                     aria-disabled={currentPage === totalPages}
-                    className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                    className={
+                      currentPage === totalPages
+                        ? "pointer-events-none opacity-50"
+                        : ""
+                    }
                   />
                 </PaginationItem>
               </PaginationContent>
@@ -553,18 +671,21 @@ export default function DeviceManagerPage() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{isUpdateMode ? "Update Device" : "Add New Device"}</DialogTitle>
+            <DialogTitle>
+              {isUpdateMode ? "Update Device" : "Add New Device"}
+            </DialogTitle>
             <DialogDescription>
-              {isUpdateMode 
-                ? "Modify the device configuration below." 
-                : "Configure the new modular device settings below."
-              }
+              {isUpdateMode
+                ? "Modify the device configuration below."
+                : "Configure the new modular device settings below."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
             {/* Device Information Section */}
             <div className="space-y-4">
-              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">Device Information</h4>
+              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">
+                Device Information
+              </h4>
               <div className="grid grid-cols-1 gap-4">
                 <div>
                   <Label htmlFor="deviceName">Device Name *</Label>
@@ -585,7 +706,9 @@ export default function DeviceManagerPage() {
 
             {/* Device Selection Section */}
             <div className="space-y-4">
-              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">Device Selection</h4>
+              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">
+                Device Selection
+              </h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="deviceType">Device Type *</Label>
@@ -630,7 +753,9 @@ export default function DeviceManagerPage() {
                         ))
                       ) : (
                         <SelectItem value="loading" disabled>
-                          {newDevice.profile.device_type ? "Loading manufacturers..." : "Select device type first"}
+                          {newDevice.profile.device_type
+                            ? "Loading manufacturers..."
+                            : "Select device type first"}
                         </SelectItem>
                       )}
                     </SelectContent>
@@ -655,7 +780,9 @@ export default function DeviceManagerPage() {
                         ))
                       ) : (
                         <SelectItem value="loading" disabled>
-                          {newDevice.profile.manufacturer ? "Loading part numbers..." : "Select manufacturer first"}
+                          {newDevice.profile.manufacturer
+                            ? "Loading part numbers..."
+                            : "Select manufacturer first"}
                         </SelectItem>
                       )}
                     </SelectContent>
@@ -666,7 +793,9 @@ export default function DeviceManagerPage() {
 
             {/* Protocol Configuration Section */}
             <div className="space-y-4">
-              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">Protocol Configuration</h4>
+              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">
+                Protocol Configuration
+              </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="address">I2C Address *</Label>
@@ -687,7 +816,9 @@ export default function DeviceManagerPage() {
                       })
                     }
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Valid range: 0-127</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Valid range: 0-127
+                  </p>
                 </div>
                 <div>
                   <Label htmlFor="deviceBus">Device Bus *</Label>
@@ -708,14 +839,18 @@ export default function DeviceManagerPage() {
                       })
                     }
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Usually 0 or 1</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Usually 0 or 1
+                  </p>
                 </div>
               </div>
             </div>
 
             {/* MQTT Configuration Section */}
             <div className="space-y-4">
-              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">MQTT Configuration</h4>
+              <h4 className="text-sm font-medium text-muted-foreground border-b pb-2">
+                MQTT Configuration
+              </h4>
               <div>
                 <Label htmlFor="topic">MQTT Topic *</Label>
                 <Input
@@ -729,7 +864,9 @@ export default function DeviceManagerPage() {
                     })
                   }
                 />
-                <p className="text-xs text-muted-foreground mt-1">MQTT topic for publishing device data</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  MQTT topic for publishing device data
+                </p>
               </div>
             </div>
 
@@ -738,8 +875,8 @@ export default function DeviceManagerPage() {
               <Button onClick={handleSubmit} className="flex-1">
                 {isUpdateMode ? "Update Device" : "Add Device"}
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setShowDialog(false)}
                 className="flex-1"
               >
@@ -749,6 +886,32 @@ export default function DeviceManagerPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Alert Dialog */}
+      <AlertDialog open={alertDialogOpen} onOpenChange={setAlertDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{alertDialogContent.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {alertDialogContent.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setAlertDialogOpen(false)}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        open={confirmationDialogOpen}
+        onOpenChange={setConfirmationDialogOpen}
+        title={confirmationDialogContent.title}
+        description={confirmationDialogContent.description}
+        onConfirm={confirmationDialogContent.confirmAction}
+      />
     </SidebarInset>
   );
 }

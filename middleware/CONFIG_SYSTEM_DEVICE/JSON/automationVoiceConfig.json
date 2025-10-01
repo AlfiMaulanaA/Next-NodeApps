@@ -1,13 +1,1 @@
-[
-    {
-         "uuid":"random",
-         "device_name":"Relay_1",
-         "data":{
-             "pin":1,
-             "custom_name":"Lampu",
-             "address":32,
-             "bus":0
-         }
-     }
- 
- ]
+[]

@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import MQTTConnectionBadge from "@/components/mqtt-status";
-import Swal from 'sweetalert2';
 
 // --- TOPICS from your Python middleware ---
 const TOPIC_LIBRARY_DEVICES_SUMMARY = "library/devices/summary";
@@ -172,16 +171,6 @@ export default function FileLibraryPage() {
       mqttClientInstance.subscribe(TOPIC_LIBRARY_COMMAND_RESPONSE);
       mqttClientInstance.subscribe(TOPIC_LIBRARY_EDIT_LOAD_RESPONSE);
       toast.success("Connected to MQTT Broker.");
-      Swal.fire({
-        icon: 'success',
-        title: 'Connected!',
-        text: 'Successfully connected to MQTT Broker',
-        position: 'top-end',
-        timer: 2000,
-        timerProgressBar: true,
-        showConfirmButton: false,
-        toast: true
-      });
     };
 
     const handleError = (err: Error) => {
@@ -202,16 +191,6 @@ export default function FileLibraryPage() {
         if (topic === "response_file_transfer") {
           if (data.status === "success" && data.action === "upload") {
             toast.success("devices.json uploaded successfully.");
-            Swal.fire({
-              icon: 'success',
-              title: 'Upload Successful!',
-              text: 'devices.json has been uploaded successfully',
-              position: 'top-end',
-              timer: 3000,
-              timerProgressBar: true,
-              showConfirmButton: false,
-              toast: true
-            });
             if (clientRef.current) {
               restartService();
             } else {
@@ -224,16 +203,6 @@ export default function FileLibraryPage() {
         } else if (topic === "service/response") {
           if (data.result === "success") {
             toast.success(data.message || "Service restarted successfully.");
-            Swal.fire({
-              icon: 'success',
-              title: 'Service Restarted!',
-              text: data.message || 'MODBUS_SNMP service restarted successfully',
-              position: 'top-end',
-              timer: 3000,
-              timerProgressBar: true,
-              showConfirmButton: false,
-              toast: true
-            });
           } else {
             toast.error(data.message || "Service restart failed.");
             console.error("Service restart error response:", data);
@@ -250,16 +219,6 @@ export default function FileLibraryPage() {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             toast.success("devices.json downloaded successfully.");
-            Swal.fire({
-              icon: 'success',
-              title: 'Download Complete!',
-              text: 'devices.json has been downloaded successfully',
-              position: 'top-end',
-              timer: 3000,
-              timerProgressBar: true,
-              showConfirmButton: false,
-              toast: true
-            });
           } else if (data.status === "error") {
             toast.error(data.message || "Download failed");
             console.error("File download error response:", data);
@@ -310,30 +269,10 @@ export default function FileLibraryPage() {
               
               setIsLoadingForUpdate(false); // Reset flag
               toast.success("Device data loaded for editing!", { id: "loadDeviceToast" });
-              Swal.fire({
-                icon: 'success',
-                title: 'Device Loaded!',
-                text: `${data.data.manufacturer} ${data.data.part_number} data loaded for editing`,
-                position: 'top-end',
-                timer: 3000,
-                timerProgressBar: true,
-                showConfirmButton: false,
-                toast: true
-              });
             } else {
               // Regular search result
               setSearchResult(data);
               toast.success("Device found!");
-              Swal.fire({
-                icon: 'success',
-                title: 'Device Found!',
-                text: `Found ${data.data.manufacturer} ${data.data.part_number}`,
-                position: 'top-end',
-                timer: 3000,
-                timerProgressBar: true,
-                showConfirmButton: false,
-                toast: true
-              });
             }
           } else {
             setIsLoadingForUpdate(false); // Reset flag on error
@@ -385,16 +324,6 @@ export default function FileLibraryPage() {
             setIsLoadingForUpdate(false); // Reset flag
             setIsLoadingDeviceData(false); // Reset loading button state
             toast.success("Device data loaded for editing!", { id: "loadDeviceToast" });
-            Swal.fire({
-              icon: 'success',
-              title: 'Device Loaded for Edit!',
-              text: `${data.data.manufacturer} ${data.data.part_number} data loaded successfully`,
-              position: 'top-end',
-              timer: 3000,
-              timerProgressBar: true,
-              showConfirmButton: false,
-              toast: true
-            });
           } else {
             setIsLoadingForUpdate(false); // Reset flag on error
             setIsLoadingDeviceData(false); // Reset loading button state on error
@@ -403,21 +332,6 @@ export default function FileLibraryPage() {
         } else if (topic === TOPIC_LIBRARY_COMMAND_RESPONSE) {
           if (data.status === "success") {
             toast.success(data.message || "Command executed successfully.");
-            const commandType = data.message?.includes('Section') && data.message?.includes('created') ? 'Section Created' :
-                               data.message?.includes('Section') && data.message?.includes('deleted') ? 'Section Deleted' :
-                               data.message?.includes('Device') && data.message?.includes('added') ? 'Device Added' :
-                               'Operation Successful';
-            
-            Swal.fire({
-              icon: 'success',
-              title: commandType,
-              text: data.message || 'Command executed successfully',
-              position: 'top-end',
-              timer: 3000,
-              timerProgressBar: true,
-              showConfirmButton: false,
-              toast: true
-            });
           } else {
             toast.error(data.message || "Command failed.");
             console.error("Library command error response:", data);

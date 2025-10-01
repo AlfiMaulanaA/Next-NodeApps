@@ -185,7 +185,7 @@ export default function MqttConfigPage() {
           <Wifi className="w-5 h-5 text-muted-foreground" />
           <h1 className="text-lg font-semibold">MQTT Configuration</h1>
           <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-            Auto-refresh every 3s
+            Auto-refresh every 5s
           </span>
         </div>
         <div className="flex items-center gap-2">

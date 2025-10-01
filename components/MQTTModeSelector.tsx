@@ -19,7 +19,7 @@ import {
   CheckCircle,
   AlertCircle,
   ExternalLink,
-  Server
+  Server,
 } from "lucide-react";
 
 interface MQTTConfig {
@@ -52,14 +52,16 @@ export default function MQTTModeSelector() {
     }
   };
 
-  const handleModeChange = async (newMode: "env" | "database") => {
+  const handleModeChange = async (newMode: "env" | "json" | "database") => {
     console.log(`Changing MQTT mode from ${mode} to ${newMode}`);
 
     // Update mode in context (this also saves to localStorage)
     setMode(newMode);
 
     // Show loading toast
-    const toastId = toast.loading(`Switching to ${newMode.toUpperCase()} mode...`);
+    const toastId = toast.loading(
+      `Switching to ${newMode.toUpperCase()} mode...`
+    );
 
     // Force MQTT client reconnection to pick up the new mode
     try {
@@ -70,13 +72,19 @@ export default function MQTTModeSelector() {
       await reconnectMQTT();
 
       console.log("MQTT client successfully reconnected");
-      toast.success(`MQTT connection mode changed to ${newMode.toUpperCase()}`, { id: toastId });
+      toast.success(
+        `MQTT connection mode changed to ${newMode.toUpperCase()}`,
+        { id: toastId }
+      );
 
       // Reload current config to show the updated configuration
       await loadCurrentConfig();
     } catch (reconnectError) {
       console.error("Failed to reconnect MQTT client:", reconnectError);
-      toast.warning(`Mode changed to ${newMode.toUpperCase()}, but reconnection failed. Please refresh the page.`, { id: toastId });
+      toast.warning(
+        `Mode changed to ${newMode.toUpperCase()}, but reconnection failed. Please refresh the page.`,
+        { id: toastId }
+      );
     }
   };
 
@@ -88,21 +96,24 @@ export default function MQTTModeSelector() {
       return {
         env: "Development",
         source: "ENV Variables",
-        description: `Using NEXT_PUBLIC_MQTT_BROKER_HOST=${process.env.NEXT_PUBLIC_MQTT_BROKER_HOST || "192.168.0.193"}`
+        description: `Using NEXT_PUBLIC_MQTT_BROKER_HOST=${
+          process.env.NEXT_PUBLIC_MQTT_BROKER_HOST || "192.168.0.193"
+        }`,
       };
     } else if (isProduction) {
       return {
         env: "Production",
         source: "window.location.hostname",
-        description: typeof window !== "undefined" ?
-          `Using current hostname: ${window.location.hostname}` :
-          "Using server-side hostname"
+        description:
+          typeof window !== "undefined"
+            ? `Using current hostname: ${window.location.hostname}`
+            : "Using server-side hostname",
       };
     } else {
       return {
         env: "Unknown",
         source: "Fallback",
-        description: "Using fallback configuration"
+        description: "Using fallback configuration",
       };
     }
   };
@@ -145,8 +156,11 @@ export default function MQTTModeSelector() {
             <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-accent transition-colors">
               <RadioGroupItem value="env" id="env" />
               <div className="flex-1">
-                <label htmlFor="env" className="flex items-center gap-2 cursor-pointer">
-                  <FileCode className="h-4 w-4" />
+                <label
+                  htmlFor="env"
+                  className="flex items-center gap-2 cursor-pointer"
+                >
+                  <Settings className="h-4 w-4" />
                   <span className="font-medium">Environment Variables</span>
                   <Badge variant="outline" className="ml-auto">
                     {envInfo.env}
@@ -159,13 +173,38 @@ export default function MQTTModeSelector() {
             </div>
 
             <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-accent transition-colors">
+              <RadioGroupItem value="json" id="json" />
+              <div className="flex-1">
+                <label
+                  htmlFor="json"
+                  className="flex items-center gap-2 cursor-pointer"
+                >
+                  <FileCode className="h-4 w-4" />
+                  <span className="font-medium">JSON Configuration</span>
+                  <Badge variant="outline" className="ml-auto">
+                    Via MQTT
+                  </Badge>
+                </label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Use MQTT configuration from JSON file at{" "}
+                  <code>
+                    middleware/CONFIG_SYSTEM_DEVICE/JSON/mqttConfig.json
+                  </code>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-accent transition-colors">
               <RadioGroupItem value="database" id="database" />
               <div className="flex-1">
-                <label htmlFor="database" className="flex items-center gap-2 cursor-pointer">
+                <label
+                  htmlFor="database"
+                  className="flex items-center gap-2 cursor-pointer"
+                >
                   <Database className="h-4 w-4" />
                   <span className="font-medium">Database Configuration</span>
                   <Badge variant="outline" className="ml-auto">
-                    User Selected
+                    Via MQTT
                   </Badge>
                 </label>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -179,7 +218,9 @@ export default function MQTTModeSelector() {
         {/* Current Configuration Display */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <Label className="text-base font-medium">Current Configuration</Label>
+            <Label className="text-base font-medium">
+              Current Configuration
+            </Label>
             <Button
               variant="outline"
               size="sm"
@@ -206,7 +247,9 @@ export default function MQTTModeSelector() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">Protocol:</span>
-                  <p className="font-medium">{currentConfig.protocol.toUpperCase()}</p>
+                  <p className="font-medium">
+                    {currentConfig.protocol.toUpperCase()}
+                  </p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Host:</span>
@@ -218,7 +261,9 @@ export default function MQTTModeSelector() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Full URL:</span>
-                  <p className="font-medium text-xs break-all">{currentConfig.url}</p>
+                  <p className="font-medium text-xs break-all">
+                    {currentConfig.url}
+                  </p>
                 </div>
               </div>
             </div>
@@ -226,34 +271,23 @@ export default function MQTTModeSelector() {
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                {loading ? "Loading configuration..." : "Failed to load configuration"}
+                {loading
+                  ? "Loading configuration..."
+                  : "Failed to load configuration"}
               </AlertDescription>
             </Alert>
           )}
         </div>
 
-        {/* Environment Info */}
-        {mode === "env" && (
-          <Alert>
-            <Wifi className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Environment Mode Active:</strong> Using {envInfo.source} in {envInfo.env} environment.
-              {process.env.NODE_ENV === "production" && typeof window !== "undefined" && (
-                <span className="block mt-1 text-sm">
-                  Current hostname: <code>{window.location.hostname}</code>
-                </span>
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
-
+        {/* Mode Info */}
         {mode === "database" && (
           <Alert>
             <Database className="h-4 w-4" />
             <AlertDescription className="flex items-center justify-between">
               <div>
-                <strong>Database Mode Active:</strong> Using active MQTT configuration from database.
-                You can manage configurations in <strong>Settings → MQTT Configuration</strong>.
+                <strong>Database Mode Active:</strong> Using active MQTT
+                configuration from database. You can manage configurations in{" "}
+                <strong>Settings → MQTT Configuration</strong>.
               </div>
               <Link href="/settings/mqtt">
                 <Button variant="outline" size="sm" className="ml-4">

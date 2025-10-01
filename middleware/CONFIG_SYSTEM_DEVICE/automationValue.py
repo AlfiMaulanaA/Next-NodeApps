@@ -1,44 +1,45 @@
 import json
 import time
 import threading
-import paho.mqtt.client as mqtt
-import operator
-import uuid
-from datetime import datetime
 import logging
-import requests
+import uuid
+import operator
+import subprocess
+import paho.mqtt.client as mqtt
+from datetime import datetime, timedelta
+from ErrorLogger import initialize_error_logger, send_error_log, ERROR_TYPE_MINOR, ERROR_TYPE_MAJOR, ERROR_TYPE_CRITICAL, ERROR_TYPE_WARNING
 
 # --- Setup Logging ---
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("AutomationValueService")
 
-# --- Startup Banner ---
+# --- Startup Banner Functions ---
 def print_startup_banner():
     """Print standardized startup banner"""
     print("\n" + "="*50)
-    print("===== Automation Value Only =====")
+    print("======= Automation Value Control =======")
     print("Initializing System...")
     print("="*50)
 
 def print_success_banner():
     """Print success status banner"""
     print("\n" + "="*50)
-    print("===== Automation Value Only =====")
+    print("======= Automation Value Control =======")
     print("Success To Running")
     print("")
 
-def print_broker_status(local_status=False, server_status=False):
+def print_broker_status(crud_status=False, control_status=False):
     """Print MQTT broker connection status"""
-    if local_status:
-        print("MQTT Broker Local is Running")
+    if crud_status:
+        print("MQTT Broker CRUD is Running")
     else:
-        print("MQTT Broker Local connection failed")
-    
-    if server_status:
-        print("MQTT Broker Server is Running")
+        print("MQTT Broker CRUD connection failed")
+
+    if control_status:
+        print("MQTT Broker Control is Running")
     else:
-        print("MQTT Broker Server connection failed")
-    
+        print("MQTT Broker Control connection failed")
+
     print("\n" + "="*34)
     print("Log print Data")
     print("")
@@ -54,422 +55,578 @@ def log_simple(message, level="INFO"):
     else:
         print(f"[INFO] {message}")
 
-# --- GLOBAL CONFIGURATION ---
-DEBUG_MODE = True # Set to False to disable most debug prints from console, but errors will still be logged via MQTT.
-RECONNECT_INTERVAL = 5 # Seconds between reconnection attempts
-HEARTBEAT_INTERVAL = 30 # Seconds between heartbeat messages
+# --- Global Variables ---
+config = []
+modbus_devices = []
+modular_devices = []
+subscribed_topics = set()  # Track subscribed device topics
+client_control = None  # For sending control commands to devices
+client_crud = None     # For handling configuration CRUD operations
+client_error_logger = None  # For unified error logger MQTT client
+error_logger = None
+device_states = {}  # Track current device states for trigger evaluation
+trigger_states = {}  # Track trigger states for auto-off functionality
+trigger_timers = {}  # Track delay timers for triggers
 
-# File Paths
-MODBUS_FILE_PATH = "../MODBUS_SNMP/JSON/Config/installed_devices.json"
-MODULAR_FILE_PATH = "../MODULAR_I2C/JSON/Config/installed_devices.json"
-AUTOMATION_FILE_PATH = "./JSON/automationValueConfig.json"
-MQTT_CONFIG_PATH = "../MODBUS_SNMP/JSON/Config/mqtt_config.json"
-WHATSAPP_CONFIG_PATH = "./whatsapp_config.json"
-# VOICE_CONTROL_PATH moved to automationVoice.py
-
-# MQTT Local Broker Configuration
-LOCAL_BROKER = "localhost"
-LOCAL_PORT = 1883
-QOS = 1
-
-# MQTT Server Broker Configuration (loaded from file)
-SERVER_BROKER = "localhost" # Default fallback
-SERVER_PORT = 1883 # Default fallback
+# --- Logging Control ---
+device_topic_logging_enabled = False  # Control device topic message logging
 
 # --- Connection Status Tracking ---
-local_broker_connected = False
-server_broker_connected = False
+crud_broker_connected = False
+control_broker_connected = False
 
-try:
-    with open(MQTT_CONFIG_PATH, "r") as f:
-        mqtt_server_config = json.load(f)
-    SERVER_BROKER = mqtt_server_config.get("broker_address", SERVER_BROKER)
-    SERVER_PORT = mqtt_server_config.get("broker_port", SERVER_PORT)
-except FileNotFoundError:
-    logger.error(f"MQTT config file not found at {MQTT_CONFIG_PATH}. Using default server broker settings.")
-    # No send_error_log here, as error logger client might not be initialized yet.
-except json.JSONDecodeError:
-    logger.error(f"Invalid JSON in MQTT config file at {MQTT_CONFIG_PATH}. Using default server broker settings.")
-except Exception as e:
-    logger.error(f"Unexpected error loading MQTT config from {MQTT_CONFIG_PATH}: {e}. Using default server broker settings.")
+# --- Configuration File Paths ---
+mqtt_config_file = '../MODBUS_SNMP/JSON/Config/mqtt_config.json'
+config_file = './JSON/automationValueConfig.json'
+modbus_devices_file = '../MODBUS_SNMP/JSON/Config/installed_devices.json'
+modular_devices_file = '../MODULAR_I2C/JSON/Config/installed_devices.json'
+whatsapp_config_file = './whatsapp_config.json'
 
-# MQTT Topic Definitions (Local Broker)
-MODBUS_TOPIC = "modbus_value/data"
-MODULAR_TOPIC = "modular_value/data"
-AUTOMATION_TOPIC = "automation_value/data"
-# Simplified Topics (like AutomationLogic)
-AUTOMATION_COMMAND_TOPIC = "command_control_value"
-AUTOMATION_RESPONSE_TOPIC = "response_control_value"
-AUTOMATION_STATUS_TOPIC = "automation_value/status"
-HEARTBEAT_TOPIC = "automation_value/heartbeat"
-# Voice control topics moved to automationVoice.py
+# --- MQTT Topic Definitions ---
+# Simplified Topics (localhost broker)
+topic_command = "command_control_value"
+topic_response = "response_control_value"
 
-# MQTT Topic Definitions (Other)
-RELAY_COMMAND_TOPIC = "modular"
-MQTT_BROKER_SERVER_TOPIC = "mqtt_broker_server"
-ERROR_LOG_TOPIC = "subrack/error/log" # Topic for centralized error logging
+# Device and Control Topics
+MODBUS_AVAILABLES_TOPIC = "MODBUS_DEVICE/AVAILABLES"
+MODULAR_AVAILABLES_TOPIC = "MODULAR_DEVICE/AVAILABLES"
+MODBUS_DATA_TOPIC = "modbus_device/data"
+MODBUS_CONTROL_TOPIC = "modular"
+RESULT_MESSAGE_TOPIC = "result/message/value/control"
 
-# --- GLOBAL STATE / HELPERS ---
-trigger_states = {} # Stores previous trigger states for automation rules
+# --- Error severity levels ---
+ERROR_TYPE_CRITICAL = "CRITICAL"
+ERROR_TYPE_MAJOR = "MAJOR"
+ERROR_TYPE_MINOR = "MINOR"
+ERROR_TYPE_WARNING = "WARNING"
 
-# Operator mapping for comparisons
-logic_ops = {
-    ">": operator.gt,
-    "<": operator.lt,
-    ">=": operator.ge,
-    "<=": operator.le,
-    "==": operator.eq,
-    "!=": operator.ne,
-    "more_than": operator.gt,
-    "less_than": operator.lt
-}
+# --- Error Log Helper Function ---
+ERROR_LOG_BROKER = "localhost"
+ERROR_LOG_PORT = 1883
+# Using unified ErrorLogger
 
-# Get MAC address
-MAC_ADDRESS = ":".join([f"{(uuid.getnode() >> i) & 0xff:02x}" for i in range(0, 8*6, 8)][::-1])
+def get_active_mac_address():
+    """Get MAC address from active network interface (prioritize wlan0, then eth0)"""
+    # Priority: wlan0 (WiFi) > eth0 (Ethernet)
+    interfaces = ['wlan0', 'eth0']
 
-# --- DEDICATED ERROR LOGGING CLIENT ---
-error_logger_client = None
-ERROR_LOGGER_CLIENT_ID = f'automation-error-logger-{uuid.uuid4()}'
-
-def on_error_logger_connect(client, userdata, flags, rc):
-    if rc == 0:
-        logger.info("Connected to dedicated Error Log MQTT Broker (localhost).")
-    else:
-        logger.error(f"Failed to connect dedicated Error Log MQTT Broker, return code: {rc}")
-
-def on_error_logger_disconnect(client, userdata, rc):
-    if rc != 0:
-        logger.warning(f"Unexpected disconnect from Error Log broker with code {rc}. Attempting reconnect...")
-    else:
-        logger.info("Error Log client disconnected normally.")
-
-def initialize_error_logger():
-    """Initializes and connects the dedicated error logging MQTT client."""
-    global error_logger_client
+    # First try: Use ifconfig (most reliable on embedded systems)
     try:
-        error_logger_client = mqtt.Client(ERROR_LOGGER_CLIENT_ID)
-        error_logger_client.on_connect = on_error_logger_connect
-        error_logger_client.on_disconnect = on_error_logger_disconnect
-        error_logger_client.reconnect_delay_set(min_delay=1, max_delay=120) # Add reconnect delay
-        error_logger_client.connect(LOCAL_BROKER, LOCAL_PORT, keepalive=60)
-        error_logger_client.loop_start()
-        logger.info(f"Dedicated error logger client initialized and started loop to {LOCAL_BROKER}:{LOCAL_PORT}")
+        log_simple("Checking network interfaces with ifconfig", "INFO")
+        ifconfig_result = subprocess.run(['ifconfig'], capture_output=True, text=True, timeout=5)
+        if ifconfig_result.returncode == 0:
+            lines = ifconfig_result.stdout.split('\n')
+            current_interface = None
+            for line in lines:
+                line = line.strip()
+                # Look for interface name (line that starts with interface name)
+                if line and not line.startswith(' ') and not line.startswith('\t') and ':' in line:
+                    current_interface = line.split(':')[0].strip()
+                # Look for ether (MAC address) in the interface block
+                elif current_interface and current_interface in interfaces and 'ether ' in line:
+                    mac_match = line.split('ether ')[1].split()[0].strip()
+                    # Validate MAC address format
+                    if len(mac_match.split(':')) == 6 and len(mac_match) == 17:
+                        # Check if interface is RUNNING by looking for RUNNING flag in previous lines
+                        interface_block_start = None
+                        for i, check_line in enumerate(lines):
+                            if check_line.strip().startswith(f'{current_interface}:'):
+                                interface_block_start = i
+                                break
+
+                        if interface_block_start is not None:
+                            # Check the flags line (usually the line after interface name)
+                            flags_line = lines[interface_block_start].strip()
+                            if 'RUNNING' in flags_line:
+                                log_simple(f"Found active MAC address from {current_interface}: {mac_match}", "SUCCESS")
+                                return mac_match
+                            else:
+                                log_simple(f"Interface {current_interface} is not RUNNING", "WARNING")
     except Exception as e:
-        logger.critical(f"FATAL: Failed to initialize dedicated error logger: {e}", exc_info=True)
-        # Cannot send error log if the logger itself fails to initialize
+        log_simple(f"ifconfig method failed: {e}", "ERROR")
 
-def send_error_log(function_name, error_detail, error_type, additional_info=None):
-    """
-    Sends an error message to the centralized error log service via MQTT.
-    Uses the dedicated error_logger_client.
-    """
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    error_payload = {
-        "data": f"[{function_name}] {error_detail}",
-        "type": error_type.upper(),
-        "source": "AutomationValueService",
-        "Timestamp": timestamp
-    }
-    if additional_info:
-        error_payload.update(additional_info)
+    # Second try: Use sysfs method
+    for interface in interfaces:
+        try:
+            # Check if interface exists and is up
+            operstate_path = f'/sys/class/net/{interface}/operstate'
+            address_path = f'/sys/class/net/{interface}/address'
 
-    try:
-        if error_logger_client and error_logger_client.is_connected():
-            error_logger_client.publish(ERROR_LOG_TOPIC, json.dumps(error_payload), qos=QOS)
-            logger.debug(f"Error log sent: {error_payload}")
-        else:
-            logger.error(f"Error logger MQTT client not connected, unable to send log: {error_payload}")
-    except Exception as e:
-        logger.error(f"Failed to publish error log (internal error in send_error_log): {e}", exc_info=True)
-    
-    # Also log to console for immediate visibility
-    logger.error(f"[{function_name}] ({error_type}): {error_detail}")
+            # Check operstate
+            with open(operstate_path, 'r') as f:
+                operstate = f.read().strip()
 
-# --- JSON HELPERS ---
-def read_json(file_path):
-    try:
-        with open(file_path, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        logger.warning(f"File not found: {file_path}. Returning empty list.")
-        send_error_log("read_json", f"File not found: {file_path}", "warning", {"file_path": file_path})
-        return []
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in {file_path}: {e}. Returning empty list.")
-        send_error_log("read_json", f"Invalid JSON in {file_path}: {e}", "critical", {"file_path": file_path})
-        return []
-    except Exception as e:
-        logger.error(f"Read error {file_path}: {e}. Returning None.")
-        send_error_log("read_json", f"Unexpected error reading {file_path}: {e}", "critical", {"file_path": file_path})
-        return None
+            if operstate == 'up':
+                # Get MAC address
+                with open(address_path, 'r') as f:
+                    mac_address = f.read().strip()
 
-def write_json(file_path, data):
-    try:
-        with open(file_path, "w") as f:
-            json.dump(data, f, indent=4)
-        if DEBUG_MODE:
-            logger.debug(f"Data written to {file_path}")
-    except Exception as e:
-        logger.error(f"Write error {file_path}: {e}")
-        send_error_log("write_json", f"Failed to write to {file_path}: {e}", "major", {"file_path": file_path})
-
-# --- MQTT BROKER INFO PUBLISHER ---
-def publish_mqtt_broker_info():
-    try:
-        config = read_json(MQTT_CONFIG_PATH)
-        if config:
-            payload = {
-                "broker_address": config.get("broker_address"),
-                "broker_port": config.get("broker_port"),
-                "username": config.get("username"),
-                "password": config.get("password"),
-                "mac_address": MAC_ADDRESS,
-                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-            # Use mqtt_local client for publishing broker info to local topic
-            if mqtt_local and mqtt_local.is_connected():
-                mqtt_local.publish(MQTT_BROKER_SERVER_TOPIC, json.dumps(payload), qos=QOS)
-                if DEBUG_MODE:
-                    logger.debug(f"Published broker info to {MQTT_BROKER_SERVER_TOPIC}")
+                # Validate MAC address format
+                if len(mac_address.split(':')) == 6 and len(mac_address) == 17:
+                    log_simple(f"Found active MAC address from {interface} (sysfs): {mac_address}", "SUCCESS")
+                    return mac_address
+                else:
+                    log_simple(f"Invalid MAC format from {interface}: {mac_address}", "WARNING")
             else:
-                logger.warning(f"Local MQTT client not connected, unable to publish broker info to {MQTT_BROKER_SERVER_TOPIC}.")
-                send_error_log("publish_mqtt_broker_info", "Local MQTT client not connected.", "warning", {"topic": MQTT_BROKER_SERVER_TOPIC})
-        else:
-            if DEBUG_MODE:
-                logger.debug(f"MQTT config not found for broker info at {MQTT_CONFIG_PATH}.")
-            send_error_log("publish_mqtt_broker_info", f"MQTT config not found for broker info at {MQTT_CONFIG_PATH}.", "warning", {"file_path": MQTT_CONFIG_PATH})
-    except Exception as e:
-        send_error_log("publish_mqtt_broker_info", f"Error publishing broker info: {e}", "major")
+                log_simple(f"Interface {interface} operstate is {operstate}", "WARNING")
+        except (FileNotFoundError, PermissionError, Exception) as e:
+            log_simple(f"Failed to get MAC from {interface} (sysfs): {e}", "WARNING")
+            continue
 
-def publish_mqtt_broker_info_loop():
+    # Fallback to default if no active interface found
+    # Reduce log spam - only log this once per service startup
+    # log_simple("No active network interface found, using default MAC", "WARNING")
+    return "00:00:00:00:00:00"
+
+# --- Configuration Management ---
+def load_mqtt_config():
+    """Load MQTT config with graceful error handling and retry loop"""
+    default_config = {
+        "enable": True,
+        "broker_address": "localhost",
+        "broker_port": 1883,
+        "username": "",
+        "password": "",
+        "qos": 1,
+        "retain": True,
+        "mac_address": "00:00:00:00:00:00"
+    }
+
     while True:
-        publish_mqtt_broker_info()
-        time.sleep(5) # Publish every 5 seconds
+        try:
+            with open(mqtt_config_file, 'r') as file:
+                content = file.read().strip()
+                if not content:
+                    log_simple(f"MQTT config file is empty. Retrying in 5 seconds...", "WARNING")
+                    time.sleep(5)
+                    continue
+                return json.loads(content)
+        except FileNotFoundError:
+            log_simple(f"MQTT config file not found. Creating default config and retrying in 5 seconds...", "WARNING")
+            try:
+                # Create directory if not exists
+                import os
+                os.makedirs(os.path.dirname(mqtt_config_file), exist_ok=True)
+                # Create default config file
+                with open(mqtt_config_file, 'w') as file:
+                    json.dump(default_config, file, indent=4)
+                log_simple(f"Created default MQTT config file: {mqtt_config_file}", "INFO")
+            except Exception as create_error:
+                log_simple(f"Failed to create config file: {create_error}. Retrying in 5 seconds...", "WARNING")
+                time.sleep(5)
+                continue
+        except json.JSONDecodeError as e:
+            log_simple(f"Error decoding MQTT config file: {e}. Using default configuration.", "WARNING")
+            return default_config
+        except Exception as e:
+            log_simple(f"Unexpected error loading MQTT config: {e}. Retrying in 5 seconds...", "WARNING")
+            time.sleep(5)
+            continue
 
-# --- VOICE CONTROL FUNCTIONS MOVED TO automationVoice.py ---
-
-# --- CRUD FUNCTIONS: AUTOMATION VALUES ---
-def add_automation_value(data):
+def load_value_config():
+    """Load automation value configuration"""
+    global config
     try:
-        # Validate required fields - support both old and new structure
-        if 'name' in data and 'topic' in data and 'config' in data:
-            # Legacy structure - convert to new structure
-            rule_name = data.get('name', f"Rule-{uuid.uuid4()}")
-            new_data = {
-                "id": str(uuid.uuid4()),
-                "rule_name": rule_name,
-                "description": f"Legacy rule: {rule_name}",
-                "group_rule_name": "Legacy Rules",
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "trigger_groups": [
-                    {
-                        "group_name": f"{rule_name} Group",
-                        "group_operator": "AND",
-                        "triggers": [
-                            {
-                                "device_name": f"Device-{rule_name}",
-                                "device_mac": MAC_ADDRESS,
-                                "device_address": 1,
-                                "device_bus": 0,
-                                "trigger_type": "drycontact",
-                                "pin_number": 1,
-                                "condition_operator": "is",
-                                "target_value": True,
-                                "expected_value": True,
-                                "delay_on": 0,
-                                "delay_off": 0
-                            }
-                        ]
-                    }
-                ],
-                "actions": [
-                    {
-                        "action_type": "control_relay",
-                        "target_device": data.get('relay', {}).get('name', 'Unknown'),
-                        "target_mac": MAC_ADDRESS,
-                        "target_address": data.get('relay', {}).get('address', 1),
-                        "target_bus": data.get('relay', {}).get('bus', 0),
-                        "relay_pin": data.get('relay', {}).get('pin', 1),
-                        "target_value": data.get('relay', {}).get('logic', True),
-                        "description": f"Control relay for {rule_name}"
-                    }
-                ],
-                # Keep legacy fields for backward compatibility
-                "name": data.get('name'),
-                "topic": data.get('topic'),
-                "config": data.get('config'),
-                "relay": data.get('relay')
-            }
-            data = new_data
+        with open(config_file, 'r') as file:
+            loaded_data = json.load(file)
+
+        if isinstance(loaded_data, list):
+            config = loaded_data
+            log_simple(f"Value configuration loaded from {config_file}")
         else:
-            # New structure - validate required fields
-            required_fields = ['rule_name', 'trigger_groups', 'actions']
-            for field in required_fields:
-                if field not in data:
-                    send_error_log("add_automation_value", f"Missing required field: {field}", "major", {"data": data})
-                    return False
+            config = []
+            log_simple("Invalid config format, using default structure.", "WARNING")
 
-        items = read_json(AUTOMATION_FILE_PATH)
-        if items is None:
-            send_error_log("add_automation_value", "Failed to read existing automation data.", "critical")
-            return False
-
-        # Check for duplicate rule names
-        existing_names = [item.get('rule_name') or item.get('name') for item in items]
-        rule_name = data.get('rule_name') or data.get('name', '')
-        if rule_name in existing_names:
-            send_error_log("add_automation_value", f"Automation with name '{rule_name}' already exists.", "warning")
-            return False
-
-        # Generate ID if not provided
-        if 'id' not in data:
-            data['id'] = str(uuid.uuid4())
-
-        # Set created_at if not provided
-        if 'created_at' not in data:
-            data['created_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        items.append(data)
-        write_json(AUTOMATION_FILE_PATH, items)
-        logger.info(f"Automation Added: {rule_name}")
-
-        # Publish status update
-        publish_automation_status("created", rule_name)
-        return True
+    except FileNotFoundError:
+        log_simple(f"Config file not found: {config_file}. Creating default config.")
+        config = []
+        save_value_config()
+    except json.JSONDecodeError as e:
+        log_simple(f"Failed to load config (JSON decode error): {e}. Using default.", "ERROR")
+        config = []
+        send_error_log("load_value_config", f"Config JSON decode error: {e}", ERROR_TYPE_MAJOR)
     except Exception as e:
-        send_error_log("add_automation_value", f"Failed to add automation value: {e}", "major", {"data": data})
-        return False
+        log_simple(f"Failed to load config: {e}", "ERROR")
+        config = []
+        send_error_log("load_value_config", f"Config load error: {e}", ERROR_TYPE_MAJOR)
 
-def update_automation_value(name, new_data):
+def save_value_config():
+    """Save automation value configuration"""
     try:
-        items = read_json(AUTOMATION_FILE_PATH)
-        if items is None:
-            send_error_log("update_automation_value", "Failed to read existing automation data.", "critical")
-            return False
-
-        found = False
-        for item in items:
-            if item.get("name") == name:
-                # Preserve the original name
-                original_name = item.get("name")
-                item.update(new_data)
-                item["name"] = original_name  # Ensure name doesn't change
-                
-                write_json(AUTOMATION_FILE_PATH, items)
-                logger.info(f"Automation Updated: {name}")
-                
-                # Publish status update
-                publish_automation_status("updated", name)
-                found = True
-                break
-        
-        if not found:
-            logger.warning(f"Automation Not Found for update: {name}")
-            send_error_log("update_automation_value", f"Automation not found for update.", "warning", {"name": name, "new_data": new_data})
-            return False
-        
-        return True
+        with open(config_file, 'w') as file:
+            json.dump(config, file, indent=2)
+        log_simple(f"Configuration saved to {config_file}")
     except Exception as e:
-        send_error_log("update_automation_value", f"Failed to update automation value: {e}", "major", {"name": name, "new_data": new_data})
-        return False
+        log_simple(f"Failed to save config: {e}", "ERROR")
+        send_error_log("save_value_config", f"Config save error: {e}", ERROR_TYPE_MAJOR)
 
-def delete_automation_value(name):
+def load_modbus_devices():
+    """Load MODBUS devices from installed_devices.json"""
+    global modbus_devices
     try:
-        items = read_json(AUTOMATION_FILE_PATH)
-        if items is None:
-            send_error_log("delete_automation_value", "Failed to read existing automation data.", "critical")
-            return False
+        with open(modbus_devices_file, 'r') as file:
+            modbus_devices = json.load(file)
+        log_simple(f"MODBUS devices loaded: {len(modbus_devices)} devices")
 
-        new_items = [i for i in items if i.get("name") != name]
-        if len(new_items) != len(items):
-            write_json(AUTOMATION_FILE_PATH, new_items)
-            logger.info(f"Automation Deleted: {name}")
-            
-            # Clean up trigger state
-            if name in trigger_states:
-                del trigger_states[name]
-            
-            # Publish status update
-            publish_automation_status("deleted", name)
-            return True
+        # Publish available devices to MODBUS_DEVICE/AVAILABLES topic
+        publish_available_devices()
+
+    except FileNotFoundError:
+        log_simple(f"MODBUS devices file not found: {modbus_devices_file}")
+        modbus_devices = []
+        send_error_log("load_modbus_devices", f"MODBUS devices file not found", ERROR_TYPE_WARNING)
+    except json.JSONDecodeError as e:
+        log_simple(f"Failed to load MODBUS devices (JSON decode error): {e}")
+        modbus_devices = []
+        send_error_log("load_modbus_devices", f"MODBUS devices JSON decode error: {e}", ERROR_TYPE_MAJOR)
+    except Exception as e:
+        log_simple(f"Failed to load MODBUS devices: {e}", "ERROR")
+        modbus_devices = []
+        send_error_log("load_modbus_devices", f"MODBUS devices load error: {e}", ERROR_TYPE_MAJOR)
+
+def load_modular_devices():
+    """Load modular devices from installed_devices.json"""
+    global modular_devices
+    try:
+        with open(modular_devices_file, 'r') as file:
+            modular_devices = json.load(file)
+        log_simple(f"Modular devices loaded: {len(modular_devices)} devices")
+
+        # Publish available devices to MODULAR_DEVICE/AVAILABLES topic
+        publish_available_modular_devices()
+
+    except FileNotFoundError:
+        log_simple(f"Modular devices file not found: {modular_devices_file}")
+        modular_devices = []
+        send_error_log("load_modular_devices", f"Modular devices file not found", ERROR_TYPE_WARNING)
+    except json.JSONDecodeError as e:
+        log_simple(f"Failed to load modular devices (JSON decode error): {e}")
+        modular_devices = []
+        send_error_log("load_modular_devices", f"Modular devices JSON decode error: {e}", ERROR_TYPE_MAJOR)
+    except Exception as e:
+        log_simple(f"Failed to load modular devices: {e}", "ERROR")
+        modular_devices = []
+        send_error_log("load_modular_devices", f"Modular devices load error: {e}", ERROR_TYPE_MAJOR)
+
+def publish_available_devices():
+    """Publish available MODBUS devices to MODBUS_DEVICE/AVAILABLES topic"""
+    try:
+        if client_crud and client_crud.is_connected():
+            available_devices = []
+            for device in modbus_devices:
+                available_device = {
+                    'id': device.get('id', ''),
+                    'name': device.get('profile', {}).get('name', ''),
+                    'ip_address': device.get('protocol_setting', {}).get('ip_address', ''),
+                    'port': device.get('protocol_setting', {}).get('port', 502),
+                    'part_number': device.get('profile', {}).get('part_number', ''),
+                    'mac': device.get('mac', '00:00:00:00:00:00'),
+                    'device_type': device.get('profile', {}).get('device_type', ''),
+                    'manufacturer': device.get('profile', {}).get('manufacturer', ''),
+                    'topic': device.get('profile', {}).get('topic', ''),
+                    'protocol': device.get('protocol_setting', {}).get('protocol', '')
+                }
+                available_devices.append(available_device)
+
+            # Add connection check for safety
+            if client_crud and client_crud.is_connected():
+                client_crud.publish(MODBUS_AVAILABLES_TOPIC, json.dumps(available_devices))
+                log_simple(f"Published {len(available_devices)} available MODBUS devices", "SUCCESS")
+            else:
+                log_simple("CRUD client not connected, cannot publish available devices", "WARNING")
         else:
-            logger.warning(f"Automation Not Found for delete: {name}")
-            send_error_log("delete_automation_value", f"Automation not found for delete.", "warning", {"name": name})
-            return False
+            log_simple("Cannot publish available devices - CRUD client not connected", "WARNING")
+
     except Exception as e:
-        send_error_log("delete_automation_value", f"Failed to delete automation value: {e}", "major", {"name": name})
-        return False
+        log_simple(f"Error publishing available devices: {e}", "ERROR")
+        send_error_log("publish_available_devices", f"Error publishing available devices: {e}", ERROR_TYPE_MINOR)
 
-# --- MQTT CLIENTS ---
-mqtt_local = mqtt.Client(client_id=f"automation-local-{uuid.uuid4()}")
-mqtt_server = mqtt.Client(client_id=f"automation-server-{uuid.uuid4()}")
+def publish_available_modular_devices():
+    """Publish available modular devices to MODULAR_DEVICE/AVAILABLES topic"""
+    try:
+        if client_crud and client_crud.is_connected():
+            available_devices = []
+            for device in modular_devices:
+                available_device = {
+                    'id': device.get('id', ''),
+                    'name': device.get('profile', {}).get('name', ''),
+                    'address': device.get('protocol_setting', {}).get('address', 0),
+                    'device_bus': device.get('protocol_setting', {}).get('device_bus', 0),
+                    'part_number': device.get('profile', {}).get('part_number', ''),
+                    'mac': device.get('mac', '00:00:00:00:00:00'),
+                    'device_type': device.get('profile', {}).get('device_type', ''),
+                    'manufacturer': device.get('profile', {}).get('manufacturer', ''),
+                    'topic': device.get('profile', {}).get('topic', '')
+                }
+                available_devices.append(available_device)
 
-# --- MQTT LOCAL CLIENT CALLBACKS ---
-def on_local_connect(client, userdata, flags, rc):
-    global local_broker_connected
+            # Add connection check for safety
+            if client_crud and client_crud.is_connected():
+                client_crud.publish(MODULAR_AVAILABLES_TOPIC, json.dumps(available_devices))
+                log_simple(f"Published {len(available_devices)} available MODULAR devices", "SUCCESS")
+            else:
+                log_simple("CRUD client not connected, cannot publish available modular devices", "WARNING")
+        else:
+            log_simple("Cannot publish available modular devices - CRUD client not connected", "WARNING")
+
+    except Exception as e:
+        log_simple(f"Error publishing available modular devices: {e}", "ERROR")
+        send_error_log("publish_available_modular_devices", f"Error publishing available modular devices: {e}", ERROR_TYPE_MINOR)
+
+def handle_available_devices_update(client, available_devices):
+    """Handle available devices update"""
+    try:
+        log_simple(f"Available devices update received: {len(available_devices)} devices")
+
+        # Update subscribed topics based on available devices
+        subscribe_to_device_topics(client)
+
+    except Exception as e:
+        log_simple(f"Error handling available devices update: {e}", "ERROR")
+        send_error_log("handle_available_devices_update", f"Available devices update error: {e}", ERROR_TYPE_MINOR)
+
+def subscribe_to_device_topics(client):
+    """Subscribe to device topics used in trigger conditions"""
+    try:
+        if not client or not client.is_connected():
+            log_simple("Client not connected, cannot subscribe to device topics", "WARNING")
+            return
+
+        # Collect all unique device topics from value rules
+        device_topics = set()
+
+        for rule in config:
+            trigger_groups = rule.get('trigger_groups', [])
+            for group in trigger_groups:
+                triggers = group.get('triggers', [])
+                for trigger in triggers:
+                    device_topic = trigger.get('device_topic')
+                    if device_topic:
+                        device_topics.add(device_topic)
+
+        # Subscribe to each unique device topic
+        for topic in device_topics:
+            if topic not in subscribed_topics:
+                client.subscribe(topic)
+                subscribed_topics.add(topic)
+                log_simple(f"Subscribed to device topic: {topic}", "SUCCESS")
+
+        # Log total subscribed topics
+        log_simple(f"Total device topics subscribed: {len(subscribed_topics)}", "INFO")
+
+    except Exception as e:
+        log_simple(f"Error subscribing to device topics: {e}", "ERROR")
+        send_error_log("subscribe_to_device_topics", f"Device topic subscription error: {e}", ERROR_TYPE_MAJOR)
+
+# --- MQTT Connection Functions ---
+def on_connect_crud(client, userdata, flags, rc):
+    global crud_broker_connected
     if rc == 0:
-        local_broker_connected = True
-        log_simple("Local MQTT broker connected", "SUCCESS")
-        # Subscribe to simplified command topic
-        client.subscribe(AUTOMATION_COMMAND_TOPIC, qos=QOS)
-        if DEBUG_MODE:
-            logger.debug(f"[DEBUG] Subscribed to simplified command topic: {AUTOMATION_COMMAND_TOPIC}")
-    else:
-        local_broker_connected = False
-        log_simple(f"Local MQTT broker connection failed (code {rc})", "ERROR")
-        send_error_log("on_local_connect", f"Failed to connect to local MQTT broker, return code {rc}", "critical", {"return_code": rc})
+        crud_broker_connected = True
+        log_simple("CRUD MQTT broker connected", "SUCCESS")
 
-def on_local_message(client, userdata, msg):
-    if DEBUG_MODE:
-        logger.debug(f"[DEBUG] Local MQTT message received on topic '{msg.topic}'")
+        # Subscribe to simplified command topic
+        client.subscribe([
+            (topic_command, 1),
+            ("command_available_device", 1)
+        ])
+
+        # Publish available devices on connection
+        publish_available_devices()
+        publish_available_modular_devices()
+
+    else:
+        crud_broker_connected = False
+        log_simple(f"CRUD MQTT broker connection failed (code {rc})", "ERROR")
+
+def on_connect_control(client, userdata, flags, rc):
+    global control_broker_connected
+    if rc == 0:
+        control_broker_connected = True
+        log_simple("Control MQTT broker connected", "SUCCESS")
+
+        # Subscribe to available devices topics to get device topics
+        client.subscribe([(MODBUS_AVAILABLES_TOPIC, 0), (MODULAR_AVAILABLES_TOPIC, 0)])
+
+        # Subscribe to already known device topics
+        subscribe_to_device_topics(client)
+
+    else:
+        control_broker_connected = False
+        log_simple(f"Control MQTT broker connection failed (code {rc})", "ERROR")
+
+def on_disconnect_crud(client, userdata, rc):
+    global crud_broker_connected
+    crud_broker_connected = False
+    if rc != 0:
+        log_simple("CRUD MQTT broker disconnected unexpectedly", "WARNING")
+
+def on_disconnect_control(client, userdata, rc):
+    global control_broker_connected
+    control_broker_connected = False
+    if rc != 0:
+        log_simple("Control MQTT broker disconnected unexpectedly", "WARNING")
+
+def on_message_control(client, userdata, msg):
+    """Handle control messages (device data from subscribed topics)"""
     try:
         topic = msg.topic
-        payload = msg.payload.decode("utf-8")
+        payload = msg.payload.decode()
 
-        if topic == AUTOMATION_COMMAND_TOPIC:
+        # Log device topic messages only if enabled
+        if device_topic_logging_enabled:
+            log_simple(f"Control Message: {topic} - {payload}")
+
+        # Handle device data from subscribed topics
+        try:
+            device_message = json.loads(payload)
+
+            # Extract device information from topic
+            # Topic format can be:
+            # - MODBUS: "TBGPower/T00Q56/parameters"
+            # - Sensor: "limbah/ph2"
+            # Use the full topic as identifier
+            device_topic = topic
+
+            # Extract numeric data from the message
+            if 'value' in device_message:
+                # The value field contains JSON string with device data
+                if isinstance(device_message['value'], str):
+                    try:
+                        device_data = json.loads(device_message['value'])
+                    except json.JSONDecodeError:
+                        # If value is a status string (e.g., "data acquisition success"), skip processing
+                        if "success" in device_message['value'].lower() or "error" in device_message['value'].lower():
+                            log_simple(f"Skipping status message: {device_message['value']}", "INFO")
+                            return
+                        # Otherwise, treat the whole message as data
+                        device_data = device_message
+                else:
+                    device_data = device_message['value']
+            else:
+                # Direct sensor data (e.g., pH sensor)
+                device_data = device_message
+
+            # Validate that device_data is a dictionary before processing
+            if not isinstance(device_data, dict):
+                log_simple(f"Invalid device data format for topic '{topic}': expected dict, got {type(device_data).__name__}", "WARNING")
+                return
+
+            # Process the device data for automation value logic
+            process_modbus_device_data({
+                'device_topic': device_topic,
+                'data': device_data,
+                'topic': topic
+            })
+
+        except json.JSONDecodeError as e:
+            log_simple(f"Failed to parse device message JSON: {e}", "ERROR")
+        except Exception as e:
+            log_simple(f"Error processing device message: {e}", "ERROR")
+            send_error_log("on_message_control", f"Device message processing error: {e}", ERROR_TYPE_MINOR)
+
+    except Exception as e:
+        log_simple(f"Error handling control message: {e}", "ERROR")
+        send_error_log("on_message_control", f"Control message handling error: {e}", ERROR_TYPE_MINOR)
+
+# --- Message Handling ---
+def on_message_crud(client, userdata, msg):
+    """Handle CRUD messages"""
+    try:
+        topic = msg.topic
+        payload = msg.payload.decode()
+
+        log_simple(f"CRUD Message: {topic} - {payload}")
+
+        if topic == "command_available_device":
+            if payload == "get_modbus_devices":
+                publish_available_devices()
+            elif payload == "get_modular_devices":
+                publish_available_modular_devices()
+            return
+
+        # Handle simplified command topic
+        if topic == topic_command:
             try:
                 message_data = json.loads(payload)
-                action = message_data.get('action')
+                command = message_data.get('command')
 
-                if action == "get":
+                if command == "get":
                     handle_get_request(client)
-                elif action in ["add", "set", "delete"]:
-                    handle_crud_request(client, action, message_data)
+                elif command in ["add", "set", "delete"]:
+                    handle_crud_request(client, command, message_data)
+                elif command == "enable_device_logging":
+                    handle_device_logging_control(client, True)
+                elif command == "disable_device_logging":
+                    handle_device_logging_control(client, False)
                 else:
-                    log_simple(f"Unknown action: {action}", "WARNING")
+                    log_simple(f"Unknown command: {command}", "WARNING")
 
             except json.JSONDecodeError:
                 log_simple(f"Invalid JSON in command message: {payload}", "ERROR")
-        else:
-            logger.warning(f"Received unexpected message on local topic: {topic}")
-            send_error_log("on_local_message", f"Unexpected topic: {topic}", "warning", {"topic": topic})
+            except Exception as e:
+                log_simple(f"Error processing command: {e}", "ERROR")
 
-    except json.JSONDecodeError as e:
-        send_error_log("on_local_message", f"Invalid JSON payload on topic {msg.topic}: {e}", "minor", {"topic": msg.topic, "payload_preview": msg.payload.decode('utf-8')[:100]})
     except Exception as e:
-        send_error_log("on_local_message", f"Error handling local message on topic {msg.topic}: {e}", "major", {"topic": msg.topic})
+        log_simple(f"Error handling CRUD message: {e}", "ERROR")
+        send_error_log("on_message_crud", f"CRUD message handling error: {e}", ERROR_TYPE_MINOR)
 
-# --- CRUD Request Handlers ---
+# --- CRUD Operations ---
 def handle_get_request(client):
     """Handle get data request"""
     try:
         response = {
             "status": "success",
-            "data": read_json(AUTOMATION_FILE_PATH) or [],
+            "data": config,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        client.publish(AUTOMATION_RESPONSE_TOPIC, json.dumps(response))
-        log_simple("Configuration data sent to client", "SUCCESS")
+        # Add connection check for safety
+        if client and client.is_connected():
+            client.publish(topic_response, json.dumps(response))
+            log_simple("Configuration data sent to client", "SUCCESS")
+        else:
+            log_simple("Client not connected, cannot send configuration data", "WARNING")
     except Exception as e:
         error_response = {
             "status": "error",
             "message": str(e),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        client.publish(AUTOMATION_RESPONSE_TOPIC, json.dumps(error_response))
+        # Add connection check for safety
+        if client and client.is_connected():
+            client.publish(topic_response, json.dumps(error_response))
+        else:
+            log_simple("Client not connected, cannot send error response", "WARNING")
         log_simple(f"Error sending config data: {e}", "ERROR")
 
-def handle_crud_request(client, action, message_data):
+def handle_device_logging_control(client, enable):
+    """Handle device topic logging enable/disable commands"""
+    global device_topic_logging_enabled
+
+    try:
+        device_topic_logging_enabled = enable
+        status = "enabled" if enable else "disabled"
+        log_simple(f"Device topic message logging {status}", "SUCCESS")
+
+        # Send response
+        response = {
+            "status": "success",
+            "message": f"Device topic logging {status}",
+            "data": {"device_topic_logging_enabled": device_topic_logging_enabled},
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        client.publish(topic_response, json.dumps(response))
+
+    except Exception as e:
+        error_response = {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        client.publish(topic_response, json.dumps(error_response))
+        log_simple(f"Error handling device logging control: {e}", "ERROR")
+
+def handle_crud_request(client, command, message_data):
     """Handle CRUD operations"""
     try:
         data = message_data.get('data', {})
@@ -477,14 +634,14 @@ def handle_crud_request(client, action, message_data):
         success = False
         message = ""
 
-        if action == "add":
-            success, message = create_automation_rule(data)
-        elif action == "set":
-            success, message = update_automation_rule(data)
-        elif action == "delete":
-            success, message = delete_automation_rule(data.get('id') or data.get('name'))
+        if command == "add":
+            success, message = create_value_rule(data)
+        elif command == "set":
+            success, message = update_value_rule(data)
+        elif command == "delete":
+            success, message = delete_value_rule(data.get('id'))
         else:
-            message = f"Unknown action: {action}"
+            message = f"Unknown command: {command}"
 
         # Send response
         response = {
@@ -492,7 +649,7 @@ def handle_crud_request(client, action, message_data):
             "message": message,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        client.publish(AUTOMATION_RESPONSE_TOPIC, json.dumps(response))
+        client.publish(topic_response, json.dumps(response))
 
     except Exception as e:
         error_response = {
@@ -500,397 +657,475 @@ def handle_crud_request(client, action, message_data):
             "message": str(e),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        client.publish(AUTOMATION_RESPONSE_TOPIC, json.dumps(error_response))
+        client.publish(topic_response, json.dumps(error_response))
         log_simple(f"Error handling CRUD request: {e}", "ERROR")
 
-def create_automation_rule(rule_data):
-    """Create new automation rule"""
+def create_value_rule(rule_data):
+    """Create new value rule"""
     try:
-        success = add_automation_value(rule_data)
-        if success:
-            return True, f"Automation rule '{rule_data.get('rule_name', rule_data.get('name', 'Unknown'))}' created successfully"
-        else:
-            return False, "Failed to create automation rule"
+        rule_data['id'] = str(uuid.uuid4())
+        rule_data['created_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Update target_mac in relay control actions with active MAC address
+        if 'actions' in rule_data:
+            active_mac = get_active_mac_address()
+            for action in rule_data['actions']:
+                if action.get('action_type') == 'control_relay' and action.get('target_mac') == '00:00:00:00:00:00':
+                    action['target_mac'] = active_mac
+                    log_simple(f"Updated target_mac for relay action in rule '{rule_data.get('rule_name', 'Unknown')}' to {active_mac}", "INFO")
+
+        config.append(rule_data)
+        save_value_config()
+
+        # Update device topic subscriptions after rule creation
+        if client_control and client_control.is_connected():
+            subscribe_to_device_topics(client_control)
+
+        log_simple(f"Value rule created: {rule_data.get('rule_name', 'Unknown')}")
+        return True, f"Value rule '{rule_data.get('rule_name', 'Unknown')}' created successfully"
+
     except Exception as e:
-        log_simple(f"Error creating automation rule: {e}", "ERROR")
-        send_error_log(f"Automation rule creation error: {e}", "major")
+        log_simple(f"Error creating value rule: {e}", "ERROR")
+        send_error_log("create_value_rule", f"Value rule creation error: {e}", ERROR_TYPE_MAJOR)
         return False, str(e)
 
-def update_automation_rule(rule_data):
-    """Update existing automation rule"""
+def update_value_rule(rule_data):
+    """Update existing value rule"""
     try:
-        rule_id = rule_data.get('id') or rule_data.get('name')
+        rule_id = rule_data.get('id')
         if not rule_id:
-            return False, "Rule ID or name is required for update"
+            return False, "Rule ID is required for update"
 
-        success = update_automation_value(rule_id, rule_data)
-        if success:
-            return True, f"Automation rule '{rule_id}' updated successfully"
-        else:
-            return False, f"Automation rule '{rule_id}' not found"
+        for i, rule in enumerate(config):
+            if rule.get('id') == rule_id:
+                rule_data['updated_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                # Update target_mac in relay control actions with active MAC address
+                if 'actions' in rule_data:
+                    active_mac = get_active_mac_address()
+                    for action in rule_data['actions']:
+                        if action.get('action_type') == 'control_relay' and action.get('target_mac') == '00:00:00:00:00:00':
+                            action['target_mac'] = active_mac
+                            log_simple(f"Updated target_mac for relay action in rule '{rule_data.get('rule_name', 'Unknown')}' to {active_mac}", "INFO")
+
+                config[i] = rule_data
+                save_value_config()
+
+                # Update device topic subscriptions after rule update
+                if client_control and client_control.is_connected():
+                    subscribe_to_device_topics(client_control)
+
+                log_simple(f"Value rule updated: {rule_data.get('rule_name', 'Unknown')}")
+                return True, f"Value rule '{rule_data.get('rule_name', 'Unknown')}' updated successfully"
+
+        return False, f"Value rule with ID {rule_id} not found"
+
     except Exception as e:
-        log_simple(f"Error updating automation rule: {e}", "ERROR")
-        send_error_log(f"Automation rule update error: {e}", "major")
+        log_simple(f"Error updating value rule: {e}", "ERROR")
+        send_error_log("update_value_rule", f"Value rule update error: {e}", ERROR_TYPE_MAJOR)
         return False, str(e)
 
-def delete_automation_rule(rule_id):
-    """Delete automation rule"""
+def delete_value_rule(rule_id):
+    """Delete value rule"""
     try:
         if not rule_id:
-            return False, "Rule ID or name is required for deletion"
+            return False, "Rule ID is required for deletion"
 
-        success = delete_automation_value(rule_id)
-        if success:
-            return True, "Automation rule deleted successfully"
+        initial_count = len(config)
+        config[:] = [rule for rule in config if rule.get('id') != rule_id]
+
+        if len(config) < initial_count:
+            save_value_config()
+
+            # Update device topic subscriptions after rule deletion
+            if client_control and client_control.is_connected():
+                subscribe_to_device_topics(client_control)
+
+            log_simple(f"Value rule deleted: {rule_id}")
+            return True, "Value rule deleted successfully"
         else:
-            return False, f"Automation rule '{rule_id}' not found"
+            return False, f"Value rule with ID {rule_id} not found"
+
     except Exception as e:
-        log_simple(f"Error deleting automation rule: {e}", "ERROR")
-        send_error_log(f"Automation rule deletion error: {e}", "major")
+        log_simple(f"Error deleting value rule: {e}", "ERROR")
+        send_error_log("delete_value_rule", f"Value rule deletion error: {e}", ERROR_TYPE_MAJOR)
         return False, str(e)
 
-# --- MQTT SERVER CLIENT CALLBACKS ---
-def on_server_connect(client, userdata, flags, rc):
-    global server_broker_connected
-    if rc == 0:
-        server_broker_connected = True
-        log_simple("Server MQTT broker connected", "SUCCESS")
-        subscribe_all_device_topics() # Subscribe after connection
-    else:
-        server_broker_connected = False
-        log_simple(f"Server MQTT broker connection failed (code {rc})", "ERROR")
-        send_error_log("on_server_connect", f"Failed to connect to server MQTT broker, return code {rc}", "critical", {"return_code": rc, "broker": SERVER_BROKER, "port": SERVER_PORT})
+# --- Value Processing ---
+def process_device_data(device_data):
+    """Process incoming device data and evaluate triggers"""
+    try:
+        device_name = device_data.get('device_name', '')
+        data = device_data.get('data', {})
 
-def evaluate_trigger_groups(trigger_groups, sensor_data):
-    """Evaluate trigger groups and return overall trigger status"""
-    if not trigger_groups:
-        return False
+        # Update device state
+        device_states[device_name] = data
 
-    group_results = []
+        # Evaluate all value rules
+        for rule in config:
+            evaluate_rule(rule, device_name, data)
 
-    for group in trigger_groups:
+    except Exception as e:
+        log_simple(f"Error processing device data: {e}", "ERROR")
+        send_error_log("process_device_data", f"Device data processing error: {e}", ERROR_TYPE_MINOR)
+
+def process_modbus_device_data(device_data):
+    """Process incoming MODBUS device data from device topics and evaluate triggers"""
+    try:
+        # Extract device information from the data
+        device_topic = device_data.get('device_topic', device_data.get('topic', ''))
+        data = device_data.get('data', {})
+
+        # Update device state by topic
+        device_states[device_topic] = data
+
+        # Evaluate all value rules for this device topic
+        for rule in config:
+            evaluate_rule(rule, device_topic, data)
+
+    except Exception as e:
+        log_simple(f"Error processing MODBUS device data: {e}", "ERROR")
+        send_error_log("process_modbus_device_data", f"MODBUS device data processing error: {e}", ERROR_TYPE_MINOR)
+
+def evaluate_rule(rule, device_topic, device_data):
+    """Evaluate a single value rule with auto-off functionality"""
+    try:
+        rule_id = rule.get('id', '')
+        rule_name = rule.get('rule_name', '')
+        trigger_groups = rule.get('trigger_groups', [])
+
+        if not trigger_groups:
+            return
+
+        # Debug: Log incoming sensor data
+        log_simple(f"[DEBUG] Evaluating rule '{rule_name}' for topic '{device_topic}'", "INFO")
+        log_simple(f"[DEBUG] Device data received: {json.dumps(device_data)}", "INFO")
+
+        group_results = []
+
+        # Debug: Check which triggers belong to this device topic
+        has_matching_triggers = False
+        for group in trigger_groups:
+            for trigger in group.get('triggers', []):
+                rule_topic = trigger.get('device_topic', '')
+                if rule_topic == device_topic:
+                    has_matching_triggers = True
+                    break
+            if has_matching_triggers:
+                break
+
+        # Debug: List all topics mentioned in this rule's triggers
+        rule_device_topics = set()
+        for group in trigger_groups:
+            for trigger in group.get('triggers', []):
+                rule_device_topics.add(trigger.get('device_topic', ''))
+
+        log_simple(f"[DEBUG] Rule '{rule_name}' is looking for topics: {list(rule_device_topics)}", "INFO")
+        log_simple(f"[DEBUG] Current topic being processed: '{device_topic}'", "INFO")
+
+        if not has_matching_triggers:
+            # Skip this rule - device topic doesn't match
+            return
+        else:
+            log_simple(f"[DEBUG] ✅ Found matching triggers for topic '{device_topic}' - evaluating triggers", "SUCCESS")
+            for group in trigger_groups:
+                group_result = evaluate_trigger_group(group, device_topic, device_data)
+                group_results.append(group_result)
+
+        # All groups must be true for rule to trigger
+        all_groups_true = all(group_results)
+
+        # Track rule state for auto-off functionality
+        rule_key = f"{rule_id}_{device_topic}"
+        previous_state = trigger_states.get(rule_key, False)
+
+        log_simple(f"[DEBUG] Rule '{rule_name}': Previous state={previous_state}, Current evaluation={all_groups_true}", "INFO")
+
+        if all_groups_true and not previous_state:
+            # Rule just became active - execute ON actions
+            log_simple(f"[TRIGGER] Value rule ACTIVATED (ON): {rule_name} - All conditions met!", "SUCCESS")
+            execute_rule_actions(rule)
+            trigger_states[rule_key] = True
+        elif not all_groups_true and previous_state:
+            # Rule just became inactive - execute OFF actions
+            log_simple(f"[TRIGGER] Value rule DEACTIVATED (OFF): {rule_name} - Conditions no longer met", "SUCCESS")
+            execute_rule_actions_off(rule)
+            trigger_states[rule_key] = False
+        else:
+            # State unchanged - log current status
+            status = "ACTIVE" if all_groups_true else "INACTIVE"
+            log_simple(f"[STATUS] Rule '{rule_name}': {status} - {'Conditions met' if all_groups_true else 'Conditions not met'}", "INFO")
+
+    except Exception as e:
+        log_simple(f"[ERROR] evaluate_rule: {e}", "ERROR")
+        send_error_log("evaluate_rule", f"Rule evaluation error: {e}", ERROR_TYPE_MINOR)
+
+def evaluate_trigger_group(group, device_topic, device_data):
+    """Evaluate a trigger group"""
+    try:
+        triggers = group.get('triggers', [])
+        group_operator = group.get('group_operator', 'AND')
+
         trigger_results = []
 
-        for trigger in group.get("triggers", []):
-            # For value-based automation, we evaluate sensor data against trigger conditions
-            key = trigger.get("device_name", "").lower()  # Use device_name as key for simplicity
-            expected = trigger.get("target_value")
-            condition = trigger.get("condition_operator", "is")
-
-            actual = sensor_data.get(key)
-
-            if actual is None:
-                if DEBUG_MODE:
-                    logger.debug(f"[DEBUG] Key '{key}' not found in sensor data")
-                continue
-
-            # Evaluate condition with proper type coercion
-            try:
-                # Type coercion for comparison
-                if isinstance(expected, (int, float)):
-                    actual = float(actual)
-                elif isinstance(expected, str):
-                    actual = str(actual)
-
-                # Use logic operators mapping
-                op = logic_ops.get(condition)
-                if op:
-                    result = op(actual, expected)
-                else:
-                    # Fallback to simple comparisons
-                    if condition == "is":
-                        result = actual == expected
-                    elif condition == "more_than" or condition == ">":
-                        result = float(actual) > float(expected) if actual and expected else False
-                    elif condition == "less_than" or condition == "<":
-                        result = float(actual) < float(expected) if actual and expected else False
-                    elif condition == ">=":
-                        result = float(actual) >= float(expected) if actual and expected else False
-                    elif condition == "<=":
-                        result = float(actual) <= float(expected) if actual and expected else False
-                    elif condition == "==":
-                        result = actual == expected
-                    elif condition == "!=":
-                        result = actual != expected
-                    else:
-                        result = False
-
+        for trigger in triggers:
+            # Match by device_topic instead of device_name
+            if trigger.get('device_topic') == device_topic:
+                result = evaluate_trigger_condition(trigger, device_data)
                 trigger_results.append(result)
 
-            except (ValueError, TypeError) as e:
-                if DEBUG_MODE:
-                    logger.debug(f"[DEBUG] Type conversion failed for trigger evaluation: {e}")
-                trigger_results.append(False)
+        if not trigger_results:
+            return False
 
-        # Evaluate group logic (AND/OR)
-        group_operator = group.get("group_operator", "AND")
-        if group_operator == "AND":
-            group_result = all(trigger_results) if trigger_results else False
-        else:  # OR
-            group_result = any(trigger_results) if trigger_results else False
-
-        group_results.append(group_result)
-
-    # Overall result (OR between groups for now)
-    return any(group_results)
-
-def execute_actions(actions, rule):
-    """Execute all actions for a triggered rule"""
-    for action in actions:
-        action_type = action.get("action_type")
-
-        if action_type == "control_relay":
-            # Execute relay control
-            relay_payload = {
-                "mac": MAC_ADDRESS,
-                "protocol_type": "Modular",
-                "device": "RELAYMINI",
-                "function": "write",
-                "value": {
-                    "pin": action.get("relay_pin", 1),
-                    "data": action.get("target_value", True)
-                },
-                "address": action.get("target_address", 1),
-                "device_bus": action.get("target_bus", 0),
-                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-
-            if mqtt_server and mqtt_server.is_connected():
-                mqtt_server.publish(RELAY_COMMAND_TOPIC, json.dumps(relay_payload), qos=QOS)
-                logger.info(f"Relay action executed: {action.get('description', 'Control relay')}")
-                if DEBUG_MODE:
-                    logger.debug(f"[DEBUG] Published relay command: {relay_payload}")
-            else:
-                logger.warning("Server MQTT client not connected, unable to execute relay action.")
-                send_error_log("execute_actions", "Server MQTT client not connected for relay action.", "warning")
-
-        elif action_type == "send_message":
-            # Execute message action (WhatsApp)
-            execute_send_message(action, rule)
-
-def on_server_message(client, userdata, msg):
-    if DEBUG_MODE:
-        logger.debug(f"[DEBUG] Server MQTT message received on topic '{msg.topic}'")
-    try:
-        # It's safer to load payload only once
-        payload = json.loads(msg.payload.decode("utf-8"))
-        topic = msg.topic
-        automation_values = read_json(AUTOMATION_FILE_PATH)
-
-        if automation_values is None: # Handle case where read_json failed
-            send_error_log("on_server_message", "Failed to read automation rules from file.", "critical")
-            return
-
-        for rule in automation_values:
-            rule_name = rule.get('rule_name') or rule.get('name', str(uuid.uuid4()))
-
-            # Check if rule has legacy structure (simple sensor monitoring)
-            if rule.get("topic") and rule.get("config"):
-                # Legacy structure - handle simple sensor monitoring
-                if rule.get("topic") == topic:
-                    sensor_data = json.loads(payload.get("value", "{}"))
-                    key = rule["config"].get("key_value")
-                    expected = rule["config"].get("value")
-                    logic = rule["config"].get("logic")
-                    auto = rule["config"].get("auto", False)
-                    actual = sensor_data.get(key)
-
-                    if actual is None:
-                        if DEBUG_MODE:
-                            logger.debug(f"[DEBUG] Key '{key}' not found in sensor data from {topic} for rule {rule_name}")
-                        continue
-
-                    op = logic_ops.get(logic)
-                    if not op:
-                        if DEBUG_MODE:
-                            logger.debug(f"[DEBUG] Invalid logic operator '{logic}' for rule {rule_name}")
-                        continue
-
-                    # Type coercion
-                    try:
-                        if isinstance(expected, (int, float)):
-                            actual = float(actual)
-                        elif isinstance(expected, str):
-                            actual = str(actual)
-                    except (ValueError, TypeError):
-                        continue
-
-                    current_status = op(actual, expected)
-                    prev_status = trigger_states.get(rule_name)
-
-                    if prev_status == current_status and prev_status is not None:
-                        continue
-
-                    trigger_states[rule_name] = current_status
-
-                    # Execute legacy relay action
-                    if auto and current_status:
-                        relay = rule.get("relay", {})
-                        relay_payload = {
-                            "mac": MAC_ADDRESS,
-                            "protocol_type": "Modular",
-                            "device": "RELAYMINI",
-                            "function": "write",
-                            "value": {
-                                "pin": relay.get("pin", 1),
-                                "data": 1 if current_status else 0
-                            },
-                            "address": relay.get("address", 1),
-                            "device_bus": relay.get("bus", 0),
-                            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        }
-
-                        if mqtt_server and mqtt_server.is_connected():
-                            mqtt_server.publish(RELAY_COMMAND_TOPIC, json.dumps(relay_payload), qos=QOS)
-                            logger.info(f"Legacy automation triggered: {rule_name}")
-                        else:
-                            logger.warning("Server MQTT client not connected for legacy automation.")
-
-            # Check if rule has new structure (trigger_groups and actions)
-            elif rule.get("trigger_groups") and rule.get("actions"):
-                # New structure - evaluate trigger groups
-                sensor_data = json.loads(payload.get("value", "{}"))
-                trigger_result = evaluate_trigger_groups(rule["trigger_groups"], sensor_data)
-
-                if trigger_result:
-                    logger.info(f"Automation rule triggered: {rule_name}")
-                    execute_actions(rule["actions"], rule)
-                else:
-                    if DEBUG_MODE:
-                        logger.debug(f"[DEBUG] Rule '{rule_name}' conditions not met")
-
-    except json.JSONDecodeError as e:
-        send_error_log("on_server_message", f"Invalid JSON payload on server topic {msg.topic}: {e}", "minor", {"topic": msg.topic, "payload_preview": msg.payload.decode('utf-8')[:100]})
-    except Exception as e:
-        send_error_log("on_server_message", f"Unhandled error processing server MQTT message on topic {msg.topic}: {e}", "major", {"topic": msg.topic})
-
-# Subscribe All Device Topics for Server Client
-def subscribe_all_device_topics():
-    try:
-        automation = read_json(AUTOMATION_FILE_PATH)
-        if automation is None: # Handle case where read_json failed
-            send_error_log("subscribe_all_device_topics", "Failed to read automation rules for subscription.", "critical")
-            return
-
-        if automation:
-            topics = set()
-
-            for rule in automation:
-                # Legacy structure - get topic directly
-                if rule.get("topic"):
-                    topics.add(rule["topic"])
-
-                # New structure - extract topics from trigger_groups
-                elif rule.get("trigger_groups"):
-                    for group in rule["trigger_groups"]:
-                        for trigger in group.get("triggers", []):
-                            # For now, we'll create topic patterns based on device names
-                            # This can be enhanced to use actual topic mappings
-                            device_name = trigger.get("device_name", "").lower()
-                            if device_name:
-                                # Create topic pattern (this should match actual sensor topics)
-                                topic_pattern = f"modbus/sensor/{device_name}"
-                                topics.add(topic_pattern)
-
-            for topic in topics:
-                if mqtt_server and mqtt_server.is_connected():
-                    mqtt_server.subscribe(topic, qos=QOS)
-                    logger.info(f"Subscribed to {topic} on server broker")
-                else:
-                    logger.warning(f"Server MQTT client not connected, unable to subscribe to {topic}.")
-                    send_error_log("subscribe_all_device_topics", f"Server MQTT client not connected, unable to subscribe to {topic}.", "warning", {"topic": topic})
+        # Apply group operator
+        if group_operator == 'AND':
+            return all(trigger_results)
+        elif group_operator == 'OR':
+            return any(trigger_results)
         else:
-            if DEBUG_MODE:
-                logger.debug("[DEBUG] No automation rules found to subscribe to server topics.")
-    except Exception as e:
-        send_error_log("subscribe_all_device_topics", f"Error during subscription: {e}", "major")
+            return False
 
-# --- STATUS PUBLISHER ---
-def publish_automation_status(action, name):
-    """Publish automation status updates"""
+    except Exception as e:
+        log_simple(f"Error evaluating trigger group: {e}", "ERROR")
+        return False
+
+def evaluate_trigger_condition(trigger, device_data):
+    """Evaluate a single trigger condition with delay support for numeric values"""
     try:
-        status_payload = {
-            "action": action,
-            "name": name,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "service": "AutomationValueService"
-        }
-        
-        if mqtt_local and mqtt_local.is_connected():
-            mqtt_local.publish(AUTOMATION_STATUS_TOPIC, json.dumps(status_payload), qos=QOS)
-            if DEBUG_MODE:
-                logger.debug(f"[DEBUG] Published status: {action} for {name}")
-    except Exception as e:
-        send_error_log("publish_automation_status", f"Failed to publish status: {e}", "minor")
+        trigger_type = trigger.get('trigger_type', 'numeric')
+        device_name = trigger.get('device_name', '')
+        field_name = trigger.get('field_name', 'value')
+        condition_operator = trigger.get('condition_operator', 'equals')
+        target_value = trigger.get('target_value', 0)
+        delay_on = trigger.get('delay_on', 0)
+        delay_off = trigger.get('delay_off', 0)
 
-# --- HEARTBEAT PUBLISHER ---
-def publish_heartbeat():
-    """Publish service heartbeat"""
-    try:
-        heartbeat_payload = {
-            "service": "AutomationValueService",
-            "status": "running",
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "automation_count": len(read_json(AUTOMATION_FILE_PATH) or []),
-            "trigger_states_count": len(trigger_states),
-            "local_connected": local_broker_connected,
-            "server_connected": server_broker_connected
-        }
-        
-        if mqtt_local and mqtt_local.is_connected():
-            mqtt_local.publish(HEARTBEAT_TOPIC, json.dumps(heartbeat_payload), qos=QOS)
-            if DEBUG_MODE:
-                logger.debug(f"[DEBUG] Published heartbeat")
-    except Exception as e:
-        send_error_log("publish_heartbeat", f"Failed to publish heartbeat: {e}", "minor")
+        # Validate device_data is a dictionary
+        if not isinstance(device_data, dict):
+            log_simple(f"[TRIGGER] Invalid data type for '{device_name}': expected dict, got {type(device_data).__name__} - Data: {device_data}", "WARNING")
+            return False
 
-# --- PUBLISHER THREAD FUNCTIONS ---
-def run_publisher_loop(file_path, mqtt_topic, client_instance, service_name):
-    last_publish_time = 0
-    publish_interval = 2  # Seconds between publishes
-    
-    while True:
+        # Get current value from device data
+        current_value = device_data.get(field_name, 0)
+
+        # Debug: Log initial trigger info
+        log_simple(f"[TRIGGER] Evaluating: Device '{device_name}' -> Field '{field_name}'", "INFO")
+        log_simple(f"[TRIGGER] Raw values: sensor={current_value}, target={target_value}", "INFO")
+
+        # Convert to numeric
         try:
-            current_time = time.time()
-            
-            # Only publish at specified intervals to reduce load
-            if current_time - last_publish_time >= publish_interval:
-                values = read_json(file_path)
-                if values is None: # Handle critical read error
-                    logger.error(f"Skipping publication for {mqtt_topic} due to read error.")
-                    time.sleep(5) # Wait longer if there's a file read issue
-                    continue
+            current_value = float(current_value)
+            target_value = float(target_value)
+            log_simple(f"[TRIGGER] Converted values: sensor={current_value}, target={target_value}", "INFO")
+        except (ValueError, TypeError):
+            log_simple(f"[TRIGGER] ERROR: Failed to convert values to numeric - sensor={current_value}, target={target_value}", "WARNING")
+            return False
 
-                if values:
-                    if client_instance and client_instance.is_connected():
-                        payload = json.dumps(values)
-                        client_instance.publish(mqtt_topic, payload, qos=QOS)
-                        if DEBUG_MODE:
-                            logger.debug(f"[DEBUG] Published {service_name}/data. Items count: {len(values)}")
-                        last_publish_time = current_time
+        # Evaluate condition with numeric operators
+        condition_met = False
+        condition_desc = ""
+
+        if condition_operator == 'equals':
+            condition_met = (current_value == target_value)
+            condition_desc = f"{current_value} == {target_value}"
+        elif condition_operator == 'greater_than':
+            condition_met = (current_value > target_value)
+            condition_desc = f"{current_value} > {target_value}"
+        elif condition_operator == 'less_than':
+            condition_met = (current_value < target_value)
+            condition_desc = f"{current_value} < {target_value}"
+        elif condition_operator == 'greater_equal':
+            condition_met = (current_value >= target_value)
+            condition_desc = f"{current_value} >= {target_value}"
+        elif condition_operator == 'less_equal':
+            condition_met = (current_value <= target_value)
+            condition_desc = f"{current_value} <= {target_value}"
+        elif condition_operator == 'not_equals':
+            condition_met = (current_value != target_value)
+            condition_desc = f"{current_value} != {target_value}"
+        elif condition_operator == 'between':
+            # For between, target_value should be a range [min, max]
+            if isinstance(target_value, list) and len(target_value) == 2:
+                min_val, max_val = target_value
+                condition_met = (min_val <= current_value <= max_val)
+                condition_desc = f"{min_val} <= {current_value} <= {max_val}"
+            else:
+                log_simple(f"[TRIGGER] ERROR: Invalid range for 'between' operator: {target_value}", "WARNING")
+                return False
+
+        # Log condition evaluation result
+        status_icon = "✅" if condition_met else "❌"
+        log_simple(f"[CONDITION] {status_icon} {condition_operator.upper()}: {condition_desc} = {condition_met}", "SUCCESS" if condition_met else "INFO")
+
+        # Handle delays
+        trigger_key = f"{device_name}_{field_name}_{condition_operator}"
+
+        if condition_met and delay_on > 0:
+            # Start delay timer for activation
+            if trigger_key not in trigger_timers:
+                trigger_timers[trigger_key] = {
+                    'type': 'delay_on',
+                    'start_time': datetime.now(),
+                    'delay': delay_on,
+                    'triggered': False
+                }
+                log_simple(f"[DELAY] ⏳ Delay ON started for {trigger_key}: {delay_on}s", "INFO")
+                log_simple(f"[RESULT] ⏸️  Trigger ACTIVE but DELAYING activation ({delay_on}s)", "INFO")
+                return False
+            else:
+                # Check if delay has elapsed
+                timer = trigger_timers[trigger_key]
+                if timer['type'] == 'delay_on' and not timer['triggered']:
+                    elapsed = (datetime.now() - timer['start_time']).total_seconds()
+                    remaining = max(0, delay_on - elapsed)
+                    log_simple(f"[DELAY] ⏳ Delay ON progress: {elapsed:.1f}s / {delay_on}s (remaining: {remaining:.1f}s)", "INFO")
+                    if elapsed >= delay_on:
+                        timer['triggered'] = True
+                        log_simple(f"[DELAY] ✅ Delay ON COMPLETED for {trigger_key}!", "SUCCESS")
+                        log_simple(f"[RESULT] 🚀 Trigger ACTIVATED after delay!", "SUCCESS")
+                        return True
                     else:
-                        logger.warning(f"{service_name} MQTT client not connected, unable to publish to {mqtt_topic}.")
-                        send_error_log(f"run_publisher_loop ({service_name})", f"MQTT client disconnected, unable to publish.", "warning", {"topic": mqtt_topic})
-                else:
-                    if DEBUG_MODE:
-                        logger.debug(f"[DEBUG] No {service_name} items to publish.")
-                    last_publish_time = current_time
-            
-        except Exception as e:
-            send_error_log(f"run_publisher_loop ({service_name})", f"Error in publisher loop: {e}", "major", {"topic": mqtt_topic})
-        
-        time.sleep(0.5) # Reduced sleep time for better responsiveness
+                        log_simple(f"[RESULT] ⏸️  Trigger ACTIVE but still waiting ({remaining:.1f}s)", "INFO")
+                        return False
+                log_simple(f"[RESULT] ✅ Trigger already triggered (delay completed)", "INFO")
+                return timer['triggered']
 
-# --- HEARTBEAT LOOP ---
-def run_heartbeat_loop():
-    while True:
-        try:
-            publish_heartbeat()
-            time.sleep(HEARTBEAT_INTERVAL)
-        except Exception as e:
-            send_error_log("run_heartbeat_loop", f"Error in heartbeat loop: {e}", "minor")
+        elif not condition_met and delay_off > 0:
+            # Start delay timer for deactivation
+            if trigger_key in trigger_timers and trigger_timers[trigger_key]['triggered']:
+                trigger_timers[trigger_key] = {
+                    'type': 'delay_off',
+                    'start_time': datetime.now(),
+                    'delay': delay_off,
+                    'triggered': True
+                }
+                log_simple(f"[DELAY] ⏳ Delay OFF started for {trigger_key}: {delay_off}s", "INFO")
+                log_simple(f"[RESULT] ⏸️  Trigger INACTIVE but DELAYING deactivation ({delay_off}s)", "INFO")
+                return True
+            elif trigger_key in trigger_timers:
+                timer = trigger_timers[trigger_key]
+                if timer['type'] == 'delay_off':
+                    elapsed = (datetime.now() - timer['start_time']).total_seconds()
+                    remaining = max(0, delay_off - elapsed)
+                    log_simple(f"[DELAY] ⏳ Delay OFF progress: {elapsed:.1f}s / {delay_off}s (remaining: {remaining:.1f}s)", "INFO")
+                    if elapsed >= delay_off:
+                        del trigger_timers[trigger_key]
+                        log_simple(f"[DELAY] ✅ Delay OFF COMPLETED for {trigger_key}!", "SUCCESS")
+                        log_simple(f"[RESULT] 🛑 Trigger DEACTIVATED after delay!", "SUCCESS")
+                        return False
+                    else:
+                        log_simple(f"[RESULT] ⏸️  Trigger INACTIVE but still delaying ({remaining:.1f}s)", "INFO")
+                        return True
+            log_simple(f"[RESULT] ❌ Condition not met, no delay active", "INFO")
+            return condition_met
+        else:
+            # No delay, immediate evaluation
+            if trigger_key in trigger_timers:
+                del trigger_timers[trigger_key]
+                log_simple(f"[DELAY] 🧹 Cleared timer for {trigger_key} (no delay needed)", "INFO")
 
-# --- WHATSAPP CONFIGURATION ---
+            result_icon = "✅" if condition_met else "❌"
+            log_simple(f"[RESULT] {result_icon} Final trigger result: {'TRUE' if condition_met else 'FALSE'} (immediate)", "SUCCESS" if condition_met else "INFO")
+            return condition_met
+
+        return False
+
+    except Exception as e:
+        log_simple(f"[ERROR] evaluate_trigger_condition: {e}", "ERROR")
+        return False
+
+def execute_rule_actions(rule):
+    """Execute actions for a triggered rule"""
+    try:
+        actions = rule.get('actions', [])
+
+        for action in actions:
+            action_type = action.get('action_type', '')
+
+            if action_type == 'control_relay':
+                execute_relay_control(action)
+            elif action_type == 'send_message':
+                execute_send_message(action, rule)
+
+    except Exception as e:
+        log_simple(f"Error executing rule actions: {e}", "ERROR")
+        send_error_log("execute_rule_actions", f"Rule action execution error: {e}", ERROR_TYPE_MINOR)
+
+def execute_rule_actions_off(rule):
+    """Execute OFF actions when rule condition stops being met"""
+    try:
+        actions = rule.get('actions', [])
+
+        for action in actions:
+            action_type = action.get('action_type', '')
+
+            if action_type == 'control_relay':
+                # Create OFF action by inverting target_value
+                off_action = action.copy()
+                off_action['target_value'] = not action.get('target_value', False)
+                execute_relay_control(off_action)
+            elif action_type == 'send_message':
+                # For messages, we might want to send a different message or skip
+                # For now, we'll skip message actions for OFF events
+                pass
+
+    except Exception as e:
+        log_simple(f"Error executing rule OFF actions: {e}", "ERROR")
+        send_error_log("execute_rule_actions_off", f"Rule OFF action execution error: {e}", ERROR_TYPE_MINOR)
+
+def execute_relay_control(action):
+    """Execute relay control action"""
+    try:
+        if not (client_control and client_control.is_connected()):
+            log_simple("Control client not connected for relay action", "WARNING")
+            return
+
+        target_device = action.get('target_device', '')
+        target_address = action.get('target_address', 0)
+        target_bus = action.get('target_bus', 0)
+        relay_pin = action.get('relay_pin', 1)
+        target_value = action.get('target_value', False)
+
+        # Get active MAC address from network interface
+        local_controller_mac = get_active_mac_address()
+
+        # Create control payload using active network MAC
+        control_payload = {
+            "mac": local_controller_mac,
+            "protocol_type": "Modular",
+            "device": "RELAYMINI",  # Default relay type
+            "function": "write",
+            "value": {
+                "pin": relay_pin,
+                "data": 1 if target_value else 0
+            },
+            "address": target_address,
+            "device_bus": target_bus,
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        # Add connection check for safety
+        if client_control and client_control.is_connected():
+            client_control.publish(MODBUS_CONTROL_TOPIC, json.dumps(control_payload))
+            relay_state = "ON" if target_value else "OFF"
+            log_simple(f"Relay {target_device}[{relay_pin}] set to {relay_state}", "SUCCESS")
+        else:
+            log_simple("Control client not connected, cannot send relay control command", "WARNING")
+
+    except Exception as e:
+        log_simple(f"[RELAY] ❌ Error executing relay control: {e}", "ERROR")
+        send_error_log("execute_relay_control", f"Relay control execution error: {e}", ERROR_TYPE_MINOR)
+
+def execute_send_message(action, rule):
+    """Execute send message action (WhatsApp only)"""
+    try:
+        # Always use WhatsApp for send_message actions
+        execute_whatsapp_message(action, rule)
+
+    except Exception as e:
+        log_simple(f"Error executing send message: {e}", "ERROR")
+        send_error_log("execute_send_message", f"Send message execution error: {e}", ERROR_TYPE_MINOR)
+
 def load_whatsapp_config():
     """Load WhatsApp configuration from file"""
     default_config = {
@@ -907,7 +1142,7 @@ def load_whatsapp_config():
     }
 
     try:
-        with open(WHATSAPP_CONFIG_PATH, 'r') as file:
+        with open(whatsapp_config_file, 'r') as file:
             content = file.read().strip()
             if not content:
                 log_simple("WhatsApp config file is empty. Using defaults.", "WARNING")
@@ -915,7 +1150,7 @@ def load_whatsapp_config():
             config = json.load(file)
             return config.get("whatsapp", default_config["whatsapp"])
     except FileNotFoundError:
-        log_simple(f"WhatsApp config file not found: {WHATSAPP_CONFIG_PATH}. Using defaults.", "WARNING")
+        log_simple(f"WhatsApp config file not found: {whatsapp_config_file}. Using defaults.", "WARNING")
         return default_config["whatsapp"]
     except json.JSONDecodeError as e:
         log_simple(f"Error decoding WhatsApp config: {e}. Using defaults.", "WARNING")
@@ -924,10 +1159,11 @@ def load_whatsapp_config():
         log_simple(f"Unexpected error loading WhatsApp config: {e}. Using defaults.", "WARNING")
         return default_config["whatsapp"]
 
-# --- WHATSAPP MESSAGING ---
 def execute_whatsapp_message(action, rule):
     """Execute WhatsApp message action using Qontak API"""
     try:
+        import requests
+
         # Load WhatsApp configuration
         whatsapp_config = load_whatsapp_config()
 
@@ -936,7 +1172,7 @@ def execute_whatsapp_message(action, rule):
         to_name = action.get('whatsapp_name', '')
         message_template_id = action.get('message_template_id', whatsapp_config.get('default_template_id'))
         channel_integration_id = action.get('channel_integration_id', whatsapp_config.get('default_channel_id'))
-        message_text = action.get('message', 'Logic rule triggered')
+        message_text = action.get('message', 'Value rule triggered')
         language_code = whatsapp_config.get('language', 'id')
         timeout = whatsapp_config.get('timeout', 30)
 
@@ -982,113 +1218,130 @@ def execute_whatsapp_message(action, rule):
             log_simple(f"WhatsApp message sent to {to_number}: {message_text}", "SUCCESS")
         else:
             log_simple(f"WhatsApp API error: {response.status_code} - {response.text}", "ERROR")
-            send_error_log(f"WhatsApp API error: {response.status_code}", "minor")
+            send_error_log("execute_whatsapp_message", f"WhatsApp API error: {response.status_code}", ERROR_TYPE_MINOR)
 
     except ImportError:
         log_simple("Requests library not available for WhatsApp API", "ERROR")
-        send_error_log("Requests library missing for WhatsApp", "major")
+        send_error_log("execute_whatsapp_message", "Requests library missing for WhatsApp", ERROR_TYPE_MAJOR)
     except Exception as e:
         log_simple(f"Error executing WhatsApp message: {e}", "ERROR")
-        send_error_log(f"WhatsApp message execution error: {e}", "minor")
+        send_error_log("execute_whatsapp_message", f"WhatsApp message execution error: {e}", ERROR_TYPE_MINOR)
 
-def execute_send_message(action, rule):
-    """Execute send message action (WhatsApp only)"""
+# --- MQTT Client Setup ---
+def connect_mqtt(client_id, broker, port, username="", password="", on_connect_callback=None, on_disconnect_callback=None, on_message_callback=None):
+    """Create and connect MQTT client"""
     try:
-        # Always use WhatsApp for send_message actions
-        execute_whatsapp_message(action, rule)
+        client = mqtt.Client(client_id)
+        if username and password:
+            client.username_pw_set(username, password)
+
+        if on_connect_callback:
+            client.on_connect = on_connect_callback
+        if on_disconnect_callback:
+            client.on_disconnect = on_disconnect_callback
+        if on_message_callback:
+            client.on_message = on_message_callback
+
+        client.reconnect_delay_set(min_delay=1, max_delay=120)
+        client.connect(broker, port, keepalive=60)
+        return client
 
     except Exception as e:
-        log_simple(f"Error executing send message: {e}", "ERROR")
-        send_error_log(f"Send message execution error: {e}", "minor")
+        log_simple(f"Failed to connect to MQTT broker {broker}:{port} - {e}", "ERROR")
+        send_error_log("connect_mqtt", f"MQTT connection failed: {e}", ERROR_TYPE_CRITICAL)
+        return None
 
-# --- MAIN EXECUTION BLOCK ---
-def main():
-    global local_broker_connected, server_broker_connected
-    
-    # Print startup banner
+# --- Main Application ---
+def run():
+    global client_control, client_crud, client_error_logger
+
     print_startup_banner()
-    
-    # Initialize the dedicated error logger first
-    log_simple("Initializing error logger...")
-    initialize_error_logger()
 
-    # Setup local MQTT client
-    log_simple("Connecting to Local MQTT broker...")
-    mqtt_local.on_connect = on_local_connect
-    mqtt_local.on_message = on_local_message
-    mqtt_local.reconnect_delay_set(min_delay=1, max_delay=120)
-    try:
-        mqtt_local.connect(LOCAL_BROKER, LOCAL_PORT, 60)
-        mqtt_local.loop_start()
-    except Exception as e:
-        log_simple("Failed to connect to Local MQTT client", "ERROR")
-        send_error_log("main", f"Failed to connect or start local MQTT client: {e}", "critical")
+    # Test MAC address detection
+    log_simple("Testing MAC address detection...")
+    test_mac = get_active_mac_address()
+    log_simple(f"MAC address detection test result: {test_mac}", "INFO")
 
-    # Setup server MQTT client
-    log_simple("Connecting to Server MQTT broker...")
-    mqtt_server.on_connect = on_server_connect
-    mqtt_server.on_message = on_server_message
-    mqtt_server.reconnect_delay_set(min_delay=1, max_delay=120)
-    try:
-        mqtt_server.connect(SERVER_BROKER, SERVER_PORT, 60)
-        mqtt_server.loop_start()
-    except Exception as e:
-        log_simple("Failed to connect to Server MQTT client", "ERROR")
-        send_error_log("main", f"Failed to connect or start server MQTT client: {e}", "critical")
+    # Load configurations
+    log_simple("Loading configurations...")
+    mqtt_config = load_mqtt_config()
+    load_value_config()
+    load_modbus_devices()
+    load_modular_devices()
 
-    # Wait a moment for connections to establish
+    broker = mqtt_config.get('broker_address', 'localhost')
+    port = int(mqtt_config.get('broker_port', 1883))
+    username = mqtt_config.get('username', '')
+    password = mqtt_config.get('password', '')
+
+    # Initialize unified error logger
+    log_simple("Initializing unified error logger...")
+    global error_logger
+    error_logger = initialize_error_logger("AutomationValueService", broker, port)
+
+    # Connect to CRUD broker
+    log_simple("Connecting to CRUD MQTT broker...")
+    client_crud = connect_mqtt(
+        f'automation-value-crud-{uuid.uuid4()}',
+        broker, port, username, password,
+        on_connect_crud, on_disconnect_crud, on_message_crud
+    )
+
+    # Connect to Control broker
+    log_simple("Connecting to Control MQTT broker...")
+    client_control = connect_mqtt(
+        f'automation-value-control-{uuid.uuid4()}',
+        broker, port, username, password,
+        on_connect_control, on_disconnect_control, on_message_control
+    )
+
+    # Start client loops
+    if client_crud:
+        client_crud.loop_start()
+    if client_control:
+        client_control.loop_start()
+
+    # Wait for connections
     time.sleep(2)
-    
-    # Print success banner and broker status
+
     print_success_banner()
-    print_broker_status(local_broker_connected, server_broker_connected)
+    print_broker_status(crud_broker_connected, control_broker_connected)
 
-    # Start publisher threads
-    log_simple("Starting publisher threads...")
-    threads = [
-        threading.Thread(target=publish_mqtt_broker_info_loop, daemon=True),
-        threading.Thread(target=run_publisher_loop, args=(AUTOMATION_FILE_PATH, AUTOMATION_TOPIC, mqtt_local, "automation"), daemon=True),
-        threading.Thread(target=run_publisher_loop, args=(MODBUS_FILE_PATH, MODBUS_TOPIC, mqtt_local, "modbus"), daemon=True),
-        threading.Thread(target=run_publisher_loop, args=(MODULAR_FILE_PATH, MODULAR_TOPIC, mqtt_local, "modular"), daemon=True),
-        threading.Thread(target=run_heartbeat_loop, daemon=True),
-        # Voice control publisher thread moved to automationVoice.py
-    ]
+    log_simple("Automation Value Control service started successfully", "SUCCESS")
 
-    for t in threads:
-        t.start()
-    
-    log_simple("All publisher threads started successfully", "SUCCESS")
-
-    # Keep main thread alive
     try:
         while True:
-            # Periodically check if error logger client is still connected and attempt reconnect if not
-            if error_logger_client and not error_logger_client.is_connected():
-                logger.warning("Error logger MQTT client disconnected. Attempting reconnect.")
+            # Reconnection handling
+            if client_crud and not client_crud.is_connected():
+                log_simple("Attempting to reconnect CRUD client...", "WARNING")
                 try:
-                    error_logger_client.reconnect()
-                except Exception as e:
-                    logger.error(f"Failed to reconnect error logger client: {e}")
+                    client_crud.reconnect()
+                except:
+                    pass
 
-            time.sleep(1)
+            if client_control and not client_control.is_connected():
+                log_simple("Attempting to reconnect Control client...", "WARNING")
+                try:
+                    client_control.reconnect()
+                except:
+                    pass
+
+            time.sleep(5)
+
     except KeyboardInterrupt:
-        log_simple("Automation Value service stopped by user", "WARNING")
+        log_simple("Service stopped by user", "WARNING")
     except Exception as e:
         log_simple(f"Critical error: {e}", "ERROR")
-        send_error_log("main (main_loop)", f"Unhandled critical exception in main loop: {e}", "critical")
+        send_error_log("run", f"Critical service error: {e}", ERROR_TYPE_CRITICAL)
     finally:
         log_simple("Shutting down services...")
-        # Disconnect clients gracefully
-        if mqtt_local:
-            mqtt_local.loop_stop()
-            mqtt_local.disconnect()
-        if mqtt_server:
-            mqtt_server.loop_stop()
-            mqtt_server.disconnect()
-        if error_logger_client:
-            error_logger_client.loop_stop()
-            error_logger_client.disconnect()
+        if client_control:
+            client_control.loop_stop()
+            client_control.disconnect()
+        if client_crud:
+            client_crud.loop_stop()
+            client_crud.disconnect()
         log_simple("Application terminated", "SUCCESS")
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    run()

@@ -1,0 +1,16 @@
+{
+  "enable": true,
+  "pub_interval": 10,
+  "broker_address": "127.0.0.1",
+  "broker_port": 1883,
+  "username": "dcim_modular_mqtt",
+  "password": "Pws212121",
+  "qos": 1,
+  "retain": true,
+  "pub_topic": ["telemetry"],
+  "sub_topic_system": "system",
+  "sub_topic_modbusRTU": "test",
+  "sub_topic_modbusTCP": "test1",
+  "sub_topic_snmp": "test2"
+  
+}

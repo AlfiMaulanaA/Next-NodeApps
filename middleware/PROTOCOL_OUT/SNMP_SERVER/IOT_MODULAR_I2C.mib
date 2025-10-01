@@ -1,0 +1,3118 @@
+-- ============================================================================
+-- Description: 
+-- Reference:
+-- Version: V1.0
+-- History:
+-- created by Juarendra Ramadhani, 26 Oct 2022
+-- ============================================================================
+IOT-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+        OBJECT-TYPE, OCTET STRING32, NOTIFICATION-TYPE, enterprises
+FROM SNMPv2-SMI
+;
+
+IOT_JR		OBJECT IDENTIFIER ::= {enterprises 10000}
+ModularI2C OBJECT IDENTIFIER ::= {IOT_JR 10}
+Communication OBJECT IDENTIFIER ::= {ModularI2C 5}
+Analog_IO OBJECT IDENTIFIER ::= {ModularI2C 6}
+max_Analog_IO OBJECT IDENTIFIER ::= {Analog_IO 2}
+Analog_IO_1 OBJECT IDENTIFIER ::= {max_Analog_IO 1}
+Analog_IO_2 OBJECT IDENTIFIER ::= {max_Analog_IO 2}
+Optocoupler OBJECT IDENTIFIER ::= {ModularI2C 7}
+max_Optocoupler OBJECT IDENTIFIER ::= {Optocoupler 8}
+Optocoupler_1 OBJECT IDENTIFIER ::= {max_Optocoupler 1}
+Optocoupler_2 OBJECT IDENTIFIER ::= {max_Optocoupler 2}
+Optocoupler_3 OBJECT IDENTIFIER ::= {max_Optocoupler 3}
+Optocoupler_4 OBJECT IDENTIFIER ::= {max_Optocoupler 4}
+Optocoupler_5 OBJECT IDENTIFIER ::= {max_Optocoupler 5}
+Optocoupler_6 OBJECT IDENTIFIER ::= {max_Optocoupler 6}
+Optocoupler_7 OBJECT IDENTIFIER ::= {max_Optocoupler 7}
+Optocoupler_8 OBJECT IDENTIFIER ::= {max_Optocoupler 8}
+GPIO OBJECT IDENTIFIER ::= {ModularI2C 8}
+max_GPIO OBJECT IDENTIFIER ::= {GPIO 8}
+GPIO_1 OBJECT IDENTIFIER ::= {max_GPIO 1}
+GPIO_2 OBJECT IDENTIFIER ::= {max_GPIO 2}
+GPIO_3 OBJECT IDENTIFIER ::= {max_GPIO 3}
+GPIO_4 OBJECT IDENTIFIER ::= {max_GPIO 4}
+GPIO_5 OBJECT IDENTIFIER ::= {max_GPIO 5}
+GPIO_6 OBJECT IDENTIFIER ::= {max_GPIO 6}
+GPIO_7 OBJECT IDENTIFIER ::= {max_GPIO 7}
+GPIO_8 OBJECT IDENTIFIER ::= {max_GPIO 8}
+DryContact OBJECT IDENTIFIER ::= {ModularI2C 9}
+max_DryContact OBJECT IDENTIFIER ::= {DryContact 8}
+DryContact_1 OBJECT IDENTIFIER ::= {max_DryContact 1}
+DryContact_2 OBJECT IDENTIFIER ::= {max_DryContact 2}
+DryContact_3 OBJECT IDENTIFIER ::= {max_DryContact 3}
+DryContact_4 OBJECT IDENTIFIER ::= {max_DryContact 4}
+DryContact_5 OBJECT IDENTIFIER ::= {max_DryContact 5}
+DryContact_6 OBJECT IDENTIFIER ::= {max_DryContact 6}
+DryContact_7 OBJECT IDENTIFIER ::= {max_DryContact 7}
+DryContact_8 OBJECT IDENTIFIER ::= {max_DryContact 8}
+Relay OBJECT IDENTIFIER ::= {ModularI2C 10}
+max_Relay OBJECT IDENTIFIER ::= {Relay 8}
+Relay_1 OBJECT IDENTIFIER ::= {max_Relay 1}
+Relay_2 OBJECT IDENTIFIER ::= {max_Relay 2}
+Relay_3 OBJECT IDENTIFIER ::= {max_Relay 3}
+Relay_4 OBJECT IDENTIFIER ::= {max_Relay 4}
+Relay_5 OBJECT IDENTIFIER ::= {max_Relay 5}
+Relay_6 OBJECT IDENTIFIER ::= {max_Relay 6}
+Relay_7 OBJECT IDENTIFIER ::= {max_Relay 7}
+Relay_8 OBJECT IDENTIFIER ::= {max_Relay 8}
+RelayMini OBJECT IDENTIFIER ::= {ModularI2C 11}
+max_RelayMini OBJECT IDENTIFIER ::= {RelayMini 8}
+RelayMini_1 OBJECT IDENTIFIER ::= {max_RelayMini 1}
+RelayMini_2 OBJECT IDENTIFIER ::= {max_RelayMini 2}
+RelayMini_3 OBJECT IDENTIFIER ::= {max_RelayMini 3}
+RelayMini_4 OBJECT IDENTIFIER ::= {max_RelayMini 4}
+RelayMini_5 OBJECT IDENTIFIER ::= {max_RelayMini 5}
+RelayMini_6 OBJECT IDENTIFIER ::= {max_RelayMini 6}
+RelayMini_7 OBJECT IDENTIFIER ::= {max_RelayMini 7}
+RelayMini_8 OBJECT IDENTIFIER ::= {max_RelayMini 8}
+
+
+-- 5. Communication ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ipAddress OBJECT-TYPE
+	SYNTAX STRING
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "IP Address of the Modular I2C converter."
+	::= {Communication 10}
+
+netMask OBJECT-TYPE
+	SYNTAX STRING
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "NetMask of the Modular I2C converter."
+	::= {Communication 20}
+
+gateway OBJECT-TYPE
+	SYNTAX STRING
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "gateway Address of the Modular I2C converter."
+	::= {Communication 30}
+
+snmpVersion OBJECT-TYPE
+	SYNTAX OCTET STRING
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "SNMP Version of the Modular I2C converter.
+				Available Version: 1 & 2."
+	::= {Communication 40}
+	
+snmpCommunity OBJECT-TYPE
+	SYNTAX STRING
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "SNMP Community of the Modular I2C converter"
+	::= {Communication 50}
+	
+snmpPort OBJECT-TYPE
+	SYNTAX OCTET STRING
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "SNMP port of the Modular I2C converter"
+	::= {Communication 60}
+
+sysOID OBJECT-TYPE
+	SYNTAX OCTET STRING
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "system OID"
+	::= {Communication 70}
+
+-- 6. Analog_IO -------------------------------------------	
+---6.2.1 Analog_IO_1 --------------------------------------
+Analog_IO_1_pin_1 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 1, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_1 10}
+
+Analog_IO_1_pin_2 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 2, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_1 20}
+
+Analog_IO_1_pin_3 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 3, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_1 30}
+
+Analog_IO_1_pin_4 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 4, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_1 40}
+	
+Analog_IO_1_pin_5 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 5, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_1 50}
+	
+Analog_IO_1_pin_6 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 6, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_1 60}
+
+Analog_IO_1_pin_7 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 7, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_1 70}
+
+Analog_IO_1_pin_8 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 8, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_1 80}
+
+
+---6.2.2 Analog_IO_2 --------------------------------------
+Analog_IO_2_pin_1 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 1, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_2 10}
+
+Analog_IO_2_pin_2 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 2, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_2 20}
+
+Analog_IO_2_pin_3 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 3, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_2 30}
+
+Analog_IO_2_pin_4 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 4, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_2 40}
+	
+Analog_IO_2_pin_5 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 5, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_2 50}
+	
+Analog_IO_2_pin_6 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 6, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_2 60}
+
+Analog_IO_2_pin_7 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 7, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_2 70}
+
+Analog_IO_2_pin_8 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Analog IO 2 pin 8, 0.01 VDC, 0-5VDC"
+	::= {Analog_IO_2 80}
+
+-- 7. Optocoupler -------------------------------------------	
+---7.8.1 Optocoupler_1 --------------------------------------
+Optocoupler_1_pin_1 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 1,  24VDC"
+	::= {Optocoupler_1 10}
+
+Optocoupler_1_pin_2 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 2,  24VDC"
+	::= {Optocoupler_1 20}
+
+Optocoupler_1_pin_3 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 3,  24VDC"
+	::= {Optocoupler_1 30}
+
+Optocoupler_1_pin_4 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 4,  24VDC"
+	::= {Optocoupler_1 40}
+
+Optocoupler_1_pin_5 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 5,  24VDC"
+	::= {Optocoupler_1 50}
+
+Optocoupler_1_pin_6 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 6,  24VDC"
+	::= {Optocoupler_1 60}
+
+Optocoupler_1_pin_7 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 7,  24VDC"
+	::= {Optocoupler_1 70}
+
+Optocoupler_1_pin_8 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 8,  24VDC"
+	::= {Optocoupler_1 80}
+
+Optocoupler_1_pin_9 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 9,  24VDC"
+	::= {Optocoupler_1 90}
+
+Optocoupler_1_pin_10 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 10,  24VDC"
+	::= {Optocoupler_1 100}
+
+Optocoupler_1_pin_11 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 11,  24VDC"
+	::= {Optocoupler_1 110}
+
+Optocoupler_1_pin_12 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 12,  24VDC"
+	::= {Optocoupler_1 120}
+
+Optocoupler_1_pin_13 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 13,  24VDC"
+	::= {Optocoupler_1 130}
+
+Optocoupler_1_pin_14 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 14,  24VDC"
+	::= {Optocoupler_1 140}
+
+
+---7.8.2 Optocoupler_2 --------------------------------------
+Optocoupler_2_pin_1 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 1,  24VDC"
+	::= {Optocoupler_2 10}
+
+Optocoupler_2_pin_2 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 2,  24VDC"
+	::= {Optocoupler_2 20}
+
+Optocoupler_2_pin_3 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 3,  24VDC"
+	::= {Optocoupler_2 30}
+
+Optocoupler_2_pin_4 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 4,  24VDC"
+	::= {Optocoupler_2 40}
+
+Optocoupler_2_pin_5 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 5,  24VDC"
+	::= {Optocoupler_2 50}
+
+Optocoupler_2_pin_6 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 6,  24VDC"
+	::= {Optocoupler_2 60}
+
+Optocoupler_2_pin_7 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 7,  24VDC"
+	::= {Optocoupler_2 70}
+
+Optocoupler_2_pin_8 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 8,  24VDC"
+	::= {Optocoupler_2 80}
+
+Optocoupler_2_pin_9 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 9,  24VDC"
+	::= {Optocoupler_2 90}
+
+Optocoupler_2_pin_10 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 10,  24VDC"
+	::= {Optocoupler_2 100}
+
+Optocoupler_2_pin_11 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 11,  24VDC"
+	::= {Optocoupler_2 110}
+
+Optocoupler_2_pin_12 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 12,  24VDC"
+	::= {Optocoupler_2 120}
+
+Optocoupler_2_pin_13 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 13,  24VDC"
+	::= {Optocoupler_2 130}
+
+Optocoupler_2_pin_14 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 14,  24VDC"
+	::= {Optocoupler_2 140}
+
+---7.8.3 Optocoupler_3 --------------------------------------
+Optocoupler_3_pin_1 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 1,  24VDC"
+	::= {Optocoupler_3 10}
+
+Optocoupler_3_pin_2 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 2,  24VDC"
+	::= {Optocoupler_3 20}
+
+Optocoupler_3_pin_3 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 3,  24VDC"
+	::= {Optocoupler_3 30}
+
+Optocoupler_3_pin_4 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 4,  24VDC"
+	::= {Optocoupler_3 40}
+
+Optocoupler_3_pin_5 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 5,  24VDC"
+	::= {Optocoupler_3 50}
+
+Optocoupler_3_pin_6 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 6,  24VDC"
+	::= {Optocoupler_3 60}
+
+Optocoupler_3_pin_7 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 7,  24VDC"
+	::= {Optocoupler_3 70}
+
+Optocoupler_3_pin_8 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 8,  24VDC"
+	::= {Optocoupler_3 80}
+
+Optocoupler_3_pin_9 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 9,  24VDC"
+	::= {Optocoupler_3 90}
+
+Optocoupler_3_pin_10 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 10,  24VDC"
+	::= {Optocoupler_3 100}
+
+Optocoupler_3_pin_11 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 11,  24VDC"
+	::= {Optocoupler_3 110}
+
+Optocoupler_3_pin_12 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 12,  24VDC"
+	::= {Optocoupler_3 120}
+
+Optocoupler_3_pin_13 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 13,  24VDC"
+	::= {Optocoupler_3 130}
+
+Optocoupler_3_pin_14 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 14,  24VDC"
+	::= {Optocoupler_3 140}
+
+---7.8.4 Optocoupler_4 --------------------------------------
+Optocoupler_4_pin_1 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 1,  24VDC"
+	::= {Optocoupler_4 10}
+
+Optocoupler_4_pin_2 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 2,  24VDC"
+	::= {Optocoupler_4 20}
+
+Optocoupler_4_pin_3 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 3,  24VDC"
+	::= {Optocoupler_4 30}
+
+Optocoupler_4_pin_4 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 4,  24VDC"
+	::= {Optocoupler_4 40}
+
+Optocoupler_4_pin_5 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 5,  24VDC"
+	::= {Optocoupler_4 50}
+
+Optocoupler_4_pin_6 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 6,  24VDC"
+	::= {Optocoupler_4 60}
+
+Optocoupler_4_pin_7 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 7,  24VDC"
+	::= {Optocoupler_4 70}
+
+Optocoupler_4_pin_8 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 8,  24VDC"
+	::= {Optocoupler_4 80}
+
+Optocoupler_4_pin_9 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 9,  24VDC"
+	::= {Optocoupler_4 90}
+
+Optocoupler_4_pin_10 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 10,  24VDC"
+	::= {Optocoupler_4 100}
+
+Optocoupler_4_pin_11 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 11,  24VDC"
+	::= {Optocoupler_4 110}
+
+Optocoupler_4_pin_12 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 12,  24VDC"
+	::= {Optocoupler_4 120}
+
+Optocoupler_4_pin_13 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 13,  24VDC"
+	::= {Optocoupler_4 130}
+
+Optocoupler_4_pin_14 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 14,  24VDC"
+	::= {Optocoupler_4 140}
+
+---7.8.5 Optocoupler_5 --------------------------------------
+Optocoupler_5_pin_1 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 1,  24VDC"
+	::= {Optocoupler_5 10}
+
+Optocoupler_5_pin_2 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 2,  24VDC"
+	::= {Optocoupler_5 20}
+
+Optocoupler_5_pin_3 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 3,  24VDC"
+	::= {Optocoupler_5 30}
+
+Optocoupler_5_pin_4 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 4,  24VDC"
+	::= {Optocoupler_5 40}
+
+Optocoupler_5_pin_5 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 5,  24VDC"
+	::= {Optocoupler_5 50}
+
+Optocoupler_5_pin_6 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 6,  24VDC"
+	::= {Optocoupler_5 60}
+
+Optocoupler_5_pin_7 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 7,  24VDC"
+	::= {Optocoupler_5 70}
+
+Optocoupler_5_pin_8 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 8,  24VDC"
+	::= {Optocoupler_5 80}
+
+Optocoupler_5_pin_9 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 9,  24VDC"
+	::= {Optocoupler_5 90}
+
+Optocoupler_5_pin_10 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 10,  24VDC"
+	::= {Optocoupler_5 100}
+
+Optocoupler_5_pin_11 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 11,  24VDC"
+	::= {Optocoupler_5 110}
+
+Optocoupler_5_pin_12 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 12,  24VDC"
+	::= {Optocoupler_5 120}
+
+Optocoupler_5_pin_13 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 13,  24VDC"
+	::= {Optocoupler_5 130}
+
+Optocoupler_5_pin_14 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 14,  24VDC"
+	::= {Optocoupler_5 140}
+
+---7.8.6 Optocoupler_6 --------------------------------------
+Optocoupler_6_pin_1 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 1,  24VDC"
+	::= {Optocoupler_6 10}
+
+Optocoupler_6_pin_2 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 2,  24VDC"
+	::= {Optocoupler_6 20}
+
+Optocoupler_6_pin_3 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 3,  24VDC"
+	::= {Optocoupler_6 30}
+
+Optocoupler_6_pin_4 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 4,  24VDC"
+	::= {Optocoupler_6 40}
+
+Optocoupler_6_pin_5 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 5,  24VDC"
+	::= {Optocoupler_6 50}
+
+Optocoupler_6_pin_6 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 6,  24VDC"
+	::= {Optocoupler_6 60}
+
+Optocoupler_6_pin_7 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 7,  24VDC"
+	::= {Optocoupler_6 70}
+
+Optocoupler_6_pin_8 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 8,  24VDC"
+	::= {Optocoupler_6 80}
+
+Optocoupler_6_pin_9 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 9,  24VDC"
+	::= {Optocoupler_6 90}
+
+Optocoupler_6_pin_10 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 10,  24VDC"
+	::= {Optocoupler_6 100}
+
+Optocoupler_6_pin_11 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 11,  24VDC"
+	::= {Optocoupler_6 110}
+
+Optocoupler_6_pin_12 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 12,  24VDC"
+	::= {Optocoupler_6 120}
+
+Optocoupler_6_pin_13 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 13,  24VDC"
+	::= {Optocoupler_6 130}
+
+Optocoupler_6_pin_14 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 14,  24VDC"
+	::= {Optocoupler_6 140}
+
+---7.8.7 Optocoupler_7 --------------------------------------
+Optocoupler_7_pin_1 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 1,  24VDC"
+	::= {Optocoupler_7 10}
+
+Optocoupler_7_pin_2 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 2,  24VDC"
+	::= {Optocoupler_7 20}
+
+Optocoupler_7_pin_3 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 3,  24VDC"
+	::= {Optocoupler_7 30}
+
+Optocoupler_7_pin_4 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 4,  24VDC"
+	::= {Optocoupler_7 40}
+
+Optocoupler_7_pin_5 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 5,  24VDC"
+	::= {Optocoupler_7 50}
+
+Optocoupler_7_pin_6 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 6,  24VDC"
+	::= {Optocoupler_7 60}
+
+Optocoupler_7_pin_7 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 7,  24VDC"
+	::= {Optocoupler_7 70}
+
+Optocoupler_7_pin_8 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 8,  24VDC"
+	::= {Optocoupler_7 80}
+
+Optocoupler_7_pin_9 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 9,  24VDC"
+	::= {Optocoupler_7 90}
+
+Optocoupler_7_pin_10 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 10,  24VDC"
+	::= {Optocoupler_7 100}
+
+Optocoupler_7_pin_11 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 11,  24VDC"
+	::= {Optocoupler_7 110}
+
+Optocoupler_7_pin_12 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 12,  24VDC"
+	::= {Optocoupler_7 120}
+
+Optocoupler_7_pin_13 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 13,  24VDC"
+	::= {Optocoupler_7 130}
+
+Optocoupler_7_pin_14 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 14,  24VDC"
+	::= {Optocoupler_7 140}
+
+---7.8.8 Optocoupler_8 --------------------------------------
+
+Optocoupler_8_pin_1 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 1,  24VDC"
+	::= {Optocoupler_8 10}
+
+Optocoupler_8_pin_2 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 2,  24VDC"
+	::= {Optocoupler_8 20}
+
+Optocoupler_8_pin_3 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 3,  24VDC"
+	::= {Optocoupler_8 30}
+
+Optocoupler_8_pin_4 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 4,  24VDC"
+	::= {Optocoupler_8 40}
+
+Optocoupler_8_pin_5 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 5,  24VDC"
+	::= {Optocoupler_8 50}
+
+Optocoupler_8_pin_6 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 6,  24VDC"
+	::= {Optocoupler_8 60}
+
+Optocoupler_8_pin_7 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 7,  24VDC"
+	::= {Optocoupler_8 70}
+
+Optocoupler_8_pin_8 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 8,  24VDC"
+	::= {Optocoupler_8 80}
+
+Optocoupler_8_pin_9 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 9,  24VDC"
+	::= {Optocoupler_8 90}
+
+Optocoupler_8_pin_10 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 10,  24VDC"
+	::= {Optocoupler_8 100}
+
+Optocoupler_8_pin_11 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 11,  24VDC"
+	::= {Optocoupler_8 110}
+
+Optocoupler_8_pin_12 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 12,  24VDC"
+	::= {Optocoupler_8 120}
+
+Optocoupler_8_pin_13 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 13,  24VDC"
+	::= {Optocoupler_8 130}
+
+Optocoupler_8_pin_14 OBJECT-TYPE
+	SYNTAX INT
+	MAX-ACCESS read-write
+	STATUS current
+	DESCRIPTION "Optocoupler pin 14,  24VDC"
+	::= {Optocoupler_8 140}
+
+
+---8.8.1 GPIO_1 --------------------------------------
+ 
+GPIO_1_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 1,  5VDC'
+    ::= {GPIO_1 10}
+                    
+GPIO_1_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 2,  5VDC'
+    ::= {GPIO_1 20}
+                    
+GPIO_1_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 3,  5VDC'
+    ::= {GPIO_1 30}
+                    
+GPIO_1_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 4,  5VDC'
+    ::= {GPIO_1 40}
+                    
+GPIO_1_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 5,  5VDC'
+    ::= {GPIO_1 50}
+                    
+GPIO_1_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 6,  5VDC'
+    ::= {GPIO_1 60}
+                    
+GPIO_1_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 7,  5VDC'
+    ::= {GPIO_1 70}
+                    
+GPIO_1_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 8,  5VDC'
+    ::= {GPIO_1 80}
+                    
+GPIO_1_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 9,  5VDC'
+    ::= {GPIO_1 90}
+                    
+GPIO_1_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 10,  5VDC'
+    ::= {GPIO_1 100}
+                    
+GPIO_1_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 11,  5VDC'
+    ::= {GPIO_1 110}
+                    
+GPIO_1_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 12,  5VDC'
+    ::= {GPIO_1 120}
+                    
+GPIO_1_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 13,  5VDC'
+    ::= {GPIO_1 130}
+                    
+GPIO_1_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 14,  5VDC'
+    ::= {GPIO_1 140}
+                    
+---8.8.2 GPIO_2 --------------------------------------
+ 
+GPIO_2_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 1,  5VDC'
+    ::= {GPIO_2 10}
+                    
+GPIO_2_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 2,  5VDC'
+    ::= {GPIO_2 20}
+                    
+GPIO_2_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 3,  5VDC'
+    ::= {GPIO_2 30}
+                    
+GPIO_2_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 4,  5VDC'
+    ::= {GPIO_2 40}
+                    
+GPIO_2_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 5,  5VDC'
+    ::= {GPIO_2 50}
+                    
+GPIO_2_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 6,  5VDC'
+    ::= {GPIO_2 60}
+                    
+GPIO_2_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 7,  5VDC'
+    ::= {GPIO_2 70}
+                    
+GPIO_2_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 8,  5VDC'
+    ::= {GPIO_2 80}
+                    
+GPIO_2_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 9,  5VDC'
+    ::= {GPIO_2 90}
+                    
+GPIO_2_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 10,  5VDC'
+    ::= {GPIO_2 100}
+                    
+GPIO_2_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 11,  5VDC'
+    ::= {GPIO_2 110}
+                    
+GPIO_2_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 12,  5VDC'
+    ::= {GPIO_2 120}
+                    
+GPIO_2_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 13,  5VDC'
+    ::= {GPIO_2 130}
+                    
+GPIO_2_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 14,  5VDC'
+    ::= {GPIO_2 140}
+                    
+---8.8.3 GPIO_3 --------------------------------------
+ 
+GPIO_3_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 1,  5VDC'
+    ::= {GPIO_3 10}
+                    
+GPIO_3_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 2,  5VDC'
+    ::= {GPIO_3 20}
+                    
+GPIO_3_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 3,  5VDC'
+    ::= {GPIO_3 30}
+                    
+GPIO_3_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 4,  5VDC'
+    ::= {GPIO_3 40}
+                    
+GPIO_3_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 5,  5VDC'
+    ::= {GPIO_3 50}
+                    
+GPIO_3_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 6,  5VDC'
+    ::= {GPIO_3 60}
+                    
+GPIO_3_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 7,  5VDC'
+    ::= {GPIO_3 70}
+                    
+GPIO_3_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 8,  5VDC'
+    ::= {GPIO_3 80}
+                    
+GPIO_3_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 9,  5VDC'
+    ::= {GPIO_3 90}
+                    
+GPIO_3_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 10,  5VDC'
+    ::= {GPIO_3 100}
+                    
+GPIO_3_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 11,  5VDC'
+    ::= {GPIO_3 110}
+                    
+GPIO_3_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 12,  5VDC'
+    ::= {GPIO_3 120}
+                    
+GPIO_3_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 13,  5VDC'
+    ::= {GPIO_3 130}
+                    
+GPIO_3_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 14,  5VDC'
+    ::= {GPIO_3 140}
+                    
+---8.8.4 GPIO_4 --------------------------------------
+ 
+GPIO_4_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 1,  5VDC'
+    ::= {GPIO_4 10}
+                    
+GPIO_4_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 2,  5VDC'
+    ::= {GPIO_4 20}
+                    
+GPIO_4_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 3,  5VDC'
+    ::= {GPIO_4 30}
+                    
+GPIO_4_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 4,  5VDC'
+    ::= {GPIO_4 40}
+                    
+GPIO_4_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 5,  5VDC'
+    ::= {GPIO_4 50}
+                    
+GPIO_4_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 6,  5VDC'
+    ::= {GPIO_4 60}
+                    
+GPIO_4_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 7,  5VDC'
+    ::= {GPIO_4 70}
+                    
+GPIO_4_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 8,  5VDC'
+    ::= {GPIO_4 80}
+                    
+GPIO_4_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 9,  5VDC'
+    ::= {GPIO_4 90}
+                    
+GPIO_4_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 10,  5VDC'
+    ::= {GPIO_4 100}
+                    
+GPIO_4_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 11,  5VDC'
+    ::= {GPIO_4 110}
+                    
+GPIO_4_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 12,  5VDC'
+    ::= {GPIO_4 120}
+                    
+GPIO_4_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 13,  5VDC'
+    ::= {GPIO_4 130}
+                    
+GPIO_4_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 14,  5VDC'
+    ::= {GPIO_4 140}
+                    
+---8.8.5 GPIO_5 --------------------------------------
+ 
+GPIO_5_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 1,  5VDC'
+    ::= {GPIO_5 10}
+                    
+GPIO_5_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 2,  5VDC'
+    ::= {GPIO_5 20}
+                    
+GPIO_5_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 3,  5VDC'
+    ::= {GPIO_5 30}
+                    
+GPIO_5_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 4,  5VDC'
+    ::= {GPIO_5 40}
+                    
+GPIO_5_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 5,  5VDC'
+    ::= {GPIO_5 50}
+                    
+GPIO_5_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 6,  5VDC'
+    ::= {GPIO_5 60}
+                    
+GPIO_5_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 7,  5VDC'
+    ::= {GPIO_5 70}
+                    
+GPIO_5_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 8,  5VDC'
+    ::= {GPIO_5 80}
+                    
+GPIO_5_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 9,  5VDC'
+    ::= {GPIO_5 90}
+                    
+GPIO_5_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 10,  5VDC'
+    ::= {GPIO_5 100}
+                    
+GPIO_5_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 11,  5VDC'
+    ::= {GPIO_5 110}
+                    
+GPIO_5_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 12,  5VDC'
+    ::= {GPIO_5 120}
+                    
+GPIO_5_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 13,  5VDC'
+    ::= {GPIO_5 130}
+                    
+GPIO_5_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 14,  5VDC'
+    ::= {GPIO_5 140}
+                    
+---8.8.6 GPIO_6 --------------------------------------
+ 
+GPIO_6_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 1,  5VDC'
+    ::= {GPIO_6 10}
+                    
+GPIO_6_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 2,  5VDC'
+    ::= {GPIO_6 20}
+                    
+GPIO_6_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 3,  5VDC'
+    ::= {GPIO_6 30}
+                    
+GPIO_6_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 4,  5VDC'
+    ::= {GPIO_6 40}
+                    
+GPIO_6_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 5,  5VDC'
+    ::= {GPIO_6 50}
+                    
+GPIO_6_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 6,  5VDC'
+    ::= {GPIO_6 60}
+                    
+GPIO_6_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 7,  5VDC'
+    ::= {GPIO_6 70}
+                    
+GPIO_6_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 8,  5VDC'
+    ::= {GPIO_6 80}
+                    
+GPIO_6_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 9,  5VDC'
+    ::= {GPIO_6 90}
+                    
+GPIO_6_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 10,  5VDC'
+    ::= {GPIO_6 100}
+                    
+GPIO_6_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 11,  5VDC'
+    ::= {GPIO_6 110}
+                    
+GPIO_6_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 12,  5VDC'
+    ::= {GPIO_6 120}
+                    
+GPIO_6_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 13,  5VDC'
+    ::= {GPIO_6 130}
+                    
+GPIO_6_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 14,  5VDC'
+    ::= {GPIO_6 140}
+                    
+---8.8.7 GPIO_7 --------------------------------------
+ 
+GPIO_7_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 1,  5VDC'
+    ::= {GPIO_7 10}
+                    
+GPIO_7_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 2,  5VDC'
+    ::= {GPIO_7 20}
+                    
+GPIO_7_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 3,  5VDC'
+    ::= {GPIO_7 30}
+                    
+GPIO_7_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 4,  5VDC'
+    ::= {GPIO_7 40}
+                    
+GPIO_7_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 5,  5VDC'
+    ::= {GPIO_7 50}
+                    
+GPIO_7_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 6,  5VDC'
+    ::= {GPIO_7 60}
+                    
+GPIO_7_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 7,  5VDC'
+    ::= {GPIO_7 70}
+                    
+GPIO_7_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 8,  5VDC'
+    ::= {GPIO_7 80}
+                    
+GPIO_7_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 9,  5VDC'
+    ::= {GPIO_7 90}
+                    
+GPIO_7_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 10,  5VDC'
+    ::= {GPIO_7 100}
+                    
+GPIO_7_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 11,  5VDC'
+    ::= {GPIO_7 110}
+                    
+GPIO_7_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 12,  5VDC'
+    ::= {GPIO_7 120}
+                    
+GPIO_7_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 13,  5VDC'
+    ::= {GPIO_7 130}
+                    
+GPIO_7_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 14,  5VDC'
+    ::= {GPIO_7 140}
+                    
+---8.8.8 GPIO_8 --------------------------------------
+ 
+GPIO_8_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 1,  5VDC'
+    ::= {GPIO_8 10}
+                    
+GPIO_8_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 2,  5VDC'
+    ::= {GPIO_8 20}
+                    
+GPIO_8_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 3,  5VDC'
+    ::= {GPIO_8 30}
+                    
+GPIO_8_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 4,  5VDC'
+    ::= {GPIO_8 40}
+                    
+GPIO_8_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 5,  5VDC'
+    ::= {GPIO_8 50}
+                    
+GPIO_8_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 6,  5VDC'
+    ::= {GPIO_8 60}
+                    
+GPIO_8_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 7,  5VDC'
+    ::= {GPIO_8 70}
+                    
+GPIO_8_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 8,  5VDC'
+    ::= {GPIO_8 80}
+                    
+GPIO_8_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 9,  5VDC'
+    ::= {GPIO_8 90}
+                    
+GPIO_8_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 10,  5VDC'
+    ::= {GPIO_8 100}
+                    
+GPIO_8_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 11,  5VDC'
+    ::= {GPIO_8 110}
+                    
+GPIO_8_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 12,  5VDC'
+    ::= {GPIO_8 120}
+                    
+GPIO_8_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 13,  5VDC'
+    ::= {GPIO_8 130}
+                    
+GPIO_8_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'GPIO pin 14,  5VDC'
+    ::= {GPIO_8 140}
+                    
+
+---9.8.1 DryContact_1 --------------------------------------
+ 
+DryContact_1_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 1,  24VDC'
+    ::= {DryContact_1 10}
+                    
+DryContact_1_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 2,  24VDC'
+    ::= {DryContact_1 20}
+                    
+DryContact_1_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 3,  24VDC'
+    ::= {DryContact_1 30}
+                    
+DryContact_1_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 4,  24VDC'
+    ::= {DryContact_1 40}
+                    
+DryContact_1_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 5,  24VDC'
+    ::= {DryContact_1 50}
+                    
+DryContact_1_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 6,  24VDC'
+    ::= {DryContact_1 60}
+                    
+DryContact_1_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 7,  24VDC'
+    ::= {DryContact_1 70}
+                    
+DryContact_1_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 8,  24VDC'
+    ::= {DryContact_1 80}
+                    
+DryContact_1_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 9,  24VDC'
+    ::= {DryContact_1 90}
+                    
+DryContact_1_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 10,  24VDC'
+    ::= {DryContact_1 100}
+                    
+DryContact_1_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 11,  24VDC'
+    ::= {DryContact_1 110}
+                    
+DryContact_1_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 12,  24VDC'
+    ::= {DryContact_1 120}
+                    
+DryContact_1_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 13,  24VDC'
+    ::= {DryContact_1 130}
+                    
+DryContact_1_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 14,  24VDC'
+    ::= {DryContact_1 140}
+                    
+---9.8.2 DryContact_2 --------------------------------------
+ 
+DryContact_2_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 1,  24VDC'
+    ::= {DryContact_2 10}
+                    
+DryContact_2_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 2,  24VDC'
+    ::= {DryContact_2 20}
+                    
+DryContact_2_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 3,  24VDC'
+    ::= {DryContact_2 30}
+                    
+DryContact_2_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 4,  24VDC'
+    ::= {DryContact_2 40}
+                    
+DryContact_2_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 5,  24VDC'
+    ::= {DryContact_2 50}
+                    
+DryContact_2_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 6,  24VDC'
+    ::= {DryContact_2 60}
+                    
+DryContact_2_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 7,  24VDC'
+    ::= {DryContact_2 70}
+                    
+DryContact_2_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 8,  24VDC'
+    ::= {DryContact_2 80}
+                    
+DryContact_2_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 9,  24VDC'
+    ::= {DryContact_2 90}
+                    
+DryContact_2_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 10,  24VDC'
+    ::= {DryContact_2 100}
+                    
+DryContact_2_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 11,  24VDC'
+    ::= {DryContact_2 110}
+                    
+DryContact_2_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 12,  24VDC'
+    ::= {DryContact_2 120}
+                    
+DryContact_2_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 13,  24VDC'
+    ::= {DryContact_2 130}
+                    
+DryContact_2_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 14,  24VDC'
+    ::= {DryContact_2 140}
+                    
+---9.8.3 DryContact_3 --------------------------------------
+ 
+DryContact_3_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 1,  24VDC'
+    ::= {DryContact_3 10}
+                    
+DryContact_3_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 2,  24VDC'
+    ::= {DryContact_3 20}
+                    
+DryContact_3_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 3,  24VDC'
+    ::= {DryContact_3 30}
+                    
+DryContact_3_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 4,  24VDC'
+    ::= {DryContact_3 40}
+                    
+DryContact_3_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 5,  24VDC'
+    ::= {DryContact_3 50}
+                    
+DryContact_3_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 6,  24VDC'
+    ::= {DryContact_3 60}
+                    
+DryContact_3_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 7,  24VDC'
+    ::= {DryContact_3 70}
+                    
+DryContact_3_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 8,  24VDC'
+    ::= {DryContact_3 80}
+                    
+DryContact_3_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 9,  24VDC'
+    ::= {DryContact_3 90}
+                    
+DryContact_3_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 10,  24VDC'
+    ::= {DryContact_3 100}
+                    
+DryContact_3_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 11,  24VDC'
+    ::= {DryContact_3 110}
+                    
+DryContact_3_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 12,  24VDC'
+    ::= {DryContact_3 120}
+                    
+DryContact_3_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 13,  24VDC'
+    ::= {DryContact_3 130}
+                    
+DryContact_3_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 14,  24VDC'
+    ::= {DryContact_3 140}
+                    
+---9.8.4 DryContact_4 --------------------------------------
+ 
+DryContact_4_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 1,  24VDC'
+    ::= {DryContact_4 10}
+                    
+DryContact_4_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 2,  24VDC'
+    ::= {DryContact_4 20}
+                    
+DryContact_4_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 3,  24VDC'
+    ::= {DryContact_4 30}
+                    
+DryContact_4_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 4,  24VDC'
+    ::= {DryContact_4 40}
+                    
+DryContact_4_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 5,  24VDC'
+    ::= {DryContact_4 50}
+                    
+DryContact_4_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 6,  24VDC'
+    ::= {DryContact_4 60}
+                    
+DryContact_4_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 7,  24VDC'
+    ::= {DryContact_4 70}
+                    
+DryContact_4_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 8,  24VDC'
+    ::= {DryContact_4 80}
+                    
+DryContact_4_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 9,  24VDC'
+    ::= {DryContact_4 90}
+                    
+DryContact_4_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 10,  24VDC'
+    ::= {DryContact_4 100}
+                    
+DryContact_4_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 11,  24VDC'
+    ::= {DryContact_4 110}
+                    
+DryContact_4_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 12,  24VDC'
+    ::= {DryContact_4 120}
+                    
+DryContact_4_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 13,  24VDC'
+    ::= {DryContact_4 130}
+                    
+DryContact_4_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 14,  24VDC'
+    ::= {DryContact_4 140}
+                    
+---9.8.5 DryContact_5 --------------------------------------
+ 
+DryContact_5_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 1,  24VDC'
+    ::= {DryContact_5 10}
+                    
+DryContact_5_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 2,  24VDC'
+    ::= {DryContact_5 20}
+                    
+DryContact_5_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 3,  24VDC'
+    ::= {DryContact_5 30}
+                    
+DryContact_5_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 4,  24VDC'
+    ::= {DryContact_5 40}
+                    
+DryContact_5_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 5,  24VDC'
+    ::= {DryContact_5 50}
+                    
+DryContact_5_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 6,  24VDC'
+    ::= {DryContact_5 60}
+                    
+DryContact_5_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 7,  24VDC'
+    ::= {DryContact_5 70}
+                    
+DryContact_5_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 8,  24VDC'
+    ::= {DryContact_5 80}
+                    
+DryContact_5_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 9,  24VDC'
+    ::= {DryContact_5 90}
+                    
+DryContact_5_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 10,  24VDC'
+    ::= {DryContact_5 100}
+                    
+DryContact_5_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 11,  24VDC'
+    ::= {DryContact_5 110}
+                    
+DryContact_5_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 12,  24VDC'
+    ::= {DryContact_5 120}
+                    
+DryContact_5_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 13,  24VDC'
+    ::= {DryContact_5 130}
+                    
+DryContact_5_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 14,  24VDC'
+    ::= {DryContact_5 140}
+                    
+---9.8.6 DryContact_6 --------------------------------------
+ 
+DryContact_6_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 1,  24VDC'
+    ::= {DryContact_6 10}
+                    
+DryContact_6_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 2,  24VDC'
+    ::= {DryContact_6 20}
+                    
+DryContact_6_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 3,  24VDC'
+    ::= {DryContact_6 30}
+                    
+DryContact_6_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 4,  24VDC'
+    ::= {DryContact_6 40}
+                    
+DryContact_6_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 5,  24VDC'
+    ::= {DryContact_6 50}
+                    
+DryContact_6_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 6,  24VDC'
+    ::= {DryContact_6 60}
+                    
+DryContact_6_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 7,  24VDC'
+    ::= {DryContact_6 70}
+                    
+DryContact_6_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 8,  24VDC'
+    ::= {DryContact_6 80}
+                    
+DryContact_6_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 9,  24VDC'
+    ::= {DryContact_6 90}
+                    
+DryContact_6_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 10,  24VDC'
+    ::= {DryContact_6 100}
+                    
+DryContact_6_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 11,  24VDC'
+    ::= {DryContact_6 110}
+                    
+DryContact_6_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 12,  24VDC'
+    ::= {DryContact_6 120}
+                    
+DryContact_6_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 13,  24VDC'
+    ::= {DryContact_6 130}
+                    
+DryContact_6_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 14,  24VDC'
+    ::= {DryContact_6 140}
+                    
+---9.8.7 DryContact_7 --------------------------------------
+ 
+DryContact_7_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 1,  24VDC'
+    ::= {DryContact_7 10}
+                    
+DryContact_7_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 2,  24VDC'
+    ::= {DryContact_7 20}
+                    
+DryContact_7_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 3,  24VDC'
+    ::= {DryContact_7 30}
+                    
+DryContact_7_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 4,  24VDC'
+    ::= {DryContact_7 40}
+                    
+DryContact_7_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 5,  24VDC'
+    ::= {DryContact_7 50}
+                    
+DryContact_7_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 6,  24VDC'
+    ::= {DryContact_7 60}
+                    
+DryContact_7_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 7,  24VDC'
+    ::= {DryContact_7 70}
+                    
+DryContact_7_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 8,  24VDC'
+    ::= {DryContact_7 80}
+                    
+DryContact_7_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 9,  24VDC'
+    ::= {DryContact_7 90}
+                    
+DryContact_7_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 10,  24VDC'
+    ::= {DryContact_7 100}
+                    
+DryContact_7_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 11,  24VDC'
+    ::= {DryContact_7 110}
+                    
+DryContact_7_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 12,  24VDC'
+    ::= {DryContact_7 120}
+                    
+DryContact_7_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 13,  24VDC'
+    ::= {DryContact_7 130}
+                    
+DryContact_7_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 14,  24VDC'
+    ::= {DryContact_7 140}
+                    
+---9.8.8 DryContact_8 --------------------------------------
+ 
+DryContact_8_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 1,  24VDC'
+    ::= {DryContact_8 10}
+                    
+DryContact_8_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 2,  24VDC'
+    ::= {DryContact_8 20}
+                    
+DryContact_8_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 3,  24VDC'
+    ::= {DryContact_8 30}
+                    
+DryContact_8_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 4,  24VDC'
+    ::= {DryContact_8 40}
+                    
+DryContact_8_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 5,  24VDC'
+    ::= {DryContact_8 50}
+                    
+DryContact_8_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 6,  24VDC'
+    ::= {DryContact_8 60}
+                    
+DryContact_8_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 7,  24VDC'
+    ::= {DryContact_8 70}
+                    
+DryContact_8_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 8,  24VDC'
+    ::= {DryContact_8 80}
+                    
+DryContact_8_pin_9 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 9,  24VDC'
+    ::= {DryContact_8 90}
+                    
+DryContact_8_pin_10 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 10,  24VDC'
+    ::= {DryContact_8 100}
+                    
+DryContact_8_pin_11 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 11,  24VDC'
+    ::= {DryContact_8 110}
+                    
+DryContact_8_pin_12 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 12,  24VDC'
+    ::= {DryContact_8 120}
+                    
+DryContact_8_pin_13 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 13,  24VDC'
+    ::= {DryContact_8 130}
+                    
+DryContact_8_pin_14 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-only
+    DESCRIPTION 'DryContact pin 14,  24VDC'
+    ::= {DryContact_8 140}
+                   
+---10.8.1 Relay_1 --------------------------------------
+ 
+Relay_1_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 1
+    ::= {Relay_1 10}
+                    
+Relay_1_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 2
+    ::= {Relay_1 20}
+                    
+Relay_1_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 3
+    ::= {Relay_1 30}
+                    
+Relay_1_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 4
+    ::= {Relay_1 40}
+                    
+Relay_1_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 5
+    ::= {Relay_1 50}
+                    
+Relay_1_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 6
+    ::= {Relay_1 60}
+                    
+Relay_1_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 7
+    ::= {Relay_1 70}
+                    
+Relay_1_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 8
+    ::= {Relay_1 80}
+                    
+---10.8.2 Relay_2 --------------------------------------
+ 
+Relay_2_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 1
+    ::= {Relay_2 10}
+                    
+Relay_2_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 2
+    ::= {Relay_2 20}
+                    
+Relay_2_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 3
+    ::= {Relay_2 30}
+                    
+Relay_2_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 4
+    ::= {Relay_2 40}
+                    
+Relay_2_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 5
+    ::= {Relay_2 50}
+                    
+Relay_2_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 6
+    ::= {Relay_2 60}
+                    
+Relay_2_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 7
+    ::= {Relay_2 70}
+                    
+Relay_2_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 8
+    ::= {Relay_2 80}
+                    
+---10.8.3 Relay_3 --------------------------------------
+ 
+Relay_3_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 1
+    ::= {Relay_3 10}
+                    
+Relay_3_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 2
+    ::= {Relay_3 20}
+                    
+Relay_3_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 3
+    ::= {Relay_3 30}
+                    
+Relay_3_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 4
+    ::= {Relay_3 40}
+                    
+Relay_3_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 5
+    ::= {Relay_3 50}
+                    
+Relay_3_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 6
+    ::= {Relay_3 60}
+                    
+Relay_3_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 7
+    ::= {Relay_3 70}
+                    
+Relay_3_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 8
+    ::= {Relay_3 80}
+                    
+---10.8.4 Relay_4 --------------------------------------
+ 
+Relay_4_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 1
+    ::= {Relay_4 10}
+                    
+Relay_4_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 2
+    ::= {Relay_4 20}
+                    
+Relay_4_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 3
+    ::= {Relay_4 30}
+                    
+Relay_4_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 4
+    ::= {Relay_4 40}
+                    
+Relay_4_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 5
+    ::= {Relay_4 50}
+                    
+Relay_4_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 6
+    ::= {Relay_4 60}
+                    
+Relay_4_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 7
+    ::= {Relay_4 70}
+                    
+Relay_4_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 8
+    ::= {Relay_4 80}
+                    
+---10.8.5 Relay_5 --------------------------------------
+ 
+Relay_5_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 1
+    ::= {Relay_5 10}
+                    
+Relay_5_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 2
+    ::= {Relay_5 20}
+                    
+Relay_5_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 3
+    ::= {Relay_5 30}
+                    
+Relay_5_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 4
+    ::= {Relay_5 40}
+                    
+Relay_5_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 5
+    ::= {Relay_5 50}
+                    
+Relay_5_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 6
+    ::= {Relay_5 60}
+                    
+Relay_5_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 7
+    ::= {Relay_5 70}
+                    
+Relay_5_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 8
+    ::= {Relay_5 80}
+                    
+---10.8.6 Relay_6 --------------------------------------
+ 
+Relay_6_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 1
+    ::= {Relay_6 10}
+                    
+Relay_6_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 2
+    ::= {Relay_6 20}
+                    
+Relay_6_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 3
+    ::= {Relay_6 30}
+                    
+Relay_6_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 4
+    ::= {Relay_6 40}
+                    
+Relay_6_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 5
+    ::= {Relay_6 50}
+                    
+Relay_6_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 6
+    ::= {Relay_6 60}
+                    
+Relay_6_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 7
+    ::= {Relay_6 70}
+                    
+Relay_6_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 8
+    ::= {Relay_6 80}
+                    
+---10.8.7 Relay_7 --------------------------------------
+ 
+Relay_7_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 1
+    ::= {Relay_7 10}
+                    
+Relay_7_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 2
+    ::= {Relay_7 20}
+                    
+Relay_7_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 3
+    ::= {Relay_7 30}
+                    
+Relay_7_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 4
+    ::= {Relay_7 40}
+                    
+Relay_7_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 5
+    ::= {Relay_7 50}
+                    
+Relay_7_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 6
+    ::= {Relay_7 60}
+                    
+Relay_7_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 7
+    ::= {Relay_7 70}
+                    
+Relay_7_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 8
+    ::= {Relay_7 80}
+                    
+---10.8.8 Relay_8 --------------------------------------
+ 
+Relay_8_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 1
+    ::= {Relay_8 10}
+                    
+Relay_8_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 2
+    ::= {Relay_8 20}
+                    
+Relay_8_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 3
+    ::= {Relay_8 30}
+                    
+Relay_8_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 4
+    ::= {Relay_8 40}
+                    
+Relay_8_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 5
+    ::= {Relay_8 50}
+                    
+Relay_8_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 6
+    ::= {Relay_8 60}
+                    
+Relay_8_pin_7 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 7
+    ::= {Relay_8 70}
+                    
+Relay_8_pin_8 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'Relay pin 8
+    ::= {Relay_8 80}
+                    
+---11.8.1 RelayMini_1 --------------------------------------
+ 
+RelayMini_1_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 1
+    ::= {RelayMini_1 10}
+                    
+RelayMini_1_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 2
+    ::= {RelayMini_1 20}
+                    
+RelayMini_1_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 3
+    ::= {RelayMini_1 30}
+                    
+RelayMini_1_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 4
+    ::= {RelayMini_1 40}
+                    
+RelayMini_1_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 5
+    ::= {RelayMini_1 50}
+                    
+RelayMini_1_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 6
+    ::= {RelayMini_1 60}
+                    
+---11.8.2 RelayMini_2 --------------------------------------
+ 
+RelayMini_2_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 1
+    ::= {RelayMini_2 10}
+                    
+RelayMini_2_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 2
+    ::= {RelayMini_2 20}
+                    
+RelayMini_2_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 3
+    ::= {RelayMini_2 30}
+                    
+RelayMini_2_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 4
+    ::= {RelayMini_2 40}
+                    
+RelayMini_2_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 5
+    ::= {RelayMini_2 50}
+                    
+RelayMini_2_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 6
+    ::= {RelayMini_2 60}
+                    
+---11.8.3 RelayMini_3 --------------------------------------
+ 
+RelayMini_3_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 1
+    ::= {RelayMini_3 10}
+                    
+RelayMini_3_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 2
+    ::= {RelayMini_3 20}
+                    
+RelayMini_3_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 3
+    ::= {RelayMini_3 30}
+                    
+RelayMini_3_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 4
+    ::= {RelayMini_3 40}
+                    
+RelayMini_3_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 5
+    ::= {RelayMini_3 50}
+                    
+RelayMini_3_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 6
+    ::= {RelayMini_3 60}
+                    
+---11.8.4 RelayMini_4 --------------------------------------
+ 
+RelayMini_4_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 1
+    ::= {RelayMini_4 10}
+                    
+RelayMini_4_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 2
+    ::= {RelayMini_4 20}
+                    
+RelayMini_4_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 3
+    ::= {RelayMini_4 30}
+                    
+RelayMini_4_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 4
+    ::= {RelayMini_4 40}
+                    
+RelayMini_4_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 5
+    ::= {RelayMini_4 50}
+                    
+RelayMini_4_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 6
+    ::= {RelayMini_4 60}
+                    
+---11.8.5 RelayMini_5 --------------------------------------
+ 
+RelayMini_5_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 1
+    ::= {RelayMini_5 10}
+                    
+RelayMini_5_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 2
+    ::= {RelayMini_5 20}
+                    
+RelayMini_5_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 3
+    ::= {RelayMini_5 30}
+                    
+RelayMini_5_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 4
+    ::= {RelayMini_5 40}
+                    
+RelayMini_5_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 5
+    ::= {RelayMini_5 50}
+                    
+RelayMini_5_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 6
+    ::= {RelayMini_5 60}
+                    
+---11.8.6 RelayMini_6 --------------------------------------
+ 
+RelayMini_6_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 1
+    ::= {RelayMini_6 10}
+                    
+RelayMini_6_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 2
+    ::= {RelayMini_6 20}
+                    
+RelayMini_6_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 3
+    ::= {RelayMini_6 30}
+                    
+RelayMini_6_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 4
+    ::= {RelayMini_6 40}
+                    
+RelayMini_6_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 5
+    ::= {RelayMini_6 50}
+                    
+RelayMini_6_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 6
+    ::= {RelayMini_6 60}
+                    
+---11.8.7 RelayMini_7 --------------------------------------
+ 
+RelayMini_7_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 1
+    ::= {RelayMini_7 10}
+                    
+RelayMini_7_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 2
+    ::= {RelayMini_7 20}
+                    
+RelayMini_7_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 3
+    ::= {RelayMini_7 30}
+                    
+RelayMini_7_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 4
+    ::= {RelayMini_7 40}
+                    
+RelayMini_7_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 5
+    ::= {RelayMini_7 50}
+                    
+RelayMini_7_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 6
+    ::= {RelayMini_7 60}
+                    
+---11.8.8 RelayMini_8 --------------------------------------
+ 
+RelayMini_8_pin_1 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 1
+    ::= {RelayMini_8 10}
+                    
+RelayMini_8_pin_2 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 2
+    ::= {RelayMini_8 20}
+                    
+RelayMini_8_pin_3 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 3
+    ::= {RelayMini_8 30}
+                    
+RelayMini_8_pin_4 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 4
+    ::= {RelayMini_8 40}
+                    
+RelayMini_8_pin_5 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 5
+    ::= {RelayMini_8 50}
+                    
+RelayMini_8_pin_6 OBJECT-TYPE
+    SYNTAX INT
+    MAX-ACCESS read-write
+    DESCRIPTION 'RelayMini pin 6
+    ::= {RelayMini_8 60}
+                    
+END

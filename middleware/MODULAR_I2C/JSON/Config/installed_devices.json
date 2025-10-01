@@ -1,0 +1,16 @@
+[
+  {
+    "profile": {
+      "name": "GPIO1",
+      "device_type": "Modular",
+      "manufacturer": "IOT",
+      "part_number" : "GPIO",
+      "topic" : "IOT/Modular/gpio_5v/1"
+      },
+    "protocol_setting" : {
+      "protocol": "Modular",
+      "address": 32,
+      "device_bus": 2
+    }
+  }
+]

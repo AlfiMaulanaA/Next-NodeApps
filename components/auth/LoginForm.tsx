@@ -44,15 +44,15 @@ export default function LoginForm() {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">Username/Email</Label>
             <Input
               id="email"
-              type="email"
+              type="text"
               value={formData.email}
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, email: e.target.value }))
               }
-              placeholder="Enter your email"
+              placeholder="Enter username or email"
               required
               disabled={isLoading}
             />
@@ -92,11 +92,13 @@ export default function LoginForm() {
           </Button>
         </form>
 
-        <div className="mt-4 text-sm text-center text-muted-foreground">
-          <p>Demo Credentials:</p>
-          <p>Admin: admin@gmail.com / pass123</p>
-          <p>User: user@gmail.com / pass123</p>
-          <p>Developer: developer@gmail.com / pass123</p>
+        <div className="mt-4 text-sm text-center text-muted-foreground space-y-2">
+          <div className="border-t pt-2">
+            <p className="font-medium text-primary">Static Demo Credentials:</p>
+            <p className="text-xs">Admin: admin@gmail.com / pass123</p>
+            <p className="text-xs">User: user@gmail.com / pass123</p>
+            <p className="text-xs">Developer: developer@gmail.com / pass123</p>
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -376,40 +376,7 @@ Manages dynamic payload publishing with calculated and variable data.
 
 ---
 
-## 10. automationValue.py - Value-Based Automation
-
-### Purpose
-Automation based on specific sensor value thresholds.
-
-### **MQTT Topics:**
-- **Create**: `automation_value/create`
-- **Update**: `automation_value/update`
-- **Delete**: `automation_value/delete`
-- **Data**: `automation_value/data`
-
-#### **Value Rule Payload:**
-```json
-{
-  "id": "value_rule_001",
-  "name": "Humidity Control",
-  "sensor_topic": "sensor/humidity",
-  "threshold_min": 40,
-  "threshold_max": 80,
-  "action_below": {
-    "device": "HUMIDIFIER",
-    "action": "on"
-  },
-  "action_above": {
-    "device": "DEHUMIDIFIER", 
-    "action": "on"
-  },
-  "hysteresis": 5
-}
-```
-
----
-
-## 11. automationVoice.py - Voice Command Automation
+## 10. automationVoice.py - Voice Command Automation
 
 ### Purpose
 Voice-activated device control and automation.

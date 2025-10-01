@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Removed output: "export" to allow dynamic API routes
+  output: "export", // Enable static export for frontend-only deployment
   trailingSlash: true,
   eslint: {
     ignoreDuringBuilds: true,
@@ -11,6 +11,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Disable server-side features for static export
 };
 
 export default nextConfig;

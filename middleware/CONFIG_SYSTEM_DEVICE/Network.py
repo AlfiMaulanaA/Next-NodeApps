@@ -297,8 +297,12 @@ def handle_mac_address_request(client):
         mac_address = get_mac_address()
         if mac_address:
             payload = {"mac_address": mac_address, "timestamp": datetime.now().isoformat()}
-            client.publish(TOPIC_RESPONSE_MAC, json.dumps(payload), qos=QOS)
-            logger.info(f"Published MAC address: {mac_address}")
+            # FIXED: Add connection check for safety
+            if client and client.is_connected():
+                client.publish(TOPIC_RESPONSE_MAC, json.dumps(payload), qos=QOS)
+                logger.info(f"Published MAC address: {mac_address}")
+            else:
+                logger.warning("Client not connected, cannot publish MAC address response")
         else:
             send_error_log("handle_mac_address_request", "Failed to retrieve MAC address", "major")
     except Exception as e:
@@ -452,7 +456,10 @@ def publish_mqtt_config_modbus(client):
                 "connection": connection_status,
                 "timestamp": datetime.now().isoformat()
             }
-            client.publish(TOPIC_MQTT_MODBUS_RESPONSE, json.dumps(payload), qos=QOS)
+            if client and client.is_connected():
+                client.publish(TOPIC_MQTT_MODBUS_RESPONSE, json.dumps(payload), qos=QOS)
+            else:
+                logger.warning("Client not connected, cannot publish Modbus MQTT config")
             logger.debug(f"Published Modbus MQTT config with status: {payload}")
         else:
             payload = {
@@ -460,7 +467,10 @@ def publish_mqtt_config_modbus(client):
                 "message": "Failed to read Modbus MQTT config",
                 "timestamp": datetime.now().isoformat()
             }
-            client.publish(TOPIC_MQTT_MODBUS_RESPONSE, json.dumps(payload), qos=QOS)
+            if client and client.is_connected():
+                client.publish(TOPIC_MQTT_MODBUS_RESPONSE, json.dumps(payload), qos=QOS)
+            else:
+                logger.warning("Client not connected, cannot publish Modbus MQTT error")
     except Exception as e:
         send_error_log("publish_mqtt_config_modbus", f"Error publishing Modbus MQTT config: {e}", "major")
 
@@ -483,7 +493,10 @@ def publish_mqtt_config_modular(client):
                 "connection": connection_status,
                 "timestamp": datetime.now().isoformat()
             }
-            client.publish(TOPIC_MQTT_MODULAR_RESPONSE, json.dumps(payload), qos=QOS)
+            if client and client.is_connected():
+                client.publish(TOPIC_MQTT_MODULAR_RESPONSE, json.dumps(payload), qos=QOS)
+            else:
+                logger.warning("Client not connected, cannot publish Modular MQTT config")
             logger.debug(f"Published Modular MQTT config with status: {payload}")
         else:
             payload = {
@@ -491,20 +504,37 @@ def publish_mqtt_config_modular(client):
                 "message": "Failed to read Modular MQTT config",
                 "timestamp": datetime.now().isoformat()
             }
-            client.publish(TOPIC_MQTT_MODULAR_RESPONSE, json.dumps(payload), qos=QOS)
+            if client and client.is_connected():
+                client.publish(TOPIC_MQTT_MODULAR_RESPONSE, json.dumps(payload), qos=QOS)
+            else:
+                logger.warning("Client not connected, cannot publish Modular MQTT error")
     except Exception as e:
         send_error_log("publish_mqtt_config_modular", f"Error publishing Modular MQTT config: {e}", "major")
 
 def auto_publish_mqtt_configs(client):
-    """Auto-publishes MQTT configurations every 3 seconds."""
+    """Auto-publishes MQTT configurations every 5 seconds for faster updates."""
+    # Configuration intervals (in seconds)
+    PUBLISH_INTERVAL = 5  # Changed from 30s to 5s for faster response
+    ERROR_RETRY_INTERVAL = 10  # Shorter retry on error
+
+    last_publish_time = 0
+
     while True:
         try:
-            publish_mqtt_config_modbus(client)
-            publish_mqtt_config_modular(client)
-            time.sleep(3)  # Publish every 3 seconds
+            current_time = time.time()
+
+            # Only publish if interval has passed
+            if current_time - last_publish_time >= PUBLISH_INTERVAL:
+                publish_mqtt_config_modbus(client)
+                publish_mqtt_config_modular(client)
+                last_publish_time = current_time
+                send_error_log("auto_publish_mqtt_configs", "MQTT configs published successfully", "info")
+
+            time.sleep(5)  # Check every 5 seconds but only publish every 30s
+
         except Exception as e:
             send_error_log("auto_publish_mqtt_configs", f"Error in auto-publish loop: {e}", "major")
-            time.sleep(3)  # Continue trying even on error
+            time.sleep(ERROR_RETRY_INTERVAL)  # Wait before retrying
 
 # Perbaikan: Tambahkan parameter `properties`
 def on_message_mqtt_modbus_command(client, userdata, message):
@@ -535,7 +565,10 @@ def on_message_mqtt_modbus_command(client, userdata, message):
         response_payload = {"status": "error", "message": f"Server error during Modbus MQTT configuration: {e}"}
         send_error_log("on_message_mqtt_modbus_command", f"Unhandled error: {e}", "critical", {"payload_raw": message.payload.decode()})
     finally:
-        client.publish(TOPIC_MQTT_MODBUS_RESPONSE, json.dumps(response_payload), qos=QOS)
+        if client and client.is_connected():
+            client.publish(TOPIC_MQTT_MODBUS_RESPONSE, json.dumps(response_payload), qos=QOS)
+        else:
+            logger.warning("Client not connected, cannot publish Modbus response")
         logger.info(f"Published Modbus MQTT config response to {TOPIC_MQTT_MODBUS_RESPONSE}: {json.dumps(response_payload)}")
 
 # Perbaikan: Tambahkan parameter `properties`
@@ -567,7 +600,10 @@ def on_message_mqtt_modular_command(client, userdata, message):
         response_payload = {"status": "error", "message": f"Server error during Modular MQTT configuration: {e}"}
         send_error_log("on_message_mqtt_modular_command", f"Unhandled error: {e}", "critical", {"payload_raw": message.payload.decode()})
     finally:
-        client.publish(TOPIC_MQTT_MODULAR_RESPONSE, json.dumps(response_payload), qos=QOS)
+        if client and client.is_connected():
+            client.publish(TOPIC_MQTT_MODULAR_RESPONSE, json.dumps(response_payload), qos=QOS)
+        else:
+            logger.warning("Client not connected, cannot publish Modular response")
         logger.info(f"Published Modular MQTT config response to {TOPIC_MQTT_MODULAR_RESPONSE}: {json.dumps(response_payload)}")
 
 # Perbaikan: Tambahkan parameter `properties`
@@ -644,7 +680,10 @@ def on_message_ip_config(client, userdata, message):
         response_payload = {"status": "error", "message": f"Server error during IP configuration: {e}"}
         send_error_log("on_message_ip_config", f"Unhandled error: {e}", "critical", {"payload_raw": message.payload.decode()})
     finally:
-        client.publish(TOPIC_IP_CONFIG_RESPONSE, json.dumps(response_payload), qos=QOS)
+        if client and client.is_connected():
+            client.publish(TOPIC_IP_CONFIG_RESPONSE, json.dumps(response_payload), qos=QOS)
+        else:
+            logger.warning("Client not connected, cannot publish IP config response")
         logger.info(f"Published IP config response to {TOPIC_IP_CONFIG_RESPONSE}: {json.dumps(response_payload)}")
 
 # Perbaikan: Tambahkan parameter `properties`
@@ -656,7 +695,10 @@ def on_message_reboot(client, userdata, msg):
 
         # Acknowledge the command quickly
         response_payload = {"status": "success", "message": "Reboot command received. System is shutting down."}
-        client.publish(MQTT_TOPIC_REBOOT, json.dumps(response_payload), qos=QOS)
+        if client and client.is_connected():
+            client.publish(MQTT_TOPIC_REBOOT, json.dumps(response_payload), qos=QOS)
+        else:
+            logger.warning("Client not connected, cannot publish reboot response")
         logger.info(f"Acknowledged reboot command to {MQTT_TOPIC_REBOOT}.")
 
         # Give some time for the message to be sent
@@ -670,12 +712,18 @@ def on_message_reboot(client, userdata, msg):
         error_msg = f"Failed to initiate reboot: {e.stderr.strip()}"
         response_payload = {"status": "error", "message": error_msg}
         send_error_log("on_message_reboot", error_msg, "critical", {"command_output_stderr": e.stderr.strip()})
-        client.publish(MQTT_TOPIC_REBOOT, json.dumps(response_payload), qos=QOS) # Try to publish error if possible
+        if client and client.is_connected():
+            client.publish(MQTT_TOPIC_REBOOT, json.dumps(response_payload), qos=QOS)
+        else:
+            logger.warning("Client not connected, cannot publish reboot error")
     except Exception as e:
         error_msg = f"An unexpected error occurred during reboot command: {e}"
         response_payload = {"status": "error", "message": error_msg}
         send_error_log("on_message_reboot", error_msg, "critical")
-        client.publish(MQTT_TOPIC_REBOOT, json.dumps(response_payload), qos=QOS) # Try to publish error if possible
+        if client and client.is_connected():
+            client.publish(MQTT_TOPIC_REBOOT, json.dumps(response_payload), qos=QOS)
+        else:
+            logger.warning("Client not connected, cannot publish reboot critical error")
 
 # --- Main MQTT Client Setup ---
 main_mqtt_client = None

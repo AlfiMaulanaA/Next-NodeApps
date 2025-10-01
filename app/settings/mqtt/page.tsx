@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
+import { useMQTT } from "@/hooks/useMQTT";
 import {
   PlusCircle,
   Edit2,
@@ -99,6 +100,10 @@ const MQTTSettingsPage = () => {
   const [configToDelete, setConfigToDelete] =
     useState<MQTTConfiguration | null>(null);
   const [checkingAllConnections, setCheckingAllConnections] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [mqttStatus, setMqttStatus] = useState<
+    "connected" | "disconnected" | "trying" | "timeout"
+  >("trying");
 
   // Form state
   const [formData, setFormData] = useState({
@@ -118,50 +123,245 @@ const MQTTSettingsPage = () => {
     is_active: false,
   });
 
-  // Fetch configurations
-  const fetchConfigurations = async () => {
-    try {
-      const response = await fetch("/api/mqtt/");
-      const result = await response.json();
+  // MQTT setup - use different topics based on current mode
+  const { publishMessage, addMessageHandler, isOnline, connectionStatus } =
+    useMQTT({
+      topics: ["response_mqtt_config", "response_mqtt_json_config"],
+      enableLogging: true,
+    });
 
-      if (result.success) {
-        setConfigurations(result.data);
-      } else {
-        toast.error("Failed to fetch configurations");
-      }
-    } catch (error) {
-      console.error("Error fetching configurations:", error);
-      toast.error("Error fetching configurations");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Get current MQTT mode for checking compatibility
+  const [currentMQTTMode, setCurrentMQTTMode] = useState<string>("env");
 
+  // Load current MQTT mode
   useEffect(() => {
-    fetchConfigurations();
+    const mode = localStorage.getItem("mqtt_connection_mode") || "env";
+    setCurrentMQTTMode(mode);
+  }, []);
 
-    // Auto-check connection status every 30 seconds
-    const interval = setInterval(async () => {
-      if (!checkingAllConnections && !testingConnection) {
-        try {
-          const response = await fetch("/api/mqtt/check-status/", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          });
+  // Request configurations via MQTT
+  const requestConfigurations = useCallback(() => {
+    setLoading(true);
+    const commandTopic =
+      currentMQTTMode === "json"
+        ? "command_mqtt_json_config"
+        : "command_mqtt_config";
+    const payload = {
+      command: "get",
+      timestamp: new Date().toISOString(),
+    };
+    publishMessage(commandTopic, payload);
+  }, [publishMessage, currentMQTTMode]);
 
-          const result = await response.json();
-          if (result.success) {
-            // Silently refresh configurations to update status
-            fetchConfigurations();
+  // Auto-reload MQTT configuration when mode changes
+  useEffect(() => {
+    // Only trigger reload if we have configurations loaded already
+    if (!loading && configurations.length > 0) {
+      console.log(
+        "MQTT mode changed to:",
+        currentMQTTMode,
+        "reloading configurations..."
+      );
+      requestConfigurations();
+    }
+  }, [currentMQTTMode, loading, configurations.length, requestConfigurations]);
+
+  // MQTT response handler
+  const handleMQTTResponse = useCallback(
+    (topic: string, message: Buffer) => {
+      try {
+        const data = JSON.parse(message.toString());
+        console.log("MQTT Config response:", data);
+
+        if (
+          topic === "response_mqtt_config" ||
+          topic === "response_mqtt_json_config"
+        ) {
+          switch (data.command) {
+            case "get":
+              if (data.success && data.data) {
+                setConfigurations(data.data);
+                setLoading(false);
+              } else {
+                toast.error(data.error || "Failed to fetch configurations");
+                setLoading(false);
+              }
+              break;
+
+            case "create":
+              if (data.success) {
+                toast.success(
+                  data.message || "Configuration created successfully"
+                );
+                requestConfigurations();
+              } else {
+                toast.error(data.error || "Failed to create configuration");
+              }
+              break;
+
+            case "update":
+              if (data.success) {
+                toast.success(
+                  data.message || "Configuration updated successfully"
+                );
+                requestConfigurations();
+              } else {
+                toast.error(data.error || "Failed to update configuration");
+              }
+              break;
+
+            case "delete":
+              if (data.success) {
+                toast.success(
+                  data.message || "Configuration deleted successfully"
+                );
+                requestConfigurations();
+              } else {
+                toast.error(data.error || "Failed to delete configuration");
+              }
+              break;
+
+            case "set_active":
+              if (data.success) {
+                toast.success(data.message || "Active configuration updated");
+                requestConfigurations();
+
+                // Auto-reload MQTT connection
+                setTimeout(async () => {
+                  try {
+                    const { reconnectMQTT } = await import("@/lib/mqttClient");
+                    await reconnectMQTT();
+                  } catch (error) {
+                    console.error("Failed to reload MQTT connection:", error);
+                  }
+                }, 1000);
+              } else {
+                toast.error(data.error || "Failed to set active configuration");
+              }
+              break;
+
+            case "enable":
+              if (data.success) {
+                toast.success(data.message || "Configuration updated");
+                const savedMode = localStorage.getItem("mqtt_connection_mode");
+                if (savedMode === "env" || savedMode === "json") {
+                  // Reload MQTT connection for env/json modes
+                  setTimeout(async () => {
+                    try {
+                      const { reconnectMQTT } = await import(
+                        "@/lib/mqttClient"
+                      );
+                      await reconnectMQTT();
+                    } catch (error) {
+                      console.warn("Failed to reconnect MQTT client:", error);
+                    }
+                  }, 500);
+                }
+                requestConfigurations();
+              } else {
+                toast.error(data.error || "Failed to update configuration");
+              }
+              break;
+
+            case "check_status":
+              if (data.success && data.data) {
+                const connected = data.data.filter(
+                  (item: any) => item.status === "connected"
+                ).length;
+                const total = data.data.length;
+                toast.success(
+                  `Connection check: ${connected}/${total} connected`
+                );
+                requestConfigurations();
+              } else {
+                toast.error(data.error || "Failed to check connections");
+              }
+              setCheckingAllConnections(false);
+              break;
+
+            case "test_connection":
+              if (data.success) {
+                toast.success(
+                  `Connection successful! Latency: ${data.latency}ms`
+                );
+              } else {
+                toast.error(data.error || "Connection failed");
+              }
+              requestConfigurations();
+              setTestingConnection(null);
+              break;
           }
-        } catch (error) {
-          console.error("Auto connection check failed:", error);
         }
+      } catch (error) {
+        console.error("Error parsing MQTT response:", error);
       }
-    }, 30000);
 
-    return () => clearInterval(interval);
-  }, [checkingAllConnections, testingConnection]);
+      setSubmitting(false);
+    },
+    [toast, requestConfigurations]
+  );
+
+  // MQTT connection status monitoring
+  useEffect(() => {
+    if (isOnline) {
+      setMqttStatus("connected");
+    } else {
+      setMqttStatus("disconnected");
+    }
+  }, [isOnline]);
+
+  // MQTT message handler setup
+  useEffect(() => {
+    addMessageHandler("response_mqtt_config", handleMQTTResponse);
+    addMessageHandler("response_mqtt_json_config", handleMQTTResponse);
+
+    // Initial data load WITHOUT timeout fallback
+    requestConfigurations();
+
+    // Auto-check connection status every 60 seconds (reduced frequency to prevent over-calling)
+    const interval = setInterval(async () => {
+      if (!checkingAllConnections && !testingConnection && isOnline) {
+        setCheckingAllConnections(true);
+        const payload = {
+          command: "check_status",
+          timestamp: new Date().toISOString(),
+        };
+        const commandTopic =
+          currentMQTTMode === "json"
+            ? "command_mqtt_json_config"
+            : "command_mqtt_config";
+        publishMessage(commandTopic, payload);
+      }
+    }, 60000); // Changed from 30s to 60s to reduce frequency
+
+    // Safety timeout - if still loading after 20 seconds, show message but DON'T force offline
+    const safetyTimeoutId = setTimeout(() => {
+      if (loading) {
+        console.warn("MQTT config request taking longer than expected...");
+        toast.warning("Please wait, connecting to MQTT backend...", {
+          duration: 5000,
+        });
+        // Don't force offline mode - let the user wait for actual response
+      }
+    }, 20000); // Increased from 10s to 20s
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(safetyTimeoutId);
+    };
+  }, [
+    addMessageHandler,
+    handleMQTTResponse,
+    checkingAllConnections,
+    testingConnection,
+    requestConfigurations,
+    publishMessage,
+    isOnline,
+    currentMQTTMode,
+  ]);
+
+  // Ref to track cleanup
+  const MQTTResponseCleanupRef = useRef<(() => void) | null>(null);
 
   // Reset form
   const resetForm = () => {
@@ -249,11 +449,9 @@ const MQTTSettingsPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
 
     try {
-      const url = editingConfig ? "/api/mqtt/" : "/api/mqtt/";
-      const method = editingConfig ? "PUT" : "POST";
-
       // Construct the broker URL from components
       const brokerUrl = constructBrokerUrl(
         formData.protocol,
@@ -261,29 +459,25 @@ const MQTTSettingsPage = () => {
         formData.broker_port
       );
 
-      const payload = editingConfig
-        ? { ...formData, broker_url: brokerUrl, id: editingConfig.id }
-        : { ...formData, broker_url: brokerUrl };
+      const payload = {
+        command: editingConfig ? "update" : "create",
+        data: editingConfig
+          ? { ...formData, broker_url: brokerUrl, id: editingConfig.id }
+          : { ...formData, broker_url: brokerUrl },
+        timestamp: new Date().toISOString(),
+      };
 
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        toast.success(result.message);
-        setDialogOpen(false);
-        resetForm();
-        fetchConfigurations();
-      } else {
-        toast.error(result.error || "Operation failed");
-      }
+      const commandTopic =
+        currentMQTTMode === "json"
+          ? "command_mqtt_json_config"
+          : "command_mqtt_config";
+      publishMessage(commandTopic, payload);
+      setDialogOpen(false);
+      resetForm();
     } catch (error) {
       console.error("Error saving configuration:", error);
       toast.error("Error saving configuration");
+      setSubmitting(false);
     }
   };
 
@@ -294,130 +488,65 @@ const MQTTSettingsPage = () => {
   };
 
   // Delete configuration
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!configToDelete) return;
 
-    try {
-      const response = await fetch(`/api/mqtt/?id=${configToDelete.id}`, {
-        method: "DELETE",
-      });
+    const payload = {
+      command: "delete",
+      data: { id: configToDelete.id },
+      timestamp: new Date().toISOString(),
+    };
 
-      const result = await response.json();
-
-      if (result.success) {
-        toast.success(result.message);
-        fetchConfigurations();
-        setDeleteDialogOpen(false);
-        setConfigToDelete(null);
-      } else {
-        toast.error(result.error || "Delete failed");
-      }
-    } catch (error) {
-      console.error("Error deleting configuration:", error);
-      toast.error("Error deleting configuration");
-    }
+    const commandTopic =
+      currentMQTTMode === "json"
+        ? "command_mqtt_json_config"
+        : "command_mqtt_config";
+    publishMessage(commandTopic, payload);
+    setDeleteDialogOpen(false);
+    setConfigToDelete(null);
   };
 
   // Set active configuration
-  const handleSetActive = async (id: number) => {
-    try {
-      const response = await fetch("/api/mqtt/active/", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        toast.success(
-          "Active configuration updated - MQTT connection will reload"
-        );
-        fetchConfigurations();
-
-        // Auto-reload MQTT connection after changing active config
-        setTimeout(async () => {
-          try {
-            // Import and reconnect MQTT client
-            const { reconnectMQTT } = await import("@/lib/mqttClient");
-            await reconnectMQTT();
-            console.log(
-              "MQTT connection reloaded with new active configuration"
-            );
-          } catch (error) {
-            console.error("Failed to reload MQTT connection:", error);
-          }
-        }, 1000);
-      } else {
-        toast.error(result.error || "Failed to set active configuration");
-      }
-    } catch (error) {
-      console.error("Error setting active configuration:", error);
-      toast.error("Error setting active configuration");
-    }
+  const handleSetActive = (id: number) => {
+    const payload = {
+      command: "set_active",
+      data: { id },
+      timestamp: new Date().toISOString(),
+    };
+    const commandTopic =
+      currentMQTTMode === "json"
+        ? "command_mqtt_json_config"
+        : "command_mqtt_config";
+    publishMessage(commandTopic, payload);
   };
 
   // Check all connections
-  const handleCheckAllConnections = async () => {
+  const handleCheckAllConnections = () => {
     setCheckingAllConnections(true);
-
-    try {
-      const response = await fetch("/api/mqtt/check-status/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        const connected = result.data.filter(
-          (item: any) => item.status === "connected"
-        ).length;
-        const total = result.data.length;
-        toast.success(
-          `Connection check completed: ${connected}/${total} configurations connected`
-        );
-
-        // Refresh configurations to show updated status
-        fetchConfigurations();
-      } else {
-        toast.error("Failed to check connections");
-      }
-    } catch (error) {
-      console.error("Error checking all connections:", error);
-      toast.error("Error checking connections");
-    } finally {
-      setCheckingAllConnections(false);
-    }
+    const payload = {
+      command: "check_status",
+      timestamp: new Date().toISOString(),
+    };
+    const commandTopic =
+      currentMQTTMode === "json"
+        ? "command_mqtt_json_config"
+        : "command_mqtt_config";
+    publishMessage(commandTopic, payload);
   };
 
   // Test connection
-  const handleTestConnection = async (id: number) => {
+  const handleTestConnection = (id: number) => {
     setTestingConnection(id);
-
-    try {
-      const response = await fetch("/api/mqtt/test/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        toast.success(`Connection successful! Latency: ${result.latency}ms`);
-      } else {
-        toast.error(`Connection failed: ${result.message}`);
-      }
-
-      // Refresh configurations to get updated status
-      fetchConfigurations();
-    } catch (error) {
-      console.error("Error testing connection:", error);
-      toast.error("Error testing connection");
-    } finally {
-      setTestingConnection(null);
-    }
+    const payload = {
+      command: "test_connection",
+      data: { id },
+      timestamp: new Date().toISOString(),
+    };
+    const commandTopic =
+      currentMQTTMode === "json"
+        ? "command_mqtt_json_config"
+        : "command_mqtt_config";
+    publishMessage(commandTopic, payload);
   };
 
   // Get status icon
@@ -454,42 +583,17 @@ const MQTTSettingsPage = () => {
   };
 
   // Toggle enabled configuration
-  const toggleEnabled = async (configId: number, currentEnabled: boolean) => {
-    try {
-      const response = await fetch("/api/mqtt/enable/", {
-        method: currentEnabled ? "DELETE" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: configId }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        toast.success(result.message);
-
-        // Check if MQTT connection mode is set to database
-        const savedMode = localStorage.getItem("mqtt_connection_mode");
-        if (savedMode === "database") {
-          // Force MQTT client reconnection to pick up the new enabled configuration
-          try {
-            // Import reconnectMQTT dynamically to avoid SSR issues
-            const { reconnectMQTT } = await import("@/lib/mqttClient");
-            await reconnectMQTT();
-            console.log("MQTT client reconnected to new enabled configuration");
-          } catch (reconnectError) {
-            console.warn("Failed to reconnect MQTT client:", reconnectError);
-          }
-        }
-
-        // Refresh configurations to get updated status
-        fetchConfigurations();
-      } else {
-        toast.error(`Failed: ${result.error}`);
-      }
-    } catch (error) {
-      console.error("Error toggling enabled status:", error);
-      toast.error("Error updating configuration");
-    }
+  const toggleEnabled = (configId: number, currentEnabled: boolean) => {
+    const payload = {
+      command: "enable",
+      data: { id: configId, enable: !currentEnabled },
+      timestamp: new Date().toISOString(),
+    };
+    const commandTopic =
+      currentMQTTMode === "json"
+        ? "command_mqtt_json_config"
+        : "command_mqtt_config";
+    publishMessage(commandTopic, payload);
   };
 
   if (loading) {
@@ -509,6 +613,58 @@ const MQTTSettingsPage = () => {
         <Separator orientation="vertical" className="mr-2 h-4" />
         <Settings className="h-5 w-5" />
         <h1 className="text-lg font-semibold">MQTT Configuration</h1>
+
+        {/* MQTT Connection Status */}
+        <div className="ml-auto flex items-center gap-2">
+          {mqttStatus === "connected" && (
+            <Badge
+              variant="outline"
+              className="flex items-center gap-1 text-green-600 border-green-600"
+            >
+              <CheckCircle className="w-3 h-3" />
+              Connected
+            </Badge>
+          )}
+
+          {mqttStatus === "disconnected" && (
+            <Badge
+              variant="outline"
+              className="flex items-center gap-1 text-orange-600 border-orange-600"
+            >
+              <WifiOff className="w-3 h-3" />
+              Disconnected
+            </Badge>
+          )}
+
+          {mqttStatus === "timeout" && (
+            <Badge variant="destructive" className="flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" />
+              Timeout - Offline Mode
+            </Badge>
+          )}
+
+          {mqttStatus === "trying" && (
+            <Badge variant="secondary" className="flex items-center gap-1">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Connecting...
+            </Badge>
+          )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={requestConfigurations}
+            disabled={loading}
+            className="text-xs"
+          >
+            {loading ? (
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3 h-3 mr-1" />
+            )}
+            Refresh
+          </Button>
+        </div>
       </header>
 
       <div className="flex flex-1 flex-col gap-4 p-4">

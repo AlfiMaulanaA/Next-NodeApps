@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import {
   Activity,
   Database,
+  FileCode,
   Wifi,
   WifiOff,
   CheckCircle,
@@ -23,6 +24,7 @@ import {
   Clock,
   HardDrive,
   Loader2,
+  Settings,
 } from "lucide-react";
 import MQTTModeSelector from "@/components/MQTTModeSelector";
 import { MQTTModeProvider, useMQTTMode } from "@/contexts/MQTTModeContext";
@@ -61,7 +63,12 @@ const SystemHealthPage = () => {
   const [loading, setLoading] = useState(true);
   const [testingDatabase, setTestingDatabase] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [currentMQTTConfig, setCurrentMQTTConfig] = useState<{url: string; host: string; port: number; protocol: string} | null>(null);
+  const [currentMQTTConfig, setCurrentMQTTConfig] = useState<{
+    url: string;
+    host: string;
+    port: number;
+    protocol: string;
+  } | null>(null);
 
   // Fetch current MQTT config based on mode
   const fetchMQTTConfig = async () => {
@@ -74,63 +81,80 @@ const SystemHealthPage = () => {
     }
   };
 
-  // Fetch health status
+  // Simulate health status (without REST API)
   const fetchHealthStatus = async () => {
     try {
-      const response = await fetch("/api/health/", {
-        method: "GET",
-        redirect: "error", // Prevent following redirects
-        cache: "no-cache",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-MQTT-Mode": mode, // Pass the current MQTT mode to the API
+      // Build simulated health data without API call
+      const simulatedHealthData = {
+        status: "healthy" as "healthy" | "degraded" | "unhealthy",
+        timestamp: new Date().toISOString(),
+        uptime: Math.floor(Math.random() * 86400) + 3600, // 1-24 hours
+        response_time: Math.floor(Math.random() * 50) + 10, // 10-60ms
+        services: {
+          database: {
+            status: "healthy" as
+              | "healthy"
+              | "degraded"
+              | "unhealthy"
+              | "unknown",
+            response_time: Math.floor(Math.random() * 30) + 5, // 5-35ms
+            tables: [
+              { name: "mqtt_configurations", count: 3 },
+              { name: "users", count: 5 },
+              { name: "settings", count: 12 },
+              { name: "logs", count: 45 },
+            ],
+            error: null,
+          },
+          mqtt: {
+            status: "healthy" as
+              | "healthy"
+              | "degraded"
+              | "unhealthy"
+              | "unknown",
+            connection_state: "connected",
+            is_connected: true,
+            active_config: {
+              id: 1,
+              name: "Simulated MQTT Broker",
+              broker_url: "mqtt://localhost:1883",
+              connection_status: "connected",
+            },
+            error: null,
+          },
         },
-      });
+      };
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setHealthStatus(data);
+      setHealthStatus(simulatedHealthData);
       setLastUpdated(new Date());
+      toast.success("Health status simulated (MQTT-only system)");
     } catch (error) {
-      console.error("Error fetching health status:", error);
-      toast.error("Failed to fetch system health status");
+      console.error("Error simulating health status:", error);
+      toast.error("Failed to simulate system health status");
     } finally {
       setLoading(false);
     }
   };
 
-  // Test database connection
+  // Test database connection via MQTT (simplified)
   const testDatabaseConnection = async (testType: string) => {
     setTestingDatabase(true);
     try {
-      const response = await fetch("/api/health/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        redirect: "error", // Prevent following redirects
-        cache: "no-cache",
-        body: JSON.stringify({ test_type: testType }),
-      });
+      // Simulate database test without API call
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      const result = await response.json();
-
-      if (result.success) {
-        toast.success(`${result.message} (${result.response_time}ms)`);
-      } else {
-        toast.error(result.message);
+      // Simulate different responses based on test type
+      if (testType === "basic") {
+        toast.success("Database basic connection test passed (simulated)");
+      } else if (testType === "stats") {
+        toast.success("Database statistics query successful (simulated)");
       }
 
       // Refresh health status
       await fetchHealthStatus();
     } catch (error) {
-      console.error("Error testing database:", error);
-      toast.error("Database test failed");
+      console.error("Error simulating database test:", error);
+      toast.error("Database test simulation failed");
     } finally {
       setTestingDatabase(false);
     }
@@ -149,36 +173,48 @@ const SystemHealthPage = () => {
     return () => clearInterval(interval);
   }, [mode, getMQTTConfig]);
 
-  // Get status icon and color
+  // Get status icon and color - supports dark/light mode
   const getStatusInfo = (status: string) => {
     switch (status) {
       case "healthy":
         return {
-          icon: <CheckCircle className="w-5 h-5 text-green-500" />,
-          color: "text-green-600",
-          bgColor: "bg-green-50",
-          borderColor: "border-green-200",
+          icon: (
+            <CheckCircle className="w-5 h-5 text-emerald-400 dark:text-emerald-300" />
+          ),
+          color: "text-emerald-600 dark:text-emerald-400",
+          bgColor: "bg-emerald-50 dark:bg-emerald-950/20",
+          borderColor: "border-emerald-200 dark:border-emerald-800",
+          textColor: "text-emerald-700 dark:text-emerald-300",
         };
       case "degraded":
         return {
-          icon: <AlertTriangle className="w-5 h-5 text-yellow-500" />,
-          color: "text-yellow-600",
-          bgColor: "bg-yellow-50",
-          borderColor: "border-yellow-200",
+          icon: (
+            <AlertTriangle className="w-5 h-5 text-amber-400 dark:text-amber-300" />
+          ),
+          color: "text-amber-600 dark:text-amber-400",
+          bgColor: "bg-amber-50 dark:bg-amber-950/20",
+          borderColor: "border-amber-200 dark:border-amber-800",
+          textColor: "text-amber-700 dark:text-amber-300",
         };
       case "unhealthy":
         return {
-          icon: <XCircle className="w-5 h-5 text-red-500" />,
-          color: "text-red-600",
-          bgColor: "bg-red-50",
-          borderColor: "border-red-200",
+          icon: (
+            <XCircle className="w-5 h-5 text-rose-400 dark:text-rose-300" />
+          ),
+          color: "text-rose-600 dark:text-rose-400",
+          bgColor: "bg-rose-50 dark:bg-rose-950/20",
+          borderColor: "border-rose-200 dark:border-rose-800",
+          textColor: "text-rose-700 dark:text-rose-300",
         };
       default:
         return {
-          icon: <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />,
-          color: "text-gray-600",
-          bgColor: "bg-gray-50",
-          borderColor: "border-gray-200",
+          icon: (
+            <Loader2 className="w-5 h-5 text-slate-400 dark:text-slate-300 animate-spin" />
+          ),
+          color: "text-slate-600 dark:text-slate-400",
+          bgColor: "bg-slate-50 dark:bg-slate-950/20",
+          borderColor: "border-slate-200 dark:border-slate-800",
+          textColor: "text-slate-700 dark:text-slate-300",
         };
     }
   };
@@ -258,8 +294,12 @@ const SystemHealthPage = () => {
               <div className="flex items-center gap-3">
                 {overallStatus.icon}
                 <div>
-                  <CardTitle className="text-xl">System Status</CardTitle>
-                  <p className="text-sm text-muted-foreground">
+                  <CardTitle className={`text-xl ${overallStatus.textColor}`}>
+                    System Status
+                  </CardTitle>
+                  <p
+                    className={`text-sm ${overallStatus.textColor} opacity-80`}
+                  >
                     Overall system health: {healthStatus.status.toUpperCase()}
                   </p>
                 </div>
@@ -439,68 +479,111 @@ const SystemHealthPage = () => {
               </div>
 
               {/* Current MQTT Configuration based on selected mode */}
-              {currentMQTTConfig && (
-                <div className="space-y-2">
-                  <span className="text-sm font-medium">
-                    Current Configuration
-                  </span>
-                  <div className="text-sm space-y-1">
-                    <div className="flex justify-between">
-                      <span>Mode:</span>
-                      <span className="font-medium">
-                        {mode === "env" ? "Environment Variables" : "Database Configuration"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Protocol:</span>
-                      <span className="font-medium">
-                        {currentMQTTConfig.protocol.toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Host:</span>
-                      <span className="font-medium">
-                        {currentMQTTConfig.host}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Port:</span>
-                      <span className="font-medium">
-                        {currentMQTTConfig.port}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Broker URL:</span>
-                      <span className="font-medium text-xs break-all">
-                        {currentMQTTConfig.url}
-                      </span>
-                    </div>
+              <div className="space-y-2">
+                <span className="text-sm font-medium">
+                  Current Configuration
+                </span>
+                <div className="text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span>Mode:</span>
+                    <span className="font-medium">
+                      {mode === "env"
+                        ? "Environment Variables"
+                        : mode === "json"
+                        ? "JSON File Configuration"
+                        : mode === "database"
+                        ? "Database Configuration"
+                        : "Unknown Mode"}
+                    </span>
                   </div>
+
+                  {currentMQTTConfig && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Protocol:</span>
+                        <span className="font-medium">
+                          {currentMQTTConfig.protocol.toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Host:</span>
+                        <span className="font-medium">
+                          {currentMQTTConfig.host}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Port:</span>
+                        <span className="font-medium">
+                          {currentMQTTConfig.port}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Broker URL:</span>
+                        <span className="font-medium text-xs break-all">
+                          {currentMQTTConfig.url}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
+              </div>
+
+              {mode === "env" && (
+                <Alert>
+                  <Settings className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    MQTT configurations loaded from environment variables.
+                    Configuration is managed by server environment settings.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {mode === "json" && (
+                <Alert>
+                  <FileCode className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    MQTT configurations loaded from JSON file at{" "}
+                    <code>
+                      middleware/CONFIG_SYSTEM_DEVICE/JSON/mqttConfig.json
+                    </code>
+                    . Configuration is managed through MQTT Settings page.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {mode === "database" && (
+                <Alert>
+                  <Database className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    MQTT configurations loaded from database. Configuration is
+                    managed through MQTT Settings page.
+                  </AlertDescription>
+                </Alert>
               )}
 
               {/* Fallback to health API data if currentMQTTConfig is not available */}
-              {!currentMQTTConfig && healthStatus.services.mqtt.active_config && (
-                <div className="space-y-2">
-                  <span className="text-sm font-medium">
-                    Active Configuration
-                  </span>
-                  <div className="text-sm space-y-1">
-                    <div className="flex justify-between">
-                      <span>Name:</span>
-                      <span className="font-medium">
-                        {healthStatus.services.mqtt.active_config.name}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Broker:</span>
-                      <span className="font-medium">
-                        {healthStatus.services.mqtt.active_config.broker_url}
-                      </span>
+              {!currentMQTTConfig &&
+                healthStatus.services.mqtt.active_config && (
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium">
+                      Active Configuration
+                    </span>
+                    <div className="text-sm space-y-1">
+                      <div className="flex justify-between">
+                        <span>Name:</span>
+                        <span className="font-medium">
+                          {healthStatus.services.mqtt.active_config.name}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Broker:</span>
+                        <span className="font-medium">
+                          {healthStatus.services.mqtt.active_config.broker_url}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
               {healthStatus.services.mqtt.error && (
                 <Alert>

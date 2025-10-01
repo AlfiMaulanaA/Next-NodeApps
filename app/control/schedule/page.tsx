@@ -3,7 +3,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import Swal from "sweetalert2";
 import Flatpickr from "react-flatpickr";
 import "flatpickr/dist/flatpickr.css";
 import { v4 as uuidv4 } from "uuid";
@@ -18,6 +17,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +56,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { toast } from "@/components/ui/use-toast";
 
 // Type definitions
 interface Control {
@@ -108,6 +119,35 @@ const DeviceSchedulerControl = () => {
   const [selectedDeviceName, setSelectedDeviceName] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMqttConnected, setIsMqttConnected] = useState(false);
+
+  // Alert and Confirmation Dialog States
+  const [alertDialogOpen, setAlertDialogOpen] = useState(false);
+  const [alertDialogContent, setAlertDialogContent] = useState<{
+    title: string;
+    description: string;
+  }>({ title: "", description: "" });
+
+  const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
+  const [confirmationDialogContent, setConfirmationDialogContent] = useState<{
+    title: string;
+    description: string;
+    confirmAction: () => void;
+  }>({ title: "", description: "", confirmAction: () => {} });
+
+  // Helper functions for alerts and confirmations
+  const showAlert = (title: string, description: string) => {
+    setAlertDialogContent({ title, description });
+    setAlertDialogOpen(true);
+  };
+
+  const showConfirmation = (
+    title: string,
+    description: string,
+    confirmAction: () => void
+  ) => {
+    setConfirmationDialogContent({ title, description, confirmAction });
+    setConfirmationDialogOpen(true);
+  };
 
   const formRef = useRef(null);
 
@@ -277,19 +317,17 @@ const DeviceSchedulerControl = () => {
                 `Operation result: ${payload.result} - ${payload.message}`
               );
               if (payload.result === "success") {
-                Swal.fire({
-                  icon: "success",
+                toast({
                   title: "Success",
-                  text: payload.message || "Operation completed successfully.",
+                  description:
+                    payload.message || "Operation completed successfully.",
                 });
               } else if (payload.result === "error") {
-                Swal.fire({
-                  icon: "error",
-                  title: "Error",
-                  text:
-                    payload.message ||
-                    "There was an error processing the request.",
-                });
+                showAlert(
+                  "Error",
+                  payload.message ||
+                    "There was an error processing the request."
+                );
               }
             } else if (topic === topicResponse) {
               // Handle config response - check if it's an array directly
@@ -318,13 +356,12 @@ const DeviceSchedulerControl = () => {
           } catch (error) {
             console.error("Error parsing message:", error);
             console.error("Raw message:", message.toString());
-            Swal.fire({
-              icon: "error",
-              title: "Error",
-              text: `There was an error parsing the MQTT message: ${
+            showAlert(
+              "Error",
+              `There was an error parsing the MQTT message: ${
                 error instanceof Error ? error.message : "Unknown error"
-              }`,
-            });
+              }`
+            );
           }
         });
       } catch (error) {
@@ -471,11 +508,10 @@ const DeviceSchedulerControl = () => {
       !deviceForm.mac ||
       !deviceForm.address
     ) {
-      Swal.fire({
-        icon: "error",
-        title: "Validation Error",
-        text: "Please fill in all required fields (Custom Name, Device Name, MAC Address, Address).",
-      });
+      showAlert(
+        "Validation Error",
+        "Please fill in all required fields (Custom Name, Device Name, MAC Address, Address)."
+      );
       return;
     }
 
@@ -490,28 +526,24 @@ const DeviceSchedulerControl = () => {
     publishMessage({ action, data: dataToSend });
 
     setIsModalOpen(false);
-    Swal.fire({
-      icon: "success",
-      title: editingDevice ? "Device updated!" : "Device added!",
-      showConfirmButton: true,
-      confirmButtonText: "OK",
-    }).then(() => {
-      restartService();
+    toast({
+      title: "Success",
+      description: editingDevice
+        ? "Device updated successfully!"
+        : "Device added successfully!",
     });
+    restartService();
   };
 
   const deleteDevice = (id: string) => {
     publishMessage({ action: "delete", data: { id } });
     setDevices((prev) => prev.filter((device) => device.id !== id));
 
-    Swal.fire({
-      icon: "success",
-      title: "Device Deleted!",
-      showConfirmButton: true,
-      confirmButtonText: "OK",
-    }).then(() => {
-      restartService();
+    toast({
+      title: "Success",
+      description: "Device deleted successfully!",
     });
+    restartService();
   };
 
   const addControl = () => {
@@ -541,18 +573,12 @@ const DeviceSchedulerControl = () => {
     // Just refresh the config after a short delay
     setTimeout(() => {
       getConfig();
-      Swal.close();
     }, 1000);
 
-    Swal.fire({
+    toast({
       title: "Updating Configuration",
-      text: "Please wait while the scheduler configuration is updated...",
-      icon: "info",
-      allowOutsideClick: false,
-      showConfirmButton: false,
-      didOpen: () => {
-        Swal.showLoading();
-      },
+      description:
+        "Please wait while the scheduler configuration is updated...",
     });
   };
 
@@ -1032,6 +1058,32 @@ const DeviceSchedulerControl = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Alert Dialog */}
+      <AlertDialog open={alertDialogOpen} onOpenChange={setAlertDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{alertDialogContent.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {alertDialogContent.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setAlertDialogOpen(false)}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        open={confirmationDialogOpen}
+        onOpenChange={setConfirmationDialogOpen}
+        title={confirmationDialogContent.title}
+        description={confirmationDialogContent.description}
+        onConfirm={confirmationDialogContent.confirmAction}
+      />
     </div>
   );
 };

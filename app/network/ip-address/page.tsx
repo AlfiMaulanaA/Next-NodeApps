@@ -2,8 +2,19 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
-import { toast } from "sonner";
-import Swal from "sweetalert2";
+import { toast } from "@/components/ui/use-toast";
+// Import dialog components for modals
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   Dialog,
   DialogContent,
@@ -94,6 +105,24 @@ export default function NetworkPage() {
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [currentModbusTcpPort] = useState<number>(502);
+
+  // Dialog states for confirmation
+  const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
+  const [confirmationDialogContent, setConfirmationDialogContent] = useState<{
+    title: string;
+    description: string;
+    confirmAction: () => void;
+  }>({ title: "", description: "", confirmAction: () => {} });
+
+  // Helper function for showing confirmations
+  const showConfirmation = (
+    title: string,
+    description: string,
+    confirmAction: () => void
+  ) => {
+    setConfirmationDialogContent({ title, description, confirmAction });
+    setConfirmationDialogOpen(true);
+  };
 
   // Get current interface configs
   const eth0Config = networkConfig?.eth0;
@@ -189,7 +218,11 @@ export default function NetworkPage() {
       client.publish(NETWORK_GET_TOPIC, JSON.stringify({}), {}, (err) => {
         if (err) {
           console.error("[DEBUG] Publish error (get network config):", err);
-          toast.error(`Failed to request config: ${err.message}`);
+          toast({
+            title: "Error",
+            description: `Failed to request config: ${err.message}`,
+            variant: "destructive",
+          });
           setIsLoading(false);
         } else {
           console.log("[DEBUG] Successfully published network config request");
@@ -197,9 +230,11 @@ export default function NetworkPage() {
       });
     } else {
       console.warn("[DEBUG] MQTT not connected, cannot request network config");
-      toast.warning(
-        "MQTT not connected. Cannot request network configuration."
-      );
+      toast({
+        title: "Warning",
+        description:
+          "MQTT not connected. Cannot request network configuration.",
+      });
       setIsLoading(false);
     }
   }, []);
@@ -219,56 +254,53 @@ export default function NetworkPage() {
         !isValidIP(editConfig.gateway) ||
         !isValidNetmask(editConfig.netmask)
       ) {
-        toast.error(
-          "Invalid input format for IP Address, Netmask, or Gateway."
-        );
+        toast({
+          title: "Error",
+          description:
+            "Invalid input format for IP Address, Netmask, or Gateway.",
+          variant: "destructive",
+        });
         return;
       }
     }
 
     const client = getMQTTClient();
     if (!client || !client.connected) {
-      toast.error("MQTT not connected. Cannot update configuration.");
+      toast({
+        title: "Error",
+        description: "MQTT not connected. Cannot update configuration.",
+        variant: "destructive",
+      });
       return;
     }
 
-    const result = await Swal.fire({
-      title: "Apply Network Changes?",
-      html: `
-        <div class="text-left space-y-2">
-          <p><strong>Interface:</strong> ${editConfig.interface}</p>
-          <p><strong>Method:</strong> ${editConfig.method.toUpperCase()}</p>
-          ${
-            editConfig.method === "static"
-              ? `
-            <p><strong>IP Address:</strong> ${editConfig.static_ip}</p>
-            <p><strong>Gateway:</strong> ${editConfig.gateway}</p>
-            <p><strong>Netmask:</strong> ${editConfig.netmask}</p>
-          `
-              : "<p><em>DHCP will obtain settings automatically</em></p>"
-          }
-          <hr class="my-3">
-          <p class="text-sm text-amber-600">⚠️ This may temporarily interrupt network connectivity</p>
-        </div>
-      `,
-      icon: "question",
-      showCancelButton: true,
-      confirmButtonColor: "#3085d6",
-      cancelButtonColor: "#d33",
-      confirmButtonText: "Apply Changes",
-      cancelButtonText: "Cancel",
-      customClass: {
-        htmlContainer: "text-sm",
-      },
+    const networkChangeDescription = `
+Interface: ${editConfig.interface}
+Method: ${editConfig.method.toUpperCase()}
+${
+  editConfig.method === "static"
+    ? `IP Address: ${editConfig.static_ip}
+Gateway: ${editConfig.gateway}
+Netmask: ${editConfig.netmask}`
+    : "DHCP will obtain settings automatically"
+}
+
+⚠️ This may temporarily interrupt network connectivity`;
+
+    // Use confirmation dialog instead of Swal
+    await new Promise<void>((resolve) => {
+      showConfirmation(
+        "Apply Network Changes?",
+        networkChangeDescription,
+        resolve
+      );
     });
 
-    if (!result.isConfirmed) {
-      toast.info("Network update cancelled.");
-      return;
-    }
-
     setIsConfiguring(true);
-    toast.loading("Applying network configuration...", { id: "networkUpdate" });
+    toast({
+      title: "Processing",
+      description: "Applying network configuration...",
+    });
 
     const networkPayload: any = {
       interface: editConfig.interface,
@@ -291,8 +323,11 @@ export default function NetworkPage() {
       (err) => {
         if (err) {
           console.error("[DEBUG] Publish error:", err);
-          toast.dismiss("networkUpdate");
-          toast.error(`Failed to send update: ${err.message}`);
+          toast({
+            title: "Error",
+            description: `Failed to send update: ${err.message}`,
+            variant: "destructive",
+          });
           setIsConfiguring(false);
         } else {
           console.log("[DEBUG] Network config update sent");
@@ -379,7 +414,10 @@ export default function NetworkPage() {
 
       // Auto-load data on connect
       setTimeout(() => requestNetworkConfig(), 500);
-      toast.success("Connected - Loading network data...");
+      toast({
+        title: "Success",
+        description: "Connected - Loading network data...",
+      });
     };
 
     const handleMessage = (topic: string, messageBuf: Buffer) => {
@@ -388,8 +426,6 @@ export default function NetworkPage() {
         console.log(`[DEBUG] Received:`, data);
 
         if (topic === NETWORK_RESPONSE_TOPIC) {
-          toast.dismiss("networkUpdate");
-
           if (data.status === "success") {
             if (data.action === "get_network_config" && data.network_config) {
               console.log(
@@ -412,16 +448,25 @@ export default function NetworkPage() {
                 });
               }
 
-              toast.success("Network configuration loaded");
+              toast({
+                title: "Success",
+                description: "Network configuration loaded",
+              });
             } else if (data.action === "set_network_config") {
-              toast.success(data.message || "Network updated successfully");
+              toast({
+                title: "Success",
+                description: data.message || "Network updated successfully",
+              });
               setTimeout(() => requestNetworkConfig(), 2000);
             }
           } else {
             console.error("[DEBUG] Error response:", data);
-            toast.error(
-              data.error || data.message || "Network operation failed"
-            );
+            toast({
+              title: "Error",
+              description:
+                data.error || data.message || "Network operation failed",
+              variant: "destructive",
+            });
           }
 
           setIsLoading(false);
@@ -429,7 +474,11 @@ export default function NetworkPage() {
         }
       } catch (err) {
         console.error("[DEBUG] Parse error:", err);
-        toast.error("Invalid response format");
+        toast({
+          title: "Error",
+          description: "Invalid response format",
+          variant: "destructive",
+        });
         setIsLoading(false);
         setIsConfiguring(false);
       }
@@ -445,7 +494,11 @@ export default function NetworkPage() {
     mqttClientInstance.on("message", handleMessage);
     mqttClientInstance.on("error", (err) => {
       console.error("[DEBUG] MQTT error:", err);
-      toast.error("MQTT connection error");
+      toast({
+        title: "Error",
+        description: "MQTT connection error",
+        variant: "destructive",
+      });
       setIsLoading(false);
     });
 
@@ -865,6 +918,14 @@ export default function NetworkPage() {
         {/* End of grid for cards */}
       </div>{" "}
       {/* End of main content padding */}
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        open={confirmationDialogOpen}
+        onOpenChange={setConfirmationDialogOpen}
+        title={confirmationDialogContent.title}
+        description={confirmationDialogContent.description}
+        onConfirm={confirmationDialogContent.confirmAction}
+      />
     </SidebarInset>
   );
 }

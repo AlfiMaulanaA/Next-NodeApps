@@ -10,7 +10,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Added CardHeader, CardTitle
-import Swal from 'sweetalert2'; // Import SweetAlert2 for confirmation dialogs
+import {
+  useConfirmationDialog,
+  ConfirmationDialog,
+} from "@/components/ui/confirmation-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -53,6 +56,9 @@ interface SnmpConfig {
 }
 
 export default function SNMPSettingPage() {
+  // --- Confirmation Dialog ---
+  const { confirmationProps, showConfirmation } = useConfirmationDialog();
+
   // --- State Variables ---
   const [formData, setFormData] = useState<SnmpConfig>({
     snmpIPaddress: "",
@@ -113,7 +119,7 @@ export default function SNMPSettingPage() {
 
   /**
    * Sends a command (restart, stop, start) to a specific service via MQTT.
-   * Includes a SweetAlert2 confirmation dialog.
+   * Includes a confirmation dialog.
    * @param serviceName The name of the service to command (e.g., "protocol_out.service").
    * @param action The action to perform ("restart", "stop", "start").
    * @param confirmMessage Optional message for the confirmation dialog.
@@ -127,20 +133,23 @@ export default function SNMPSettingPage() {
 
     let proceed = true;
     if (confirmMessage) {
-      const result = await Swal.fire({
-        title: 'Are you sure?',
-        text: confirmMessage,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
-        confirmButtonText: 'Yes, proceed!'
+      await new Promise<void>((resolve) => {
+        showConfirmation({
+          type: "warning",
+          title: "Are you sure?",
+          description: confirmMessage,
+          confirmText: "Yes, proceed!",
+          destructive: true,
+          onConfirm: () => {
+            resolve();
+          },
+          onCancel: () => {
+            proceed = false;
+            toast.info("Action cancelled.");
+            resolve();
+          },
+        });
       });
-
-      if (!result.isConfirmed) {
-        proceed = false;
-        toast.info("Action cancelled.");
-      }
     }
 
     if (proceed) {
@@ -280,14 +289,7 @@ export default function SNMPSettingPage() {
           setIsSaving(false); // Stop saving state after service response
 
           if (payload.result === "success") {
-            Swal.fire({
-              position: 'top-end',
-              icon: 'success',
-              title: payload.message || 'Service command executed successfully!',
-              showConfirmButton: false,
-              timer: 3000,
-              toast: true
-            });
+            toast.success(payload.message || 'Service command executed successfully!');
             // After a successful service restart, re-check SNMP status
             if (payload.action === "restart" && Array.isArray(payload.services) && payload.services.includes("protocol_out.service")) {
                 checkStatus(); // Re-check SNMP status
@@ -295,14 +297,7 @@ export default function SNMPSettingPage() {
                 // getConfig();
             }
           } else {
-            Swal.fire({
-              position: 'top-end',
-              icon: 'error',
-              title: payload.message || 'Failed to execute service command.',
-              showConfirmButton: false,
-              timer: 3000,
-              toast: true
-            });
+            toast.error(payload.message || 'Failed to execute service command.');
           }
         }
       } catch (e) {
@@ -565,6 +560,9 @@ export default function SNMPSettingPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog {...confirmationProps} />
     </SidebarInset>
   );
 }

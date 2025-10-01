@@ -10,6 +10,7 @@ import netifaces as ni
 from getmac import get_mac_address
 from datetime import datetime
 import uuid
+from ErrorLogger import initialize_error_logger, send_error_log, ERROR_TYPE_MINOR, ERROR_TYPE_MAJOR, ERROR_TYPE_CRITICAL, ERROR_TYPE_WARNING
 
 # --- Startup Banner Functions ---
 def print_startup_banner():
@@ -171,18 +172,47 @@ def load_default_devices():
 
 # Load MQTT configuration
 def load_mqtt_config():
-    try:
-        with open(MQTT_CONFIG_PATH, 'r') as file:
-            mqtt_config = json.load(file)
-        return mqtt_config
-    except FileNotFoundError as e:
-        error_msg = "MQTT config file not found"
-        send_error_log("load_mqtt_config", error_msg, "error", {"file_path": MQTT_CONFIG_PATH})
-        return {}
-    except json.JSONDecodeError as e:
-        error_msg = f"Error decoding MQTT config: {e}"
-        send_error_log("load_mqtt_config", error_msg, "error", {"file_path": MQTT_CONFIG_PATH})
-        return {}
+    default_config = {
+        "enable": True,
+        "broker_address": "localhost",
+        "broker_port": 1883,
+        "username": "",
+        "password": "",
+        "qos": 1,
+        "retain": True,
+        "mac_address": "00:00:00:00:00:00"
+    }
+
+    while True:
+        try:
+            with open(MQTT_CONFIG_PATH, 'r') as file:
+                content = file.read().strip()
+                if not content:
+                    send_error_log("load_mqtt_config", "MQTT config file is empty. Retrying...", "warning", {"file_path": MQTT_CONFIG_PATH})
+                    time.sleep(5)
+                    continue
+                return json.loads(content)
+        except FileNotFoundError as e:
+            error_msg = "MQTT config file not found. Creating default config and retrying..."
+            send_error_log("load_mqtt_config", error_msg, "warning", {"file_path": MQTT_CONFIG_PATH})
+            try:
+                os.makedirs(os.path.dirname(MQTT_CONFIG_PATH), exist_ok=True)
+                with open(MQTT_CONFIG_PATH, 'w') as file:
+                    json.dump(default_config, file, indent=4)
+                log_simple(f"Created default MQTT config file: {MQTT_CONFIG_PATH}", "INFO")
+            except Exception as create_error:
+                send_error_log("load_mqtt_config", f"Failed to create config file: {create_error}", "warning", {"file_path": MQTT_CONFIG_PATH})
+                time.sleep(5)
+                continue
+        except json.JSONDecodeError as e:
+            error_msg = f"Error decoding MQTT config: {e}"
+            send_error_log("load_mqtt_config", error_msg, "error", {"file_path": MQTT_CONFIG_PATH})
+            return default_config
+        except Exception as e:
+            error_msg = f"Unexpected error loading MQTT config: {e}. Retrying..."
+            send_error_log("load_mqtt_config", error_msg, "warning", {"file_path": MQTT_CONFIG_PATH})
+            time.sleep(5)
+            continue
 
 # Load installed devices from file
 def load_installed_devices(config_path):
@@ -521,18 +551,65 @@ def on_message(client, userdata, message):
         error_msg = f"Error during message handling: {e}"
         send_error_log("on_message", error_msg, "error", {"topic": message.topic})
 
-# Periodic sending function
+# Periodic sending function with performance optimization
 def periodic_publish(client):
+    # Performance optimization: Configurable intervals and caching
+    PUBLISH_INTERVAL = 60  # Increased from 10s to 60s for better performance
+    ERROR_RETRY_INTERVAL = 30  # Wait longer on errors
+
+    last_modbus_devices = None
+    last_i2c_devices = None
+    last_modbus_mod_time = 0
+    last_i2c_mod_time = 0
+
     while True:
         try:
-            modbus_devices = load_installed_devices(MODBUS_SNMP_CONFIG_PATH)
-            i2c_devices = load_installed_devices(I2C_CONFIG_PATH)
+            # Performance: Only reload devices if config files have changed
+            modbus_changed = False
+            i2c_changed = False
+
+            try:
+                modbus_mod_time = os.path.getmtime(MODBUS_SNMP_CONFIG_PATH)
+                if modbus_mod_time != last_modbus_mod_time:
+                    modbus_changed = True
+                    last_modbus_mod_time = modbus_mod_time
+            except OSError:
+                modbus_changed = True  # Force reload if file stat fails
+
+            try:
+                i2c_mod_time = os.path.getmtime(I2C_CONFIG_PATH)
+                if i2c_mod_time != last_i2c_mod_time:
+                    i2c_changed = True
+                    last_i2c_mod_time = i2c_mod_time
+            except OSError:
+                i2c_changed = True  # Force reload if file stat fails
+
+            # Load devices only if configs changed or first time
+            if modbus_changed or last_modbus_devices is None:
+                modbus_devices = load_installed_devices(MODBUS_SNMP_CONFIG_PATH)
+                last_modbus_devices = modbus_devices
+            else:
+                modbus_devices = last_modbus_devices
+
+            if i2c_changed or last_i2c_devices is None:
+                i2c_devices = load_installed_devices(I2C_CONFIG_PATH)
+                last_i2c_devices = i2c_devices
+            else:
+                i2c_devices = last_i2c_devices
+
+            # Publish device data
             send_device_data(client, "modbus", modbus_devices)
             send_device_data(client, "i2c", i2c_devices)
+
+            log_simple(f"Periodic publish completed. Modbus: {len(modbus_devices) if modbus_devices else 0}, I2C: {len(i2c_devices) if i2c_devices else 0} devices", "INFO")
+
         except Exception as e:
             error_msg = f"Error during periodic publishing: {e}"
             send_error_log("periodic_publish", error_msg, "error")
-        time.sleep(10)
+            time.sleep(ERROR_RETRY_INTERVAL)
+            continue
+
+        time.sleep(PUBLISH_INTERVAL)
 
 def on_connect_operations(client, userdata, flags, rc):
     global local_broker_connected
@@ -581,14 +658,16 @@ def on_disconnect(client, userdata, rc):
 
 # --- Fungsi baru untuk mencoba koneksi ---
 def try_connect_mqtt(client, broker_address, broker_port):
-    try:
-        print(f"Mencoba menyambungkan ke broker MQTT di {broker_address}:{broker_port}...")
-        client.connect(broker_address, broker_port)
-        print(f"Koneksi ke broker MQTT di {broker_address}:{broker_port} BERHASIL.")
-        return True
-    except Exception as e:
-        print(f"Error: Koneksi ke broker MQTT di {broker_address}:{broker_port} GAGAL: {e}")
-        return False
+    while True:
+        try:
+            print(f"Mencoba menyambungkan ke broker MQTT di {broker_address}:{broker_port}...")
+            client.connect(broker_address, broker_port)
+            print(f"Koneksi ke broker MQTT di {broker_address}:{broker_port} BERHASIL.")
+            return True
+        except Exception as e:
+            print(f"Error: Koneksi ke broker MQTT di {broker_address}:{broker_port} GAGAL: {e}. Retrying in 5 seconds...")
+            time.sleep(5)
+            continue
 # --- Akhir fungsi baru ---
 
 # Setup MQTT client for localhost broker (operations)

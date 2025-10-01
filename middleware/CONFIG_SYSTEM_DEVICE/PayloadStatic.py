@@ -77,34 +77,53 @@ def write_json_file(file_path, data):
             logger.error(f"Error writing JSON file at {file_path}: {e}")
 
 def load_mqtt_config():
-    try:
-        with open(CONFIG_FILE_PATH, "r") as file:
-            config = json.load(file)
-        return {
-            "broker": config.get("broker_address", "localhost"),
-            "port": config.get("broker_port", 1883),
-            "username": config.get("username", ""),
-            "password": config.get("password", "")
-        }
-    except Exception as e:
-        logger.error(f"Failed to load MQTT configuration: {e}")
-        return {"broker": "localhost", "port": 1883, "username": "", "password": ""}
+    default_config = {
+        "broker_address": "localhost",
+        "broker_port": 1883,
+        "username": "",
+        "password": "",
+        "qos": 1,
+        "retain": True
+    }
+
+    while True:
+        try:
+            with open(CONFIG_FILE_PATH, "r") as file:
+                content = file.read().strip()
+                if not content:
+                    logger.warning(f"MQTT config file is empty. Retrying in 5 seconds...")
+                    time.sleep(5)
+                    continue
+                config = json.loads(content)
+            return {
+                "broker": config.get("broker_address", "localhost"),
+                "port": config.get("broker_port", 1883),
+                "username": config.get("username", ""),
+                "password": config.get("password", "")
+            }
+        except FileNotFoundError:
+            logger.warning(f"MQTT config file not found. Creating default config and retrying...")
+            try:
+                import os
+                os.makedirs(os.path.dirname(CONFIG_FILE_PATH), exist_ok=True)
+                with open(CONFIG_FILE_PATH, 'w') as file:
+                    json.dump(default_config, file, indent=4)
+                logger.info(f"Created default MQTT config file: {CONFIG_FILE_PATH}")
+            except Exception as create_error:
+                logger.error(f"Failed to create config file: {create_error}. Retrying in 5 seconds...")
+                time.sleep(5)
+                continue
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding MQTT config: {e}. Using defaults.")
+            return {"broker": "localhost", "port": 1883, "username": "", "password": ""}
+        except Exception as e:
+            logger.error(f"Failed to load MQTT configuration: {e}. Retrying in 5 seconds...")
+            time.sleep(5)
+            continue
 
 mqtt_config = load_mqtt_config()
 
-# CRUD Client for localhost broker
-crud_client = mqtt.Client(client_id="payload_static_crud", clean_session=False)
-crud_client.on_connect = on_crud_connect
-crud_client.on_disconnect = on_crud_disconnect
-crud_client.on_message = handle_message
-
-# Periodic Publisher Client from config
-pub_client = mqtt.Client(client_id="payload_static_pub", clean_session=False)
-if mqtt_config["username"] and mqtt_config["password"]:
-    pub_client.username_pw_set(mqtt_config["username"], mqtt_config["password"])
-pub_client.on_connect = on_pub_connect
-pub_client.on_disconnect = on_pub_disconnect
-
+# Define callback functions before using them
 def on_crud_connect(client, userdata, flags, rc):
     if rc == 0:
         logger.info("CRUD client connected successfully")
@@ -171,6 +190,19 @@ def handle_message(client, msg):
     # Record processing time
     processing_time = time.time() - start_time
     performance_monitor.record_processing_time(processing_time)
+
+# CRUD Client for localhost broker
+crud_client = mqtt.Client(client_id="payload_static_crud", clean_session=False)
+crud_client.on_connect = on_crud_connect
+crud_client.on_disconnect = on_crud_disconnect
+crud_client.on_message = handle_message
+
+# Periodic Publisher Client from config
+pub_client = mqtt.Client(client_id="payload_static_pub", clean_session=False)
+if mqtt_config["username"] and mqtt_config["password"]:
+    pub_client.username_pw_set(mqtt_config["username"], mqtt_config["password"])
+pub_client.on_connect = on_pub_connect
+pub_client.on_disconnect = on_pub_disconnect
 
 # Connect clients with error handling
 try:

@@ -1,9 +1,19 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { reconnectMQTT, connectMQTTAsync } from "@/lib/mqttClient";
-
-export type MQTTConnectionMode = "env" | "database";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
+import {
+  reconnectMQTT,
+  connectMQTTAsync,
+  getMQTTClient,
+} from "@/lib/mqttClient";
+import { useMQTT } from "@/hooks/useMQTT";
+export type MQTTConnectionMode = "env" | "json" | "database";
 
 interface MQTTModeContextType {
   mode: MQTTConnectionMode;
@@ -18,15 +28,132 @@ interface MQTTConfig {
   protocol: string;
 }
 
-const MQTTModeContext = createContext<MQTTModeContextType | undefined>(undefined);
+const MQTTModeContext = createContext<MQTTModeContextType | undefined>(
+  undefined
+);
 
 export function MQTTModeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<MQTTConnectionMode>("env");
+  const [mqttActiveConfig, setMqttActiveConfig] = useState<MQTTConfig | null>(
+    null
+  );
+  const [activeConfigPromises, setActiveConfigPromises] = useState<
+    Map<
+      string,
+      { resolve: (value: MQTTConfig) => void; reject: (reason: any) => void }
+    >
+  >(new Map());
+
+  // MQTT configuration for getting active config
+  const { publishMessage, addMessageHandler, isOnline } = useMQTT({
+    topics: ["response_mqtt_active_config"],
+    autoSubscribe: true,
+    enableLogging: true,
+  });
+
+  // MQTT message handler for active config responses
+  useEffect(() => {
+    const handleActiveConfigResponse = (topic: string, message: Buffer) => {
+      try {
+        const data = JSON.parse(message.toString());
+        console.log("Received MQTT active config response:", data);
+
+        if (data.success && data.data) {
+          // Process enabled configuration first
+          let config = data.data.find((c: any) => c.enabled);
+          if (!config) {
+            // Fallback to active configuration
+            config = data.data.find((c: any) => c.is_active);
+          }
+
+          if (config) {
+            try {
+              const url = new URL(config.broker_url);
+              const mqttConfig: MQTTConfig = {
+                url: config.broker_url,
+                host: url.hostname,
+                port: parseInt(url.port) || 1883,
+                protocol: url.protocol.slice(0, -1), // Remove ':'
+              };
+
+              setMqttActiveConfig(mqttConfig);
+              console.log(
+                "Using MQTT database config:",
+                config.name,
+                mqttConfig
+              );
+
+              // Resolve pending promises for this request
+              const requestId = data.request_id || "default";
+              const promiseHandlers = activeConfigPromises.get(requestId);
+              if (promiseHandlers) {
+                promiseHandlers.resolve(mqttConfig);
+                setActiveConfigPromises((prev) => {
+                  const newMap = new Map(prev);
+                  newMap.delete(requestId);
+                  return newMap;
+                });
+              }
+            } catch (urlError) {
+              console.error(
+                "Invalid broker URL in MQTT config:",
+                config.broker_url
+              );
+              handleConfigError(data.request_id);
+            }
+          } else {
+            // No active/enabled config found
+            console.warn(
+              "No active/enabled MQTT configuration found in MQTT response"
+            );
+            handleConfigError(data.request_id);
+          }
+        } else {
+          // Unsuccessful response
+          console.error("MQTT config request failed:", data.error);
+          handleConfigError(data.request_id);
+        }
+      } catch (error) {
+        console.error("Error parsing MQTT active config response:", error);
+        handleConfigError();
+      }
+    };
+
+    const handleConfigError = (requestId?: string) => {
+      // Reject pending promises
+      const reqId = requestId || "default";
+      const promiseHandlers = activeConfigPromises.get(reqId);
+      if (promiseHandlers) {
+        promiseHandlers.reject(new Error("No active MQTT configuration found"));
+        setActiveConfigPromises((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(reqId);
+          return newMap;
+        });
+      }
+    };
+
+    // Set up message handler
+    addMessageHandler(
+      "response_mqtt_active_config",
+      handleActiveConfigResponse
+    );
+
+    // Cleanup on unmount
+    return () => {
+      console.log("Cleaning up MQTT active config handler");
+    };
+  }, [addMessageHandler, activeConfigPromises]);
 
   // Load saved mode from localStorage and initialize MQTT connection
   useEffect(() => {
-    const savedMode = localStorage.getItem("mqtt_connection_mode") as MQTTConnectionMode;
-    if (savedMode && (savedMode === "env" || savedMode === "database")) {
+    const savedMode = localStorage.getItem(
+      "mqtt_connection_mode"
+    ) as MQTTConnectionMode;
+    if (
+      savedMode &&
+      (savedMode === "env" || savedMode === "json" || savedMode === "database")
+    ) {
       setModeState(savedMode);
     }
 
@@ -61,8 +188,13 @@ export function MQTTModeProvider({ children }: { children: React.ReactNode }) {
 
   const getMQTTConfig = async (): Promise<MQTTConfig> => {
     if (mode === "env") {
+      // For ENV mode, return config synchronously - no MQTT needed
       return getEnvMQTTConfig();
+    } else if (mode === "json") {
+      // For JSON mode, get config via MQTT
+      return getJSONFileMQTTConfig();
     } else {
+      // For database mode, get config via MQTT
       return getDatabaseMQTTConfig();
     }
   };
@@ -105,46 +237,124 @@ export function MQTTModeProvider({ children }: { children: React.ReactNode }) {
   };
 
   const getDatabaseMQTTConfig = async (): Promise<MQTTConfig> => {
+    // Check if we have a cached active config
+    if (mqttActiveConfig) {
+      console.log("Using cached MQTT database config:", mqttActiveConfig);
+      return mqttActiveConfig;
+    }
+
+    // If not connected to MQTT, fallback to ENV
+    if (!isOnline) {
+      console.warn("MQTT not connected, falling back to ENV configuration");
+      return getEnvMQTTConfig();
+    }
+
     try {
-      // First try to get enabled configuration
-      const enabledResponse = await fetch("/api/mqtt/?enabled=true");
-      const enabledResult = await enabledResponse.json();
+      // Create a unique request ID for this request
+      const requestId = `config-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
 
-      if (enabledResult.success && enabledResult.data.length > 0) {
-        const config = enabledResult.data[0];
-        const url = new URL(config.broker_url);
+      // Create a promise that will be resolved when we get the MQTT response
+      const configPromise = new Promise<MQTTConfig>((resolve, reject) => {
+        setActiveConfigPromises((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(requestId, { resolve, reject });
+          return newMap;
+        });
 
-        console.log("Using enabled database MQTT configuration:", config.name);
-        return {
-          url: config.broker_url,
-          host: url.hostname,
-          port: parseInt(url.port) || 1883,
-          protocol: url.protocol.slice(0, -1) // Remove ':'
-        };
-      }
+        // Set a timeout for the request (5 seconds)
+        setTimeout(() => {
+          const handlers = activeConfigPromises.get(requestId);
+          if (handlers) {
+            handlers.reject(new Error("MQTT config request timeout"));
+            setActiveConfigPromises((prev) => {
+              const newMap = new Map(prev);
+              newMap.delete(requestId);
+              return newMap;
+            });
+          }
+        }, 5000);
+      });
 
-      // Fallback to active configuration if no enabled config
-      const activeResponse = await fetch("/api/mqtt/?active=true");
-      const activeResult = await activeResponse.json();
+      // Publish MQTT command to get active MQTT configurations
+      const success = publishMessage("command_mqtt_json_config", {
+        command: "get_active_enabled",
+        request_id: requestId,
+        timestamp: new Date().toISOString(),
+      });
 
-      if (activeResult.success && activeResult.data.length > 0) {
-        const config = activeResult.data[0];
-        const url = new URL(config.broker_url);
-
-        console.log("Using active database MQTT configuration:", config.name);
-        return {
-          url: config.broker_url,
-          host: url.hostname,
-          port: parseInt(url.port) || 1883,
-          protocol: url.protocol.slice(0, -1) // Remove ':'
-        };
-      } else {
-        // Fallback to ENV if no database config
-        console.warn("No database MQTT configuration found, falling back to ENV");
+      if (!success) {
+        console.error("Failed to publish MQTT JSON config request");
         return getEnvMQTTConfig();
       }
+
+      // Wait for the response
+      return await configPromise;
     } catch (error) {
-      console.error("Error fetching MQTT config from database:", error);
+      console.error("Error getting MQTT JSON config via MQTT:", error);
+      // Fallback to ENV on error
+      return getEnvMQTTConfig();
+    }
+  };
+
+  const getJSONFileMQTTConfig = async (): Promise<MQTTConfig> => {
+    // Check if we have a cached active config
+    if (mqttActiveConfig) {
+      console.log("Using cached MQTT JSON config:", mqttActiveConfig);
+      return mqttActiveConfig;
+    }
+
+    // If not connected to MQTT, fallback to ENV
+    if (!isOnline) {
+      console.warn("MQTT not connected, falling back to ENV configuration");
+      return getEnvMQTTConfig();
+    }
+
+    try {
+      // Create a unique request ID for this request
+      const requestId = `json-config-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+
+      // Create a promise that will be resolved when we get the MQTT response
+      const configPromise = new Promise<MQTTConfig>((resolve, reject) => {
+        setActiveConfigPromises((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(requestId, { resolve, reject });
+          return newMap;
+        });
+
+        // Set a timeout for the request (5 seconds)
+        setTimeout(() => {
+          const handlers = activeConfigPromises.get(requestId);
+          if (handlers) {
+            handlers.reject(new Error("MQTT JSON config request timeout"));
+            setActiveConfigPromises((prev) => {
+              const newMap = new Map(prev);
+              newMap.delete(requestId);
+              return newMap;
+            });
+          }
+        }, 5000);
+      });
+
+      // Publish MQTT command to get active MQTT configurations from JSON file
+      const success = publishMessage("command_mqtt_json_config", {
+        command: "get_active_enabled",
+        request_id: requestId,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (!success) {
+        console.error("Failed to publish MQTT JSON config request");
+        return getEnvMQTTConfig();
+      }
+
+      // Wait for the response
+      return await configPromise;
+    } catch (error) {
+      console.error("Error getting MQTT JSON config via MQTT:", error);
       // Fallback to ENV on error
       return getEnvMQTTConfig();
     }

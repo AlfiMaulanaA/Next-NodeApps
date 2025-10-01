@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import Swal from "sweetalert2";
 import { v4 as uuidv4 } from "uuid";
-import {
-  connectMQTT,
-  getMQTTClient,
-  isClientConnected,
-  getConnectionState,
-} from "@/lib/mqttClient";
+import { connectMQTT } from "@/lib/mqttClient";
 import { MqttClient } from "mqtt";
+import { toast } from "sonner";
+import { showToast } from "@/lib/toast-utils";
+import {
+  ConfirmationDialog,
+  useConfirmationDialog,
+} from "@/components/ui/confirmation-dialog";
 
 // UI Components
 import {
@@ -63,27 +63,71 @@ import MqttStatus from "@/components/mqtt-status";
 
 // Type definitions
 interface VoiceControl {
-  uuid: string;
+  id: string;
+  description: string;
+  rule_name: string;
   device_name: string;
-  data: {
-    pin: number;
-    custom_name: string;
-    address: number;
-    bus: number;
-  };
+  part_number: string;
+  pin: number;
+  address: number;
+  device_bus: number;
+  mac: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface ModularDevice {
-  profile: {
-    name: string;
-    device_bus: number;
-    address: number;
-  };
-  protocol_setting: {
-    address: number;
-    device_bus: number;
-  };
-  data?: any[];
+  id: string;
+  name: string;
+  address: number;
+  device_bus: number;
+  part_number: string;
+  mac: string;
+  manufacturer: string;
+  device_type: string;
+  topic: string;
+}
+
+// Web Speech API types
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
+  resultIndex: number;
+}
+
+interface SpeechRecognitionResultList {
+  length: number;
+  item(index: number): SpeechRecognitionResult;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+  length: number;
+  item(index: number): SpeechRecognitionAlternative;
+  [index: number]: SpeechRecognitionAlternative;
+  isFinal: boolean;
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: (event: any) => void;
+  onend: () => void;
+  start: () => void;
+  stop: () => void;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -97,6 +141,12 @@ const VoiceControlPage = () => {
   // Data States
   const [voiceControlData, setVoiceControlData] = useState<VoiceControl[]>([]);
   const [modularDevices, setModularDevices] = useState<ModularDevice[]>([]);
+  const [filteredRelayDevices, setFilteredRelayDevices] = useState<ModularDevice[]>([]);
+
+  // Voice Recognition State
+  const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -105,28 +155,35 @@ const VoiceControlPage = () => {
 
   // Voice Control Form State
   const initialVoiceControl: VoiceControl = {
-    uuid: "",
+    id: "",
+    description: "",
+    rule_name: "",
     device_name: "",
-    data: {
-      pin: 1,
-      custom_name: "",
-      address: 0,
-      bus: 0,
-    },
+    part_number: "",
+    pin: 1,
+    address: 0,
+    device_bus: 0,
+    mac: "",
+    created_at: "",
+    updated_at: "",
   };
   const [voiceControl, setVoiceControl] =
     useState<VoiceControl>(initialVoiceControl);
 
-  // MQTT Topics - Simplified like AutomationValue
+  // MQTT Topics - Simplified configuration
   const topicVoiceControlCommand = "command_control_voice";
   const topicVoiceControlResponse = "response_control_voice";
   const topicVoiceControlData = "voice_control/data";
-  const topicModularData = "modular_value/data";
+  const topicModularAvailables = "MODULAR_DEVICE/AVAILABLES";
+  const topicCommandAvailableDevice = "command_available_device";
 
   // Response handler for simplified topics
   const [responseData, setResponseData] = useState<any>(null);
 
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Confirmation Dialog
+  const { confirmationProps, showConfirmation } = useConfirmationDialog();
 
   // Initialize MQTT Connection
   useEffect(() => {
@@ -141,18 +198,23 @@ const VoiceControlPage = () => {
           console.log("MQTT: Voice Control - Connected");
 
           // Subscribe to topics
-          client.subscribe("voice_control/data", (err) => {
-            if (err)
-              console.error("Failed to subscribe to voice_control/data:", err);
+          client.subscribe([
+            topicVoiceControlData,
+            topicModularAvailables,
+            topicVoiceControlResponse,
+          ], (err) => {
+            if (err) {
+              console.error("Failed to subscribe to topics:", err);
+            } else {
+              console.log("Subscribed to voice control topics successfully");
+            }
           });
-          client.subscribe("modular_value/data", (err) => {
-            if (err)
-              console.error("Failed to subscribe to modular_value/data:", err);
-          });
-          client.subscribe(topicVoiceControlResponse, (err) => {
-            if (err)
-              console.error("Failed to subscribe to response topic:", err);
-          });
+
+          // Request modular devices data
+          setTimeout(() => {
+            client.publish(topicCommandAvailableDevice, "get_modular_devices");
+            console.log("Requesting modular devices data...");
+          }, 1000);
         });
 
         client.on("disconnect", () => {
@@ -189,19 +251,14 @@ const VoiceControlPage = () => {
         mqttClient.publish(topic, JSON.stringify(message), (err) => {
           if (err) {
             console.error("Failed to publish message:", err);
-            Swal.fire({
-              icon: "error",
-              title: "MQTT Error",
-              text: "Failed to send command.",
-            });
+            showToast.error("MQTT Error", "Failed to send command.");
           }
         });
       } else {
-        Swal.fire({
-          icon: "error",
-          title: "MQTT Disconnected",
-          text: "Cannot send command, MQTT client is not connected.",
-        });
+        showToast.error(
+          "MQTT Disconnected",
+          "Cannot send command, MQTT client is not connected."
+        );
       }
     },
     [mqttClient, isConnected]
@@ -210,13 +267,7 @@ const VoiceControlPage = () => {
   // Refresh Function - Use get action for simplified topics
   const refreshVoiceControlData = useCallback(() => {
     publishMessage({ action: "get" }, topicVoiceControlCommand);
-    Swal.fire({
-      icon: "info",
-      title: "Refreshing data...",
-      text: "Requesting latest data from MQTT broker.",
-      showConfirmButton: false,
-      timer: 1000,
-    });
+    showToast.info("Refreshing data...", "Requesting latest data from MQTT broker.");
   }, [publishMessage, topicVoiceControlCommand]);
 
   // Message Handlers
@@ -231,11 +282,10 @@ const VoiceControlPage = () => {
         console.log("MQTT: Data voice control diterima:", payload);
       } catch (error) {
         console.error("MQTT: Gagal memproses data voice control", error);
-        Swal.fire({
-          icon: "error",
-          title: "Parsing Error",
-          text: "An error occurred while processing voice control data.",
-        });
+        showToast.error(
+          "Parsing Error",
+          "An error occurred while processing voice control data."
+        );
       }
     };
 
@@ -243,15 +293,26 @@ const VoiceControlPage = () => {
     const handleModularData = (topic: string, message: Buffer) => {
       try {
         const payload = JSON.parse(message.toString());
-        setModularDevices(payload || []);
-        console.log("MQTT: Data modular devices diterima:", payload);
+        console.log("MQTT: Raw modular data received:", payload);
+
+        // Handle both wrapped and direct array formats
+        if (payload.status === "success" && payload.data) {
+          console.log("MQTT: Modular devices (wrapped format):", payload.data.length, payload.data);
+          setModularDevices(payload.data);
+        } else if (Array.isArray(payload)) {
+          console.log("MQTT: Modular devices (direct array):", payload.length, payload);
+          setModularDevices(payload);
+        } else {
+          console.log("MQTT: Invalid modular data format:", payload);
+          setModularDevices([]);
+        }
       } catch (error) {
-        console.error("MQTT: Gagal memproses data modular devices", error);
-        Swal.fire({
-          icon: "error",
-          title: "Parsing Error",
-          text: "An error occurred while processing modular device data.",
-        });
+        console.error("MQTT: Failed to parse modular devices data", error);
+        console.error("MQTT: Raw message:", message.toString());
+        showToast.error(
+          "Parsing Error",
+          "An error occurred while processing modular device data."
+        );
       }
     };
 
@@ -262,24 +323,14 @@ const VoiceControlPage = () => {
         console.log("MQTT: Response diterima:", payload);
 
         if (payload.status === "success") {
-          Swal.fire({
-            icon: "success",
-            title: "Success",
-            text: payload.message,
-            timer: 2000,
-            showConfirmButton: false,
-          });
+          showToast.success("Success", payload.message);
 
           // Refresh data setelah operasi berhasil
           setTimeout(() => {
             refreshVoiceControlData();
           }, 500);
         } else {
-          Swal.fire({
-            icon: "error",
-            title: "Error",
-            text: payload.message || "An error occurred",
-          });
+          showToast.error("Error", payload.message || "An error occurred");
         }
       } catch (error) {
         console.error("MQTT: Gagal memproses response", error);
@@ -290,7 +341,7 @@ const VoiceControlPage = () => {
     mqttClient.on("message", (topic: string, message: Buffer) => {
       if (topic === topicVoiceControlData) {
         handleVoiceControlData(topic, message);
-      } else if (topic === topicModularData) {
+      } else if (topic === topicModularAvailables) {
         handleModularData(topic, message);
       } else if (topic === topicVoiceControlResponse) {
         handleVoiceControlResponse(topic, message);
@@ -312,7 +363,7 @@ const VoiceControlPage = () => {
     isConnected,
     publishMessage,
     topicVoiceControlData,
-    topicModularData,
+    topicModularAvailables,
     topicVoiceControlCommand,
     topicVoiceControlResponse,
     refreshVoiceControlData,
@@ -322,12 +373,12 @@ const VoiceControlPage = () => {
   const openModal = (item?: VoiceControl) => {
     if (item) {
       setIsEditing(true);
-      setSelectedControl(item.uuid);
+      setSelectedControl(item.id);
       setVoiceControl({ ...item });
     } else {
       setIsEditing(false);
       setSelectedControl(null);
-      setVoiceControl({ ...initialVoiceControl, uuid: uuidv4() });
+      setVoiceControl({ ...initialVoiceControl, id: uuidv4() });
     }
     setIsModalOpen(true);
   };
@@ -336,7 +387,7 @@ const VoiceControlPage = () => {
     setIsModalOpen(false);
     setIsEditing(false);
     setSelectedControl(null);
-    setVoiceControl({ ...initialVoiceControl, uuid: uuidv4() });
+    setVoiceControl({ ...initialVoiceControl });
   };
 
   // Save Function
@@ -344,12 +395,11 @@ const VoiceControlPage = () => {
     e.preventDefault();
 
     // Validation
-    if (!voiceControl.data.custom_name || !voiceControl.device_name) {
-      Swal.fire({
-        icon: "error",
-        title: "Validation Error",
-        text: "Please fill in all required fields.",
-      });
+    if (!voiceControl.rule_name || !voiceControl.device_name) {
+      showToast.error(
+        "Validation Error",
+        "Please fill in Rule Name and Device Name."
+      );
       return;
     }
 
@@ -367,15 +417,15 @@ const VoiceControlPage = () => {
 
   // Delete Function
   const deleteVoiceControl = (uuid: string) => {
-    Swal.fire({
-      title: "Are you sure?",
-      text: "Do you want to delete this voice control? This action cannot be undone.",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Yes, delete it!",
-      cancelButtonText: "No, keep it",
-    }).then((result) => {
-      if (result.isConfirmed) {
+    showConfirmation({
+      type: "delete",
+      title: "Delete Voice Control",
+      description:
+        "Are you sure you want to delete this voice control? This action cannot be undone.",
+      confirmText: "Yes, delete it",
+      cancelText: "Cancel",
+      destructive: true,
+      onConfirm: () => {
         // Use simplified topic with action in payload
         const message = {
           action: "delete",
@@ -383,24 +433,174 @@ const VoiceControlPage = () => {
         };
 
         publishMessage(message, topicVoiceControlCommand);
-      }
+      },
     });
+  };
+
+  // Filter devices - only RELAYMINI and RELAY
+  useEffect(() => {
+    const relayDevices = modularDevices.filter((device) => {
+      // Validate device structure
+      if (!device || !device.part_number) return false;
+
+      const partNumber = device.part_number;
+      return partNumber === "RELAYMINI" || partNumber === "RELAY";
+    });
+    setFilteredRelayDevices(relayDevices);
+    console.log("Filtered relay devices:", relayDevices.length, relayDevices);
+  }, [modularDevices]);
+
+  // Get max pins based on part_number
+  const getMaxPins = (deviceName: string): number => {
+    const device = filteredRelayDevices.find((d) => d?.name === deviceName);
+    const partNumber = device?.part_number || "";
+
+    if (partNumber === "RELAYMINI") return 6;
+    if (partNumber === "RELAY") return 8;
+    return 8; // default
   };
 
   // Device Selection Handler
   const handleDeviceSelection = (deviceName: string) => {
-    const selectedDevice = modularDevices.find(
-      (d) => d.profile.name === deviceName
+    const selectedDevice = filteredRelayDevices.find(
+      (d) => d?.name === deviceName
     );
     setVoiceControl((prev) => ({
       ...prev,
       device_name: deviceName,
-      data: {
-        ...prev.data,
-        address: selectedDevice?.protocol_setting.address || 0,
-        bus: selectedDevice?.protocol_setting.device_bus || 0,
-      },
+      part_number: selectedDevice?.part_number || "",
+      address: selectedDevice?.address || 0,
+      device_bus: selectedDevice?.device_bus || 0,
+      mac: selectedDevice?.mac || "",
     }));
+  };
+
+  // Process Voice Command
+  const processVoiceCommand = useCallback((command: string) => {
+    const lowerCommand = command.toLowerCase();
+
+    // Detect action (nyalakan = ON, matikan = OFF)
+    let action: 1 | 0 = 1;
+    let objectName = "";
+
+    if (lowerCommand.includes("nyalakan") || lowerCommand.includes("hidupkan")) {
+      action = 1;
+      objectName = lowerCommand.replace(/nyalakan|hidupkan/gi, "").trim();
+    } else if (lowerCommand.includes("matikan") || lowerCommand.includes("mati")) {
+      action = 0;
+      objectName = lowerCommand.replace(/matikan|mati/gi, "").trim();
+    } else {
+      showToast.warning(
+        "Command Not Recognized",
+        'Please use "nyalakan" or "matikan" commands'
+      );
+      return;
+    }
+
+    // Find matching voice control by rule_name
+    const matchedControl = voiceControlData.find((ctrl) => {
+      const ctrlRuleName = ctrl.rule_name.toLowerCase();
+      return ctrlRuleName.includes(objectName) || objectName.includes(ctrlRuleName);
+    });
+
+    if (!matchedControl) {
+      showToast.warning(
+        "Device Not Found",
+        `No voice control found for "${objectName}"`
+      );
+      return;
+    }
+
+    // Build MQTT payload directly from matchedControl
+    const payload = {
+      mac: matchedControl.mac || "00:00:00:00:00:00",
+      protocol_type: "Modular",
+      device: matchedControl.part_number || "RELAYMINI",
+      function: "write",
+      value: {
+        pin: matchedControl.pin,
+        data: action,
+      },
+      address: matchedControl.address,
+      device_bus: matchedControl.device_bus,
+      Timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
+    };
+
+    // Publish to MQTT
+    if (mqttClient && isConnected) {
+      mqttClient.publish("modular", JSON.stringify(payload), (err) => {
+        if (err) {
+          console.error("Failed to publish voice command:", err);
+          showToast.error("Control Failed", "Failed to send command to device");
+        } else {
+          showToast.success(
+            "Command Sent",
+            `${action === 1 ? "Turning ON" : "Turning OFF"} ${matchedControl.rule_name}`
+          );
+        }
+      });
+    } else {
+      showToast.error(
+        "MQTT Disconnected",
+        "Cannot send command, MQTT is not connected"
+      );
+    }
+  }, [voiceControlData, mqttClient, isConnected]);
+
+  // Voice Recognition Setup
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = "id-ID"; // Indonesian language
+
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
+          const transcript = event.results[0][0].transcript;
+          setTranscript(transcript);
+          processVoiceCommand(transcript);
+        };
+
+        recognition.onerror = (event: any) => {
+          console.error("Speech recognition error:", event.error);
+          setIsListening(false);
+          showToast.error("Voice Recognition Error", `Error: ${event.error}`);
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+        };
+
+        recognitionRef.current = recognition;
+      } else {
+        console.warn("Speech Recognition not supported");
+      }
+    }
+  }, [processVoiceCommand]);
+
+
+  // Toggle Voice Recognition
+  const toggleVoiceRecognition = () => {
+    if (!recognitionRef.current) {
+      showToast.error(
+        "Not Supported",
+        "Speech recognition is not supported in this browser"
+      );
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      setTranscript("");
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
   };
 
   // Search and Pagination
@@ -412,7 +612,7 @@ const VoiceControlPage = () => {
     const lowerCaseQuery = searchQuery.toLowerCase();
     return voiceControlData.filter(
       (item) =>
-        item.data.custom_name.toLowerCase().includes(lowerCaseQuery) ||
+        item.rule_name.toLowerCase().includes(lowerCaseQuery) ||
         item.device_name.toLowerCase().includes(lowerCaseQuery)
     );
   }, [voiceControlData, searchQuery]);
@@ -444,6 +644,17 @@ const VoiceControlPage = () => {
         <div className="flex items-center gap-2">
           <MqttStatus />
 
+          {/* Voice Control Button */}
+          <Button
+            variant={isListening ? "destructive" : "default"}
+            size="sm"
+            onClick={toggleVoiceRecognition}
+            className={isListening ? "animate-pulse" : ""}
+          >
+            <Mic className={`h-4 w-4 mr-2 ${isListening ? "animate-bounce" : ""}`} />
+            {isListening ? "Listening..." : "Voice Control"}
+          </Button>
+
           <Button
             variant="outline"
             size="icon"
@@ -459,8 +670,8 @@ const VoiceControlPage = () => {
         </div>
       </header>
 
-      {/* Search */}
-      <div className="px-4 py-2 border-b">
+      {/* Search and Voice Status */}
+      <div className="px-4 py-2 border-b space-y-2">
         <div className="relative max-w-sm">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -470,61 +681,79 @@ const VoiceControlPage = () => {
             className="pl-8"
           />
         </div>
+
+        {/* Voice Transcript Display */}
+        {transcript && (
+          <div className="p-2 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md">
+            <p className="text-sm text-blue-800 dark:text-blue-200">
+              <strong>Last Command:</strong> {transcript}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Summary Cards - Modern Design */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Mic className="h-5 w-5" />
-              <CardTitle>Voice Control Overview</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 rounded-xl border">
-                <Mic className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                  {totalVoiceControls}
-                </div>
-                <div className="text-sm text-blue-600 dark:text-blue-400">
-                  Voice Commands
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 rounded-xl border">
-                <Activity className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-                  {uniqueDevices}
-                </div>
-                <div className="text-sm text-green-600 dark:text-green-400">
-                  Devices Used
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 rounded-xl border">
-                <Settings className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                  {availableDevices}
-                </div>
-                <div className="text-sm text-purple-600 dark:text-purple-400">
-                  Available Devices
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 rounded-xl border">
-                <PlusCircle className="h-8 w-8 mx-auto mb-2 text-orange-600" />
-                <div className="text-2xl font-bold text-orange-700 dark:text-orange-300">
-                  {usedPins}
-                </div>
-                <div className="text-sm text-orange-600 dark:text-orange-400">
-                  Active Pins
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Summary Cards - Consistent Style */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Voice Commands Card */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Voice Commands</CardTitle>
+              <Mic className="h-5 w-5 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalVoiceControls}</div>
+              <p className="text-xs text-muted-foreground">
+                Total configured commands
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Devices Used Card */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Devices Used</CardTitle>
+              <Activity className="h-5 w-5 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{uniqueDevices}</div>
+              <p className="text-xs text-muted-foreground">
+                Unique devices in use
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Available Devices Card */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Available Devices</CardTitle>
+              <Settings className="h-5 w-5 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{availableDevices}</div>
+              <p className="text-xs text-muted-foreground">
+                Connected relay devices
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Active Pins Card */}
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Pins</CardTitle>
+              <PlusCircle className="h-5 w-5 text-orange-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{usedPins}</div>
+              <p className="text-xs text-muted-foreground">
+                Pins in configuration
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Voice Controls Table */}
-        <Card>
+        <Card className="shadow-sm hover:shadow-md transition-shadow">
           <CardHeader>
             <CardTitle>Voice Controls</CardTitle>
             <CardDescription>
@@ -560,16 +789,16 @@ const VoiceControlPage = () => {
                 </TableHeader>
                 <TableBody>
                   {paginatedData.map((item) => (
-                    <TableRow key={item.uuid}>
+                    <TableRow key={item.id}>
                       <TableCell className="font-medium">
-                        {item.data.custom_name}
+                        {item.rule_name}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{item.device_name}</Badge>
                       </TableCell>
-                      <TableCell>{item.data.pin}</TableCell>
-                      <TableCell>{item.data.address}</TableCell>
-                      <TableCell>{item.data.bus}</TableCell>
+                      <TableCell>{item.pin}</TableCell>
+                      <TableCell>{item.address}</TableCell>
+                      <TableCell>{item.device_bus}</TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <Button
@@ -582,7 +811,7 @@ const VoiceControlPage = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => deleteVoiceControl(item.uuid)}
+                            onClick={() => deleteVoiceControl(item.id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -656,22 +885,36 @@ const VoiceControlPage = () => {
                   </h3>
                 </div>
                 <div>
-                  <Label htmlFor="custom_name">Voice Command *</Label>
+                  <Label htmlFor="rule_name">Rule Name (Voice Command) *</Label>
                   <Input
-                    id="custom_name"
-                    value={voiceControl.data.custom_name}
+                    id="rule_name"
+                    value={voiceControl.rule_name}
                     onChange={(e) =>
                       setVoiceControl((prev) => ({
                         ...prev,
-                        data: { ...prev.data, custom_name: e.target.value },
+                        rule_name: e.target.value,
                       }))
                     }
-                    placeholder="e.g., Turn on living room light"
+                    placeholder="e.g., lampu utama ruangan meeting"
                     required
                   />
                   <p className="text-xs text-muted-foreground mt-1">
                     This phrase will be recognized after "nyalakan" or "matikan"
                   </p>
+                </div>
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Input
+                    id="description"
+                    value={voiceControl.description}
+                    onChange={(e) =>
+                      setVoiceControl((prev) => ({
+                        ...prev,
+                        description: e.target.value,
+                      }))
+                    }
+                    placeholder="e.g., Menyalakan lampu utama ruangan meeting"
+                  />
                 </div>
               </div>
 
@@ -692,25 +935,29 @@ const VoiceControlPage = () => {
                         <SelectValue placeholder="Select device" />
                       </SelectTrigger>
                       <SelectContent>
-                        {modularDevices.map((device) => (
-                          <SelectItem
-                            key={device.profile.name}
-                            value={device.profile.name}
-                          >
-                            {device.profile.name}
-                          </SelectItem>
-                        ))}
+                        {filteredRelayDevices.map((device) => {
+                          const deviceName = device?.name || "Unknown";
+                          const partNumber = device?.part_number || "N/A";
+                          return (
+                            <SelectItem
+                              key={device.id || deviceName}
+                              value={deviceName}
+                            >
+                              {deviceName} ({partNumber})
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
                     <Label htmlFor="pin">Pin *</Label>
                     <Select
-                      value={voiceControl.data.pin.toString()}
+                      value={voiceControl.pin.toString()}
                       onValueChange={(value) =>
                         setVoiceControl((prev) => ({
                           ...prev,
-                          data: { ...prev.data, pin: parseInt(value) },
+                          pin: parseInt(value),
                         }))
                       }
                     >
@@ -718,7 +965,7 @@ const VoiceControlPage = () => {
                         <SelectValue placeholder="Select pin" />
                       </SelectTrigger>
                       <SelectContent>
-                        {Array.from({ length: 8 }, (_, i) => (
+                        {Array.from({ length: getMaxPins(voiceControl.device_name) }, (_, i) => (
                           <SelectItem key={i + 1} value={(i + 1).toString()}>
                             Pin {i + 1}
                           </SelectItem>
@@ -731,7 +978,7 @@ const VoiceControlPage = () => {
                     <Input
                       id="address"
                       type="number"
-                      value={voiceControl.data.address.toString()}
+                      value={voiceControl.address.toString()}
                       placeholder="Auto-filled"
                       readOnly
                     />
@@ -740,11 +987,11 @@ const VoiceControlPage = () => {
                     </p>
                   </div>
                   <div>
-                    <Label htmlFor="bus">Bus</Label>
+                    <Label htmlFor="device_bus">Device Bus</Label>
                     <Input
-                      id="bus"
+                      id="device_bus"
                       type="number"
-                      value={voiceControl.data.bus.toString()}
+                      value={voiceControl.device_bus.toString()}
                       placeholder="Auto-filled"
                       readOnly
                     />
@@ -767,6 +1014,9 @@ const VoiceControlPage = () => {
             </form>
           </DialogContent>
         </Dialog>
+
+        {/* Confirmation Dialog */}
+        <ConfirmationDialog {...confirmationProps} />
       </div>
     </SidebarInset>
   );

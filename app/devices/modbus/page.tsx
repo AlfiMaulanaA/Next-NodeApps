@@ -35,10 +35,21 @@ import {
 } from "lucide-react";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import Swal from "sweetalert2";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/use-toast";
 import { connectMQTT } from "@/lib/mqttClient";
 import MqttStatus from "@/components/mqtt-status";
+// Import dialog components for modals
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { useMQTTStatus } from "@/hooks/useMQTTStatus";
 import { useSortableTable } from "@/hooks/use-sort-table";
 import { useSearchFilter } from "@/hooks/use-search-filter";
@@ -97,6 +108,35 @@ export default function DeviceManagerPage() {
   const [isUpdateMode, setIsUpdateMode] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [deviceToUpdate, setDeviceToUpdate] = useState<string>("");
+
+  // Alert and Confirmation Dialog States
+  const [alertDialogOpen, setAlertDialogOpen] = useState(false);
+  const [alertDialogContent, setAlertDialogContent] = useState<{
+    title: string;
+    description: string;
+  }>({ title: "", description: "" });
+
+  const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
+  const [confirmationDialogContent, setConfirmationDialogContent] = useState<{
+    title: string;
+    description: string;
+    confirmAction: () => void;
+  }>({ title: "", description: "", confirmAction: () => {} });
+
+  // Helper functions for alerts and confirmations
+  const showAlert = (title: string, description: string) => {
+    setAlertDialogContent({ title, description });
+    setAlertDialogOpen(true);
+  };
+
+  const showConfirmation = (
+    title: string,
+    description: string,
+    confirmAction: () => void
+  ) => {
+    setConfirmationDialogContent({ title, description, confirmAction });
+    setConfirmationDialogOpen(true);
+  };
 
   // Device Library States
   const [deviceTypes, setDeviceTypes] = useState<string[]>([]);
@@ -294,9 +334,10 @@ export default function DeviceManagerPage() {
               setPartNumbers(payload.data || []);
             }
           } else {
-            toast.error(`Device library error: ${payload.message}`, {
-              duration: 3000,
-              position: "top-right",
+            toast({
+              title: "Device Library Error",
+              description: payload.message,
+              variant: "destructive",
             });
           }
           return;
@@ -308,15 +349,12 @@ export default function DeviceManagerPage() {
         } else if (payload && typeof payload === "object" && payload.status) {
           // Handle operation response (add/update/delete)
           if (payload.status === "success") {
-            // Dismiss any existing loading toast
-            toast.dismiss("device-operation");
-
             // Show success toast with appropriate message
             const successMessage =
               payload.message || "Operation completed successfully";
-            toast.success(successMessage, {
-              duration: 3000,
-              position: "top-right",
+            toast({
+              title: "Success",
+              description: successMessage,
             });
 
             // Close dialog if it's open
@@ -332,13 +370,11 @@ export default function DeviceManagerPage() {
               );
             }, 500);
           } else if (payload.status === "error") {
-            // Dismiss any existing loading toast
-            toast.dismiss("device-operation");
-
             // Show error toast
-            toast.error(payload.message || "Operation failed", {
-              duration: 4000,
-              position: "top-right",
+            toast({
+              title: "Error",
+              description: payload.message || "Operation failed",
+              variant: "destructive",
             });
           }
         } else {
@@ -381,9 +417,10 @@ export default function DeviceManagerPage() {
   }, [client]); // Rerun effect if the MQTT client instance changes (unlikely for global client)
 
   const handleSubmit = () => {
-    // Show loading toast
-    toast.loading(isUpdateMode ? "Updating device..." : "Adding device...", {
-      id: "device-operation",
+    // Show toast before sending command
+    toast({
+      title: "Processing...",
+      description: isUpdateMode ? "Updating device..." : "Adding device...",
     });
 
     const command = JSON.stringify({
@@ -467,23 +504,14 @@ export default function DeviceManagerPage() {
   };
 
   const handleDelete = (name: string) => {
-    Swal.fire({
-      title: `Delete ${name}?`,
-      text: "You can't undo this!",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Yes, delete it!",
-      cancelButtonText: "No, keep it",
-    }).then((result) => {
-      if (result.isConfirmed) {
-        // Show loading toast
-        toast.loading(`Deleting ${name}...`, {
-          id: "device-operation",
-        });
+    showConfirmation(`Delete ${name}?`, "You can't undo this action!", () => {
+      toast({
+        title: "Deleting...",
+        description: `Deleting ${name}...`,
+      });
 
-        const command = JSON.stringify({ command: "deleteDevice", name });
-        client?.publish("command_device_modbus", command);
-      }
+      const command = JSON.stringify({ command: "deleteDevice", name });
+      client?.publish("command_device_modbus", command);
     });
   };
 
@@ -1286,6 +1314,32 @@ export default function DeviceManagerPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Alert Dialog */}
+      <AlertDialog open={alertDialogOpen} onOpenChange={setAlertDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{alertDialogContent.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {alertDialogContent.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setAlertDialogOpen(false)}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        open={confirmationDialogOpen}
+        onOpenChange={setConfirmationDialogOpen}
+        title={confirmationDialogContent.title}
+        description={confirmationDialogContent.description}
+        onConfirm={confirmationDialogContent.confirmAction}
+      />
     </SidebarInset>
   );
 }

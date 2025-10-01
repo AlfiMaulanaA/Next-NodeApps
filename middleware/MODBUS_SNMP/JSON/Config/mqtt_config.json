@@ -1,0 +1,16 @@
+{
+  "enable": true,
+  "broker_address": "localhost",
+  "broker_port": 1883,
+  "username": "",
+  "password": "",
+  "qos": 1,
+  "retain": true,
+  "client_id": "mqtt-config-service",
+  "reconnect_period": 3000,
+  "connect_timeout": 5000,
+  "protocol": "mqtt",
+  "clean_session": true,
+  "keepalive": 60,
+  "mac_address": "00:00:00:00:00:00"
+}

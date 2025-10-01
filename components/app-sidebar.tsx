@@ -68,80 +68,25 @@ const menuData = {
           url: "/",
           icon: BarChart3,
         },
-        {
-          title: "Systems Health",
-          url: "/dashboard",
-          icon: BarChart3,
-        },
-      ],
-    },
-    {
-      title: "Device Management",
-      items: [
-        {
-          title: "Modbus Devices",
-          url: "/devices/modbus",
-          icon: Database,
-        },
         // {
-        //   title: "Modular I2C",
-        //   url: "/devices/modular",
-        //   icon: Zap,
-        // },
-        // {
-        //   title: "Threshold Settings",
-        //   url: "/devices/threshold",
-        //   icon: Shield,
+        //   title: "Systems Health",
+        //   url: "/dashboard",
+        //   icon: BarChart3,
         // },
       ],
     },
-    // {
-    //   title: "Control Center",
-    //   items: [
-    //     {
-    //       title: "Manual Control",
-    //       url: "/control/manual",
-    //       icon: Play,
-    //     },
-    //     {
-    //       title: "Scheduled Tasks",
-    //       url: "/control/schedule",
-    //       icon: Activity,
-    //     },
-    //     {
-    //       title: "Logic Control",
-    //       url: "/control/logic",
-    //       icon: Settings,
-    //     },
-    //     {
-    //       title: "Visual Automation",
-    //       url: "/control/logic/visual",
-    //       icon: Zap,
-    //     },
-    //     {
-    //       title: "Value Control",
-    //       url: "/control/value",
-    //       icon: Database,
-    //     },
-    //     {
-    //       title: "Voice Control",
-    //       url: "/control/voice",
-    //       icon: Wifi,
-    //     },
-    //   ],
-    // },
     {
       title: "Network Configuration",
       items: [
         {
-          title: "WiFi Settings",
-          url: "/network/wifi",
-          icon: Wifi,
-        },
-        {
           title: "IP Configuration",
           url: "/network/ip-address",
           icon: Network,
+        },
+        {
+          title: "Wifi",
+          url: "/network/wifi",
+          icon: Wifi,
         },
         {
           title: "MQTT Broker",
@@ -158,28 +103,68 @@ const menuData = {
           url: "/network/protocol/snmp",
           icon: Network,
         },
+        // {
+        //   title: "API Management",
+        //   url: "/api",
+        //   icon: Network,
+        // },
       ],
     },
-    // {
-    //   title: "Data Payload",
-    //   items: [
-    //     {
-    //       title: "Static Payload",
-    //       url: "/payload/static",
-    //       icon: FileText,
-    //     },
-    //     {
-    //       title: "Dynamic Payload",
-    //       url: "/payload/dynamic",
-    //       icon: Activity,
-    //     },
-    //     {
-    //       title: "Device Discovery",
-    //       url: "/payload/discover",
-    //       icon: Send,
-    //     },
-    //   ],
-    // },
+    {
+      title: "Device Management",
+      items: [
+        {
+          title: "Modbus Devices",
+          url: "/devices/modbus",
+          icon: Database,
+        },
+        {
+          title: "Modbus Data",
+          url: "/modbus-data",
+          icon: Database,
+        },
+        {
+          title: "Modular I2C",
+          url: "/devices/modular",
+          icon: Zap,
+        },
+        {
+          title: "Threshold Settings",
+          url: "/devices/threshold",
+          icon: Shield,
+        },
+      ],
+    },
+    {
+      title: "Control Center",
+      items: [
+        {
+          title: "Manual Control",
+          url: "/control/manual",
+          icon: Play,
+        },
+        {
+          title: "Logic Control",
+          url: "/control/logic",
+          icon: Settings,
+        },
+        {
+          title: "Value Control",
+          url: "/control/value",
+          icon: Database,
+        },
+        {
+          title: "Voice Control",
+          url: "/control/voice",
+          icon: Wifi,
+        },
+        {
+          title: "Scheduled Tasks",
+          url: "/control/schedule",
+          icon: Activity,
+        },
+      ],
+    },
     {
       title: "System Settings",
       items: [

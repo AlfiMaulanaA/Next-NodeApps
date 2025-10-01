@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import React, { useEffect, useState } from "react"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
+import React, { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Dialog,
   DialogContent,
@@ -12,16 +12,15 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { connectMQTT } from "@/lib/mqttClient"
-import { Separator } from "@/components/ui/separator"
-import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { RotateCw, Network } from "lucide-react"
-import MQTTStatus from "@/components/mqtt-status"
-import Swal from 'sweetalert2' // Import SweetAlert2
-import { toast } from 'sonner' // Import toast from sonner
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { connectMQTT } from "@/lib/mqttClient";
+import { Separator } from "@/components/ui/separator";
+import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { RotateCw, Network } from "lucide-react";
+import MQTTStatus from "@/components/mqtt-status";
+import { toast } from "@/components/ui/use-toast";
 
 // ✅ Schema validasi menggunakan zod
 const schema = z.object({
@@ -29,15 +28,17 @@ const schema = z.object({
   DC_BATTERY_VOLTAGE: z.number().min(0, "Must be a non-negative number."),
   DC_BATTERY_TOLERANCE: z.number().min(0, "Must be a non-negative number."),
   DC_OUTPUT_THRESHOLD: z.number().min(0, "Must be a non-negative number."),
-  DC_OUTPUT_THRESHOLD_NORMAL: z.number().min(0, "Must be a non-negative number."),
+  DC_OUTPUT_THRESHOLD_NORMAL: z
+    .number()
+    .min(0, "Must be a non-negative number."),
   MIN_CURRENT_THRESHOLD: z.number().min(0, "Must be a non-negative number."),
-})
+});
 
-type FormValues = z.infer<typeof schema>
+type FormValues = z.infer<typeof schema>;
 
 export default function BatteryThresholdPage() {
-  const [open, setOpen] = useState(false)
-  const [currentConfig, setCurrentConfig] = useState<Partial<FormValues>>({})
+  const [open, setOpen] = useState(false);
+  const [currentConfig, setCurrentConfig] = useState<Partial<FormValues>>({});
 
   const {
     register,
@@ -55,87 +56,103 @@ export default function BatteryThresholdPage() {
       DC_OUTPUT_THRESHOLD_NORMAL: 0,
       MIN_CURRENT_THRESHOLD: 0,
     },
-  })
+  });
 
   useEffect(() => {
-    const client = connectMQTT()
+    const client = connectMQTT();
     if (!client) {
-      toast.error("MQTT client not initialized.");
+      toast({
+        title: "Error",
+        description: "MQTT client not initialized.",
+        variant: "destructive",
+      });
       return;
     }
 
-    client.subscribe("batteryCharger/config/response")
-    client.subscribe("batteryCharger/config/update/response") // Subscribe to update response
+    client.subscribe("batteryCharger/config/response");
+    client.subscribe("batteryCharger/config/update/response"); // Subscribe to update response
 
     const handleMessage = (topic: string, message: Buffer) => {
       try {
-        const data = JSON.parse(message.toString())
+        const data = JSON.parse(message.toString());
         if (topic === "batteryCharger/config/response") {
-          setCurrentConfig(data)
-          reset(data) // Reset form with fetched data
+          setCurrentConfig(data);
+          reset(data); // Reset form with fetched data
         } else if (topic === "batteryCharger/config/update/response") {
-          toast.dismiss("updateConfig"); // Dismiss loading toast
-
+          // Dismiss loading toast (if applicable)
           if (data.status === "success") {
-            Swal.fire({
-              position: 'top-end',
-              icon: 'success',
-              title: data.message || 'Configuration updated successfully!',
-              showConfirmButton: false,
-              timer: 3000,
-              toast: true
+            toast({
+              title: "Success",
+              description:
+                data.message || "Configuration updated successfully!",
             });
             // Optionally, re-fetch config to ensure UI is in sync with device
             client.publish("batteryCharger/config/get", "");
           } else {
-            Swal.fire({
-              position: 'top-end',
-              icon: 'error',
-              title: data.message || 'Failed to update configuration.',
-              showConfirmButton: false,
-              timer: 3000,
-              toast: true
+            toast({
+              title: "Error",
+              description: data.message || "Failed to update configuration.",
+              variant: "destructive",
             });
           }
         }
       } catch (e) {
         console.error("Failed to parse MQTT message:", e);
-        toast.error("Received invalid data from MQTT.");
+        toast({
+          title: "Error",
+          description: "Received invalid data from MQTT.",
+          variant: "destructive",
+        });
       }
-    }
+    };
 
-    client.on("message", handleMessage)
+    client.on("message", handleMessage);
 
     // GET konfigurasi awal
-    client.publish("batteryCharger/config/get", "")
+    client.publish("batteryCharger/config/get", "");
 
     return () => {
-      client.off("message", handleMessage)
-      client.unsubscribe("batteryCharger/config/response")
-      client.unsubscribe("batteryCharger/config/update/response")
-    }
-  }, [reset]) // Added reset to dependency array
+      client.off("message", handleMessage);
+      client.unsubscribe("batteryCharger/config/response");
+      client.unsubscribe("batteryCharger/config/update/response");
+    };
+  }, [reset]); // Added reset to dependency array
 
   // ✅ Fungsi update konfigurasi
   const onSubmit = (data: FormValues) => {
-    const client = connectMQTT()
+    const client = connectMQTT();
     if (!client || !client.connected) {
-      toast.error("MQTT not connected. Please wait or refresh.");
+      toast({
+        title: "Error",
+        description: "MQTT not connected. Please wait or refresh.",
+        variant: "destructive",
+      });
       return;
     }
-    
+
     // Convert numbers to strings if the device expects strings (common in MQTT configs)
     // Or ensure your backend handles numbers directly. Assuming numbers for now.
-    client.publish("batteryCharger/config/update", JSON.stringify(data), (err) => {
-      if (err) {
-        toast.error(`Failed to send update command: ${err.message}`);
-        console.error("Publish error:", err);
-      } else {
-        toast.loading("Updating configuration...", { id: "updateConfig" });
+    client.publish(
+      "batteryCharger/config/update",
+      JSON.stringify(data),
+      (err) => {
+        if (err) {
+          toast({
+            title: "Error",
+            description: `Failed to send update command: ${err.message}`,
+            variant: "destructive",
+          });
+          console.error("Publish error:", err);
+        } else {
+          toast({
+            title: "Processing",
+            description: "Updating configuration...",
+          });
+        }
       }
-    });
-    setOpen(false) // Close dialog immediately after sending, response will handle feedback
-  }
+    );
+    setOpen(false); // Close dialog immediately after sending, response will handle feedback
+  };
 
   return (
     <SidebarInset>
@@ -144,7 +161,9 @@ export default function BatteryThresholdPage() {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
           <Network className="w-5 h-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Battery Threshold Configuration</h1>
+          <h1 className="text-lg font-semibold">
+            Battery Threshold Configuration
+          </h1>
         </div>
         <div className="flex items-center gap-2">
           <MQTTStatus />
@@ -152,12 +171,19 @@ export default function BatteryThresholdPage() {
             variant="outline"
             size="icon"
             onClick={() => {
-              const client = connectMQTT()
+              const client = connectMQTT();
               if (client) {
-                client.publish("batteryCharger/config/get", "")
-                toast.info("Requesting latest configuration...");
+                client.publish("batteryCharger/config/get", "");
+                toast({
+                  title: "Info",
+                  description: "Requesting latest configuration...",
+                });
               } else {
-                toast.error("MQTT client not available.");
+                toast({
+                  title: "Error",
+                  description: "MQTT client not available.",
+                  variant: "destructive",
+                });
               }
             }}
           >
@@ -170,7 +196,10 @@ export default function BatteryThresholdPage() {
         <h1 className="text-2xl font-bold">Battery Threshold Configuration</h1>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 ">
           {Object.entries(schema.shape).map(([key]) => (
-            <div key={key} className="flex flex-col bg-muted p-4 rounded-md border text-sm">
+            <div
+              key={key}
+              className="flex flex-col bg-muted p-4 rounded-md border text-sm"
+            >
               <span className="text-muted-foreground text-xs">{key}</span>
               <span className="font-medium">
                 {currentConfig?.[key as keyof FormValues] ?? "—"}
@@ -190,10 +219,7 @@ export default function BatteryThresholdPage() {
                 Modify only values you want to update
               </DialogDescription>
             </DialogHeader>
-            <form
-              onSubmit={handleSubmit(onSubmit)}
-              className="grid gap-4 py-4"
-            >
+            <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
               {Object.keys(schema.shape).map((key) => (
                 <div key={key} className="grid gap-1">
                   <label htmlFor={key} className="text-sm font-medium">
@@ -222,5 +248,5 @@ export default function BatteryThresholdPage() {
         </Dialog>
       </div>
     </SidebarInset>
-  )
+  );
 }

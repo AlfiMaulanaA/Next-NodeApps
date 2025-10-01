@@ -1,0 +1,11 @@
+[Unit]
+Description=My Sample Service
+After=multi-user.target
+
+[Service]
+Type=idle
+ExecStart=/usr/bin/python3 /home/npi/MODBUS_SNMP/autoDeleteLog.py
+WorkingDirectory=/home/npi/MODBUS_SNMP/
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,185 @@
+{"Sensor_RS485": [   
+    {
+      "manufacturer": "IOT",
+      "part_number": "Temperature_Sensor",
+      "protocol": "Modbus RTU",
+      "data": [
+        {
+            "var_name" : "temp",
+            "relative_address": 2,
+            "register_type": "Holding Register",
+            "word_length": 1,
+            "data_type": "UINT16",
+            "multiplier": 0.1
+        },
+        {
+            "var_name" : "hum",
+            "relative_address": 1,
+            "register_type": "Holding Register",
+            "word_length": 1,
+            "data_type": "UINT16",
+            "multiplier": 0.1
+        }
+      ],
+      "uom":"%"
+    },
+    {
+        "manufacturer": "IOT",
+        "part_number": "Motion_Sensor",
+        "protocol": "Modbus RTU",
+        "data": [
+            {
+                "var_name" : "detect_motion",
+                "relative_address": 1,
+                "register_type": "Holding Register",
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 1
+            }
+        ],
+        "uom":"%"
+      },
+      {
+          "manufacturer": "IOT",
+          "part_number": "Dry_Contact",
+          "protocol": "Modbus RTU",
+          "data": [
+              {
+                  "var_name" : "dry_contact",
+                  "relative_address": 1,
+                  "register_type": "Holding Register",
+                  "word_length": 1,
+                  "data_type": "UINT16",
+                  "multiplier": 1
+              }
+          ],
+          "uom":"%"
+    },
+    {
+        "manufacturer": "IOT",
+        "part_number": "Vibration_Sensor",
+        "protocol": "Modbus RTU",
+        "data": [
+            {
+                "var_name" : "x",
+                "relative_address": 1,
+                "register_type": "Holding Register",
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 1
+            },
+            {
+                "var_name" : "y",
+                "relative_address": 2,                                                                                                                                                                                                                                               
+                "register_type": "Holding Register",                                                                                                                                                                                                                          
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 1
+            },
+            {
+                "var_name" : "z",
+                "relative_address": 3,
+                "register_type": "Holding Register",
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 1
+            },
+            {
+                "var_name" : "activity",
+                "relative_address": 7,
+                "register_type": "Holding Register",
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 1
+            }
+             
+        ],
+        "uom":"%"
+    },
+    {
+        "manufacturer": "IOT",
+        "part_number": "AirPressure_Sensor",
+        "protocol": "Modbus RTU",
+        "data": [
+            {
+                "var_name" : "positif_pressure",
+                "relative_address": 1,
+                "register_type": "Holding Register",
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 0.01
+            },
+            {
+                "var_name" : "negatif_pressure",
+                "relative_address": 2,
+                "register_type": "Holding Register",
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 0.01
+            },
+            {
+                "var_name" : "temperature_in_line_pressure",
+                "relative_address": 3,
+                "register_type": "Holding Register",
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 0.01
+            }
+             
+        ],
+        "uom":"%"
+    },
+    {
+        "manufacturer": "IOT",
+        "part_number": "AirFlow_Sensor",
+        "protocol": "Modbus RTU",
+        "data": [
+            {
+                "var_name" : "airlow",
+                "relative_address": 1,
+                "register_type": "Holding Register",
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 0.01
+            }
+             
+        ],
+        "uom":"%"
+    },
+    {
+        "manufacturer": "IOT",
+        "part_number": "Water_Leak_Sensor",
+        "protocol": "Modbus RTU",
+        "data": [
+            {
+                "var_name" : "water_leak",
+                "relative_address": 1,
+                "register_type": "Holding Register",
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 1
+            }
+             
+        ],
+        "uom":"%"
+    },
+    {
+        "manufacturer": "IOT",
+        "part_number": "Relay",
+        "protocol": "Modbus RTU",
+        "data": [
+            {
+                "var_name" : "Relay",
+                "relative_address": 1,
+                "register_type": "Holding Register",
+                "word_length": 1,
+                "data_type": "UINT16",
+                "multiplier": 1
+            }
+             
+        ],
+        "uom":"%"
+    }
+  ]
+
+}
