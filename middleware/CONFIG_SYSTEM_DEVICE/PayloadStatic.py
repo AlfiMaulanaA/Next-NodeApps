@@ -4,9 +4,7 @@ import threading
 from threading import Lock
 import paho.mqtt.client as mqtt
 import logging
-import statistics
 from datetime import datetime
-from collections import defaultdict
 
 CONFIG_FILE_PATH = "../MODULAR_I2C/JSON/Config/mqtt_config.json"
 DATA_FILE_PATH = "./JSON/payloadStaticConfig.json"
@@ -17,36 +15,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger("PayloadStaticService")
 
 json_lock = Lock()
-
-# Performance monitoring
-class PerformanceMonitor:
-    def __init__(self):
-        self.metrics = {
-            "messages_processed": 0,
-            "publish_operations": 0,
-            "errors_encountered": 0,
-            "average_processing_time": 0.0
-        }
-        self.processing_times = []
-        self.lock = threading.Lock()
-
-    def record_processing_time(self, time_taken):
-        with self.lock:
-            self.processing_times.append(time_taken)
-            if len(self.processing_times) > 100:  # Keep last 100 measurements
-                self.processing_times.pop(0)
-            self.metrics["average_processing_time"] = sum(self.processing_times) / len(self.processing_times)
-
-    def increment_counter(self, metric_name):
-        with self.lock:
-            if metric_name in self.metrics:
-                self.metrics[metric_name] += 1
-
-    def get_metrics(self):
-        with self.lock:
-            return self.metrics.copy()
-
-performance_monitor = PerformanceMonitor()
 
 # Publish error log to MQTT
 def log_error(client, error_message, error_type):
@@ -80,36 +48,32 @@ def load_mqtt_config():
     try:
         with open(CONFIG_FILE_PATH, "r") as file:
             config = json.load(file)
+        logger.info("MQTT configuration loaded successfully from file")
+        broker_host = config.get("broker_address", "localhost")
+        broker_port = config.get("broker_port", 1883)
+
+        # Ensure consistent configuration with frontend
+        logger.info(f"Using MQTT broker: {broker_host}:{broker_port}")
         return {
-            "broker": config.get("broker_address", "localhost"),
-            "port": config.get("broker_port", 1883),
+            "broker": broker_host,
+            "port": broker_port,
             "username": config.get("username", ""),
             "password": config.get("password", "")
         }
     except Exception as e:
-        logger.error(f"Failed to load MQTT configuration: {e}")
+        logger.warning(f"MQTT config file not found, using defaults: {e}")
+        logger.info("Using default MQTT configuration (localhost:1883, no auth)")
         return {"broker": "localhost", "port": 1883, "username": "", "password": ""}
 
+# Load configuration at startup
 mqtt_config = load_mqtt_config()
-
-# CRUD Client for localhost broker
-crud_client = mqtt.Client(client_id="payload_static_crud", clean_session=False)
-crud_client.on_connect = on_crud_connect
-crud_client.on_disconnect = on_crud_disconnect
-crud_client.on_message = handle_message
-
-# Periodic Publisher Client from config
-pub_client = mqtt.Client(client_id="payload_static_pub", clean_session=False)
-if mqtt_config["username"] and mqtt_config["password"]:
-    pub_client.username_pw_set(mqtt_config["username"], mqtt_config["password"])
-pub_client.on_connect = on_pub_connect
-pub_client.on_disconnect = on_pub_disconnect
+MQTT_BROKER_HOST = mqtt_config["broker"]
+MQTT_BROKER_PORT = mqtt_config["port"]
 
 def on_crud_connect(client, userdata, flags, rc):
     if rc == 0:
-        logger.info("CRUD client connected successfully")
+        logger.info(f"CRUD client connected successfully to {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}")
         client.subscribe("command/data/payload")
-        client.subscribe("command/data/metrics")  # Subscribe to metrics requests
     else:
         logger.error(f"CRUD client connection failed with code {rc}")
 
@@ -118,31 +82,15 @@ def on_crud_disconnect(client, userdata, rc):
 
 def on_pub_connect(client, userdata, flags, rc):
     if rc == 0:
-        logger.info("Publisher client connected successfully")
+        logger.info(f"Publisher client connected successfully to {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}")
     else:
         logger.error(f"Publisher client connection failed with code {rc}")
 
 def on_pub_disconnect(client, userdata, rc):
     logger.warning(f"Publisher client disconnected with code {rc}")
 
-def handle_metrics_request(client, msg):
-    """Handle requests for performance metrics."""
+def handle_message(client, userdata, msg):
     try:
-        metrics = performance_monitor.get_metrics()
-        client.publish("response/data/metrics", json.dumps(metrics))
-    except Exception as e:
-        logger.error(f"Error getting metrics: {e}")
-        client.publish("response/data/metrics", json.dumps({"error": str(e)}))
-
-# Update message handler to include metrics
-def handle_message(client, msg):
-    start_time = time.time()
-
-    try:
-        if msg.topic == "command/data/metrics":
-            handle_metrics_request(client, msg)
-            return
-
         payload = json.loads(msg.payload.decode())
         command = payload.get("command")
 
@@ -156,32 +104,36 @@ def handle_message(client, msg):
             handle_delete_data(client, payload)
         else:
             logger.warning(f"Unknown command received: {command}")
-            performance_monitor.increment_counter("errors_encountered")
-
-        performance_monitor.increment_counter("messages_processed")
 
     except json.JSONDecodeError as e:
         logger.error(f"Error decoding JSON: {e}")
         log_error(client, f"Error decoding JSON: {e}", "major")
-        performance_monitor.increment_counter("errors_encountered")
     except Exception as e:
         logger.error(f"Unexpected error in handle_message: {e}")
-        performance_monitor.increment_counter("errors_encountered")
 
-    # Record processing time
-    processing_time = time.time() - start_time
-    performance_monitor.record_processing_time(processing_time)
+# CRUD Client for localhost broker
+crud_client = mqtt.Client(client_id="payload_static_crud", clean_session=False)
+crud_client.on_connect = on_crud_connect
+crud_client.on_disconnect = on_crud_disconnect
+crud_client.on_message = handle_message
+
+# Periodic Publisher Client from config
+pub_client = mqtt.Client(client_id="payload_static_pub", clean_session=False)
+pub_client.on_connect = on_pub_connect
+pub_client.on_disconnect = on_pub_disconnect
 
 # Connect clients with error handling
 try:
-    crud_client.connect("localhost", 1883, 60)
+    crud_client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
+    logger.info(f"CRUD client connecting to {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}")
 except Exception as e:
-    logger.error(f"Failed to connect CRUD client: {e}")
+    logger.error(f"Failed to connect CRUD client to {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}: {e}")
 
 try:
-    pub_client.connect(mqtt_config["broker"], mqtt_config["port"], 60)
+    pub_client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
+    logger.info(f"Publisher client connecting to {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}")
 except Exception as e:
-    logger.error(f"Failed to connect publisher client: {e}")
+    logger.error(f"Failed to connect publisher client to {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}: {e}")
 
 def add_online_status(data):
     for item in data:
@@ -217,40 +169,126 @@ def update_lwt(client, new_entry):
         client.will_set(topic, json.dumps(offline_payload), qos=1, retain=False)
 
 def handle_get_data(client):
+    logger.info("[DEBUG] Processing getData command")
     data = read_json_file(DATA_FILE_PATH)
-    client.publish("response/data/payload", json.dumps(data))
+    logger.info(f"[DEBUG] Read {len(data)} items from JSON file")
+    logger.debug(f"[DEBUG] Data contents: {data}")
+
+    json_response = json.dumps(data)
+    logger.info(f"[DEBUG] Publishing response to response/data/payload, length: {len(json_response)}")
+    logger.debug(f"[DEBUG] JSON response: {json_response}")
+
+    result = client.publish("response/data/payload", json_response)
+    logger.info(f"[DEBUG] Publish result: {result}")
+    if result.rc == 0:
+        logger.info("[DEBUG] Successfully published getData response")
+    else:
+        logger.error(f"[DEBUG] Failed to publish getData response, code: {result.rc}")
 
 def handle_write_data(client, payload):
-    new_entry = payload.get("data")
-    if new_entry and isinstance(new_entry, dict):
+    try:
+        # Construct the entry object from frontend payload
+        data_payload = payload.get("data")
+        topic = payload.get("topic")
+
+        if not topic or not data_payload:
+            client.publish("response/data/write", json.dumps({"status": "error", "message": "Missing topic or data"}))
+            return
+
+        # Generate unique ID and timestamps
+        import uuid
+        entry_id = str(uuid.uuid4().hex)[:16]  # Generate 16-character ID
+        current_time = datetime.now().isoformat()
+
+        new_entry = {
+            "id": entry_id,
+            "topic": topic,
+            "data": data_payload,
+            "interval": payload.get("interval", 0),
+            "qos": payload.get("qos", 0),
+            "lwt": payload.get("lwt", True),
+            "retain": payload.get("retain", False),
+            "created_at": current_time,
+            "updated_at": current_time,
+            "version": 1
+        }
+
         current_data = read_json_file(DATA_FILE_PATH)
-        new_entry["interval"] = payload.get("interval", 0)
-        new_entry["qos"] = payload.get("qos", 0)
-        new_entry["lwt"] = payload.get("lwt", True)
-        new_entry["retain"] = payload.get("retain", False)
         current_data.append(new_entry)
         write_json_file(DATA_FILE_PATH, current_data)
-        client.publish("response/data/write", json.dumps({"status": "success", "data": new_entry}))
-    else:
-        client.publish("response/data/write", json.dumps({"status": "error", "message": "Invalid data format"}))
+
+        # Set LWT for the new entry
+        update_lwt(pub_client, new_entry)
+
+        client.publish("response/data/write", json.dumps({"status": "success", "message": f"Data created for topic {topic}", "data": new_entry}))
+        logger.info(f"Successfully created new payload entry for topic: {topic}")
+
+    except Exception as e:
+        logger.error(f"Error in handle_write_data: {e}")
+        client.publish("response/data/write", json.dumps({"status": "error", "message": str(e)}))
 
 def handle_update_data(client, payload):
-    topic = payload.get("topic")
-    updated_data = payload.get("data")
-    if topic and updated_data:
+    try:
+        # Get original topic for identification and new topic for updating
+        original_topic = payload.get("originalTopic")
+        new_topic = payload.get("topic")
+        updated_data = payload.get("data")
+
+        if not original_topic:
+            client.publish("response/data/update", json.dumps({"status": "error", "message": "Missing original topic for identification"}))
+            return
+
         current_data = read_json_file(DATA_FILE_PATH)
         for item in current_data:
-            if item.get("topic") == topic:
-                item["data"] = {field["key"]: field["value"] for field in updated_data}
+            if item.get("topic") == original_topic:
+                old_topic = item.get("topic")
+
+                # Update the topic if it has changed
+                if new_topic and new_topic != old_topic:
+                    item["topic"] = new_topic
+                    logger.info(f"Topic updated from '{old_topic}' to '{new_topic}'")
+
+                # Update the data field - frontend sends array of {key, value} objects
+                if updated_data and isinstance(updated_data, list):
+                    item["data"] = {field["key"]: field["value"] for field in updated_data}
+                elif updated_data and isinstance(updated_data, dict):
+                    item["data"] = updated_data
+
+                # Update other fields
                 item["interval"] = payload.get("interval", item.get("interval", 0))
                 item["qos"] = payload.get("qos", item.get("qos", 0))
                 item["lwt"] = payload.get("lwt", item.get("lwt", True))
-                item["retain"] = payload.get("retain", item.get("retain", True))
+                item["retain"] = payload.get("retain", item.get("retain", False))
+
+                # Update timestamp and version
+                item["updated_at"] = datetime.now().isoformat()
+                item["version"] = item.get("version", 1) + 1
+
                 write_json_file(DATA_FILE_PATH, current_data)
                 update_lwt(pub_client, item)
-                client.publish("response/data/update", json.dumps({"status": "success", "topic": topic, "data": updated_data}))
+
+                # Clear retained message for old topic if topic changed
+                if new_topic and new_topic != old_topic:
+                    try:
+                        result = client.publish(old_topic, "", qos=1, retain=True)
+                        logger.info(f"✓ Cleared retained message for old topic: {old_topic}")
+                    except Exception as e:
+                        logger.warning(f"Failed to clear retained message for old topic {old_topic}: {e}")
+
+                client.publish("response/data/update", json.dumps({
+                    "status": "success",
+                    "message": f"Data updated for topic {new_topic}",
+                    "topic": new_topic,
+                    "data": item
+                }))
+                logger.info(f"Successfully updated payload entry for topic: {new_topic}")
                 return
-        client.publish("response/data/update", json.dumps({"status": "error", "message": f"No entry found with topic {topic}"}))
+
+        client.publish("response/data/update", json.dumps({"status": "error", "message": f"No entry found with topic {original_topic}"}))
+
+    except Exception as e:
+        logger.error(f"Error in handle_update_data: {e}")
+        client.publish("response/data/update", json.dumps({"status": "error", "message": str(e)}))
 
 def handle_delete_data(client, payload):
     topic = payload.get("topic")
@@ -259,7 +297,16 @@ def handle_delete_data(client, payload):
         updated_data = [item for item in current_data if item.get("topic") != topic]
         if len(updated_data) < len(current_data):
             write_json_file(DATA_FILE_PATH, updated_data)
+
+            # Clear retained message by publishing empty payload with retain=True
+            try:
+                result = client.publish(topic, "", qos=1, retain=True)
+                logger.info(f"✓ Cleared retained message for topic: {topic}")
+            except Exception as e:
+                logger.warning(f"Failed to clear retained message for topic {topic}: {e}")
+
             client.publish("response/data/delete", json.dumps({"status": "success", "topic": topic}))
+            logger.info(f"Successfully deleted payload entry for topic: {topic}")
         else:
             client.publish("response/data/delete", json.dumps({"status": "error", "message": f"No entry found with topic {topic}"}))
 
@@ -288,21 +335,20 @@ def send_data_periodically(client):
                             try:
                                 result = client.publish(topic, json.dumps(payload), qos=qos, retain=retain)
                                 if result.rc == 0:
-                                    performance_monitor.increment_counter("publish_operations")
                                     last_publish_times[topic] = current_time
-                                    logger.debug(f"Published static data to {topic} (interval: {interval}s)")
+                                    logger.info(f"Published static data to {topic} (interval: {interval}s, QoS: {qos}, Retain: {retain})")
+                                    if retain:
+                                        logger.info(f"✓ Retained message published to {topic}: {json.dumps(payload)}")
                                 else:
                                     logger.warning(f"Failed to publish to {topic}, MQTT error code: {result.rc}")
                             except Exception as e:
                                 logger.error(f"Error publishing to {topic}: {e}")
-                                performance_monitor.increment_counter("errors_encountered")
 
             # Sleep for 1 second to check intervals frequently
             time.sleep(1)
 
         except Exception as e:
             logger.error(f"Error in send_data_periodically: {e}")
-            performance_monitor.increment_counter("errors_encountered")
             time.sleep(5)  # Sleep longer on error
 
 # Set LWT for publisher client

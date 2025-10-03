@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { connectMQTT } from "@/lib/mqttClient"; // Import centralized MQTT connection
+import { getMQTTClient } from "@/lib/mqttClient"; // Import centralized MQTT connection
 import type { MqttClient } from "mqtt"; // Import MqttClient type for useRef
 
 // Define the expected structure of an individual error log item
@@ -28,8 +28,14 @@ export function useTotalErrorCount() {
     }).length;
 
     useEffect(() => {
-        const client = connectMQTT();
-        clientRef.current = client;
+        const initializeHook = () => {
+            const client = getMQTTClient();
+            if (!client) {
+                // Retry after a short delay if client is not available yet
+                setTimeout(initializeHook, 100);
+                return;
+            }
+            clientRef.current = client;
 
         const topic = "subrack/error/data";
 
@@ -91,19 +97,23 @@ export function useTotalErrorCount() {
         // Attach event listener for messages
         client.on("message", handleMessage);
 
-        // --- Cleanup Function ---
-        return () => {
-            // Unsubscribe only if the client is still active/connected
-            if (clientRef.current?.connected) {
-                clientRef.current.unsubscribe(topic, (err) => {
-                    if (err) console.error(`Failed to unsubscribe from ${topic}:`, err);
-                });
-            }
-            // Remove event listeners
-            client.off("message", handleMessage);
-            // It's generally not recommended to remove 'connect' listeners here if connectMQTT manages a global client.
-            // If connectMQTT uses client.once("connect", ...), it's automatically removed after first fire.
+            // --- Cleanup Function ---
+            return () => {
+                // Unsubscribe only if the client is still active/connected
+                if (clientRef.current?.connected) {
+                    clientRef.current.unsubscribe(topic, (err) => {
+                        if (err) console.error(`Failed to unsubscribe from ${topic}:`, err);
+                    });
+                }
+                // Remove event listeners
+                client.off("message", handleMessage);
+                // It's generally not recommended to remove 'connect' listeners here if connectMQTT manages a global client.
+                // If connectMQTT uses client.once("connect", ...), it's automatically removed after first fire.
+            };
         };
+
+        // Start initialization
+        initializeHook();
     }, []); // Empty dependency array ensures this runs once on mount and cleans up on unmount
 
     return totalActiveErrors;

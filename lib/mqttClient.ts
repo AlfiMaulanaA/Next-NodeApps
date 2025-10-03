@@ -8,7 +8,11 @@ let connectionState: "disconnected" | "connecting" | "connected" | "reconnecting
 let lastLogTime = 0;
 let reconnectAttempts = 0;
 let currentBrokerUrl: string | null = null;
+let connectionFailures = 0;
+let lastConnectionMode: string | null = null;
+let connectionPromise: Promise<MqttClient> | null = null; // Prevent multiple simultaneous connections
 const maxReconnectAttempts = 10;
+const maxConnectionFailures = 3; // Force fallback after 3 failures
 const logThrottleMs = 5000; // Only log similar messages every 5 seconds
 
 // Throttled logging to reduce spam
@@ -44,7 +48,7 @@ async function updateMQTTStatus(status: {
   }
 }
 
-// Function to get MQTT config based on mode
+// Function to get MQTT config based on mode with validation
 async function getMQTTConfigUrl(): Promise<string> {
   const savedMode = typeof window !== "undefined" ?
     localStorage.getItem("mqtt_connection_mode") : null;
@@ -53,33 +57,41 @@ async function getMQTTConfigUrl(): Promise<string> {
 
   if (savedMode === "database") {
     try {
-      // First try to get enabled configuration
       const response = await fetch("/api/mqtt/?enabled=true");
       const result = await response.json();
 
-      if (result.success && result.data.length > 0) {
-        console.log(`Using enabled database configuration: ${result.data[0].broker_url}`);
-        return result.data[0].broker_url;
-      } else {
-        // If no enabled config, fall back to active config
-        console.warn("No enabled MQTT configuration found, trying active configuration");
-        const activeResponse = await fetch("/api/mqtt/?active=true");
-        const activeResult = await activeResponse.json();
+      if (result.success && result.data && result.data.length > 0) {
+        const brokerUrl = result.data[0].broker_url;
+        console.log(`Database config found: ${brokerUrl}`);
 
-        if (activeResult.success && activeResult.data.length > 0) {
-          console.log(`Using active database configuration: ${activeResult.data[0].broker_url}`);
-          return activeResult.data[0].broker_url;
+        // Validate the URL format
+        if (isValidMQTTUrl(brokerUrl)) {
+          // If it's a WebSocket URL, convert it to TCP for reliability
+          if (brokerUrl.startsWith('ws://') || brokerUrl.startsWith('wss://')) {
+            const tcpUrl = convertWebSocketToTCP(brokerUrl);
+            console.log(`🔄 Converted database WebSocket URL to TCP: ${tcpUrl}`);
+            return tcpUrl;
+          } else {
+            console.log(`Using validated database configuration: ${brokerUrl}`);
+            return brokerUrl;
+          }
         } else {
-          console.warn("No active MQTT configuration found in database, falling back to ENV");
+          console.warn(`Invalid database MQTT URL: ${brokerUrl}, falling back to ENV`);
           const envUrl = getAppConfig().mqttBrokerUrl;
           console.log(`Using ENV fallback: ${envUrl}`);
           return envUrl;
         }
+      } else {
+        console.warn("No enabled MQTT configuration found in database, using ENV");
+        const envUrl = getAppConfig().mqttBrokerUrl;
+        console.log(`Using ENV configuration: ${envUrl}`);
+        return envUrl;
       }
     } catch (error) {
       console.error("Error fetching MQTT config from database:", error);
+      console.log("Falling back to ENV configuration due to database error");
       const envUrl = getAppConfig().mqttBrokerUrl;
-      console.log(`Using ENV fallback due to error: ${envUrl}`);
+      console.log(`Using ENV fallback: ${envUrl}`);
       return envUrl;
     }
   } else {
@@ -90,247 +102,258 @@ async function getMQTTConfigUrl(): Promise<string> {
   }
 }
 
-export async function connectMQTTAsync(): Promise<MqttClient> {
-  const mqttBrokerUrl = await getMQTTConfigUrl();
-
-  if (!mqttBrokerUrl) {
-    throw new Error("MQTT broker URL is missing from configuration.");
-  }
-
-  // Check if we need to reconnect due to URL change
-  if (currentBrokerUrl && currentBrokerUrl !== mqttBrokerUrl) {
-    console.log(`MQTT: Broker URL changed from ${currentBrokerUrl} to ${mqttBrokerUrl}, reconnecting...`);
-    if (client) {
-      client.end(true);
-      client = null;
-      isConnecting = false;
-      connectionState = "disconnected";
-      reconnectAttempts = 0;
+// Function to validate MQTT URL format and convert if needed
+function isValidMQTTUrl(url: string): boolean {
+  try {
+    // Check if URL is properly formatted
+    if (!url || typeof url !== 'string') {
+      console.warn("MQTT URL is empty or not a string");
+      return false;
     }
+
+    // Basic URL validation
+    const urlPattern = /^(mqtt|ws|tcp):\/\/[^\s/$.?#].[^\s]*$/i;
+    const isValidFormat = urlPattern.test(url);
+
+    if (!isValidFormat) {
+      console.warn(`Invalid MQTT URL format: ${url}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error validating MQTT URL:", error);
+    return false;
+  }
+}
+
+// Function to convert WebSocket URL to TCP URL for fallback
+function convertWebSocketToTCP(wsUrl: string): string {
+  try {
+    // Convert ws://localhost:9000/mqtt to tcp://localhost:9000
+    // Keep the same port, just change protocol from ws to tcp
+    if (wsUrl.startsWith('ws://')) {
+      // Extract host and port from WebSocket URL
+      const urlParts = wsUrl.replace('ws://', '').split('/')[0].split(':');
+      const host = urlParts[0] || 'localhost';
+      const port = urlParts[1] || '1883'; // Default MQTT port if not specified
+
+      // Use tcp:// protocol to force TCP transport, keep original port
+      const tcpUrl = `tcp://${host}:${port}`;
+      console.log(`🔄 Converting WebSocket URL ${wsUrl} to TCP URL ${tcpUrl}`);
+      return tcpUrl;
+    }
+    return wsUrl;
+  } catch (error) {
+    console.error("Error converting WebSocket URL to TCP:", error);
+    return wsUrl;
+  }
+}
+
+// Function to try multiple connection methods
+async function tryMultipleConnections(): Promise<string> {
+  const connectionAttempts = [
+    "tcp://localhost:9000",    // TCP ke port 9000
+    "tcp://localhost:1883",    // TCP ke port 1883 (default)
+    "ws://localhost:9000/mqtt", // WebSocket ke port 9000
+    "ws://localhost:1883/mqtt", // WebSocket ke port 1883
+    "mqtt://localhost:1883",    // MQTT protocol default
+  ];
+
+  for (const url of connectionAttempts) {
+    console.log(`🔄 Trying connection to: ${url}`);
+    // You could implement actual connection test here
+    // For now, we'll return the first option and let MQTT.js handle the fallback
   }
 
-  currentBrokerUrl = mqttBrokerUrl;
+  return "tcp://localhost:1883"; // Fallback to most common setup
+}
 
-  if (client && (client.connected || isConnecting)) {
+export async function connectMQTTAsync(): Promise<MqttClient> {
+  // Return existing connected client
+  if (client && client.connected) {
+    console.log("MQTT: Already connected, returning existing client");
     return client;
   }
 
-  if (!client || client.disconnected) {
-    if (isConnecting) {
-      return client!;
+  // If already connecting, wait for existing connection promise
+  if (isConnecting && connectionPromise) {
+    console.log("MQTT: Connection already in progress, waiting for existing connection...");
+    try {
+      return await connectionPromise;
+    } catch (error) {
+      console.log("MQTT: Existing connection failed, starting new connection");
+      // Continue with new connection attempt
     }
-
-    isConnecting = true;
-    connectionState = "connecting";
-
-    // Only log initial connection attempt
-    if (reconnectAttempts === 0) {
-      console.log(`MQTT: Attempting connection to ${mqttBrokerUrl}...`);
-    }
-
-    // Generate dynamic client ID
-    const clientId = `client-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-
-    const connectionOptions = {
-      clean: true,
-      connectTimeout: 3000, // Reduced from 5000 to 3000ms
-      reconnectPeriod: 3000,
-      keepalive: 60,
-      reschedulePings: true,
-      protocolVersion: 4 as const,
-      rejectUnauthorized: false,
-      clientId: clientId,
-    };
-
-    // For WebSocket connections, use URL as provided
-    let finalUrl = mqttBrokerUrl;
-    console.log(`MQTT: Using broker URL as configured: ${finalUrl}`);
-
-    console.log(`MQTT: Connecting to ${finalUrl} with client ID: ${clientId}`);
-    client = mqtt.connect(finalUrl, connectionOptions);
-
-    client.on("connect", async () => {
-      connectionState = "connected";
-      isConnecting = false;
-      reconnectAttempts = 0;
-      console.log(`MQTT: Connected to ${mqttBrokerUrl}`);
-      console.log(`MQTT: Connection state updated to: ${connectionState}, isConnected: ${client?.connected}`);
-
-      // Update server-side status
-      await updateMQTTStatus({
-        is_connected: true,
-        connection_state: "connected",
-        broker_url: mqttBrokerUrl,
-        mode: typeof window !== "undefined" ? localStorage.getItem("mqtt_connection_mode") || "env" : "env"
-      });
-
-      // Update database status if connected to database configuration
-      try {
-        const savedMode = typeof window !== "undefined" ?
-          localStorage.getItem("mqtt_connection_mode") : null;
-
-        if (savedMode === "database") {
-          // Find and update the enabled configuration status
-          const response = await fetch("/api/mqtt/?enabled=true");
-          const result = await response.json();
-
-          if (result.success && result.data.length > 0) {
-            const enabledConfig = result.data[0];
-
-            // Update connection status
-            await fetch(`/api/mqtt/${enabledConfig.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                connection_status: "connected",
-                last_connected: new Date().toISOString(),
-                error_message: undefined
-              })
-            });
-
-            console.log(`Updated database status for ${enabledConfig.name} to connected`);
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to update database connection status:", error);
-      }
-    });
-
-    client.on("error", async (err) => {
-      connectionState = "disconnected";
-      isConnecting = false;
-
-      // Only log errors if not too many reconnect attempts
-      if (reconnectAttempts < maxReconnectAttempts) {
-        throttledLog(`MQTT Error: ${err.message}`, "error");
-      }
-
-      // Update server-side status
-      await updateMQTTStatus({
-        is_connected: false,
-        connection_state: "error",
-        broker_url: mqttBrokerUrl,
-        mode: typeof window !== "undefined" ? localStorage.getItem("mqtt_connection_mode") || "env" : "env"
-      });
-
-      // Update database status if connected to database configuration
-      try {
-        const savedMode = typeof window !== "undefined" ?
-          localStorage.getItem("mqtt_connection_mode") : null;
-
-        if (savedMode === "database") {
-          const response = await fetch("/api/mqtt/?enabled=true");
-          const result = await response.json();
-
-          if (result.success && result.data.length > 0) {
-            const enabledConfig = result.data[0];
-
-            await fetch(`/api/mqtt/${enabledConfig.id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                connection_status: "error",
-                error_message: err.message
-              })
-            });
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to update database error status:", error);
-      }
-
-      // If this is a connection error and we have fallback options, try them
-      if (err.message.includes('ECONNREFUSED') || err.message.includes('Failed to fetch')) {
-        console.warn(`MQTT: Connection to ${mqttBrokerUrl} failed, broker might be unavailable`);
-      }
-    });
-
-    client.on("reconnect", () => {
-      reconnectAttempts++;
-      
-      if (reconnectAttempts <= maxReconnectAttempts) {
-        connectionState = "reconnecting";
-        isConnecting = true;
-        
-        // Throttled reconnection logging
-        throttledLog(`MQTT: Reconnecting... (attempt ${reconnectAttempts})`);
-      } else {
-        // Stop trying after max attempts
-        client?.end(true);
-        throttledLog(`MQTT: Max reconnection attempts reached. Stopping reconnection.`, "error");
-      }
-    });
-
-    client.on("close", async () => {
-      connectionState = "disconnected";
-      isConnecting = false;
-
-      // Only log close events during initial connection or every few attempts
-      if (reconnectAttempts === 0 || reconnectAttempts % 5 === 0) {
-        throttledLog(`MQTT: Connection closed`);
-      }
-
-      // Update server-side status
-      await updateMQTTStatus({
-        is_connected: false,
-        connection_state: "disconnected",
-        broker_url: mqttBrokerUrl,
-        mode: typeof window !== "undefined" ? localStorage.getItem("mqtt_connection_mode") || "env" : "env"
-      });
-    });
-
-    client.on("offline", () => {
-      connectionState = "disconnected";
-      isConnecting = false;
-      
-      // Throttled offline logging
-      throttledLog(`MQTT: Client offline`);
-    });
   }
 
-  return client;
+  // If connection exists but not connected, reset it
+  if (client && !client.connected) {
+    console.log("MQTT: Existing client not connected, resetting...");
+    client.end(true);
+    client = null;
+  }
+
+  // Create connection promise to prevent multiple simultaneous connections
+  connectionPromise = (async () => {
+    try {
+      const mqttBrokerUrl = await getMQTTConfigUrl();
+
+      if (!mqttBrokerUrl) {
+        throw new Error("MQTT broker URL is missing from configuration.");
+      }
+
+      // Check if we need to reconnect due to URL change
+      if (currentBrokerUrl && currentBrokerUrl !== mqttBrokerUrl) {
+        console.log(`MQTT: Broker URL changed, reconnecting...`);
+        if (client) {
+          client.end(true);
+          client = null;
+        }
+      }
+
+      currentBrokerUrl = mqttBrokerUrl;
+      isConnecting = true;
+      connectionState = "connecting";
+
+      console.log(`MQTT: Connecting to ${mqttBrokerUrl}...`);
+
+      const clientId = `nextjs-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+
+      const connectionOptions = {
+        clean: true,
+        connectTimeout: 10000, // Increased timeout
+        reconnectPeriod: 5000, // Slower reconnection to reduce spam
+        keepalive: 60,
+        reschedulePings: true,
+        protocolVersion: 4 as const,
+        rejectUnauthorized: false,
+        clientId: clientId,
+      };
+
+      client = mqtt.connect(mqttBrokerUrl, connectionOptions);
+
+      return new Promise<MqttClient>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          isConnecting = false;
+          connectionState = "disconnected";
+          connectionPromise = null;
+          reject(new Error("Connection timeout"));
+        }, 15000); // Increased timeout
+
+        client!.on("connect", async () => {
+          clearTimeout(timeout);
+          connectionState = "connected";
+          isConnecting = false;
+          connectionPromise = null;
+          reconnectAttempts = 0;
+          connectionFailures = 0; // Reset failure counter on successful connection
+          console.log(`✅ MQTT: Successfully connected to ${mqttBrokerUrl}`);
+
+          await updateMQTTStatus({
+            is_connected: true,
+            connection_state: "connected",
+            broker_url: mqttBrokerUrl,
+            mode: typeof window !== "undefined" ? localStorage.getItem("mqtt_connection_mode") || "env" : "env"
+          });
+
+          resolve(client!);
+        });
+
+        client!.on("error", async (err) => {
+          clearTimeout(timeout);
+          connectionState = "disconnected";
+          isConnecting = false;
+          connectionPromise = null;
+
+          console.error(`❌ MQTT: Connection error to ${mqttBrokerUrl}: ${err.message}`);
+
+          await updateMQTTStatus({
+            is_connected: false,
+            connection_state: "error",
+            broker_url: mqttBrokerUrl,
+            mode: typeof window !== "undefined" ? localStorage.getItem("mqtt_connection_mode") || "env" : "env"
+          });
+
+          reject(err);
+        });
+
+        client!.on("reconnect", () => {
+          reconnectAttempts++;
+          if (reconnectAttempts <= maxReconnectAttempts) {
+            connectionState = "reconnecting";
+            throttledLog(`MQTT: Reconnecting... (attempt ${reconnectAttempts})`);
+          } else {
+            client?.end(true);
+            throttledLog(`MQTT: Max reconnection attempts reached.`, "error");
+          }
+        });
+
+        client!.on("close", async () => {
+          connectionState = "disconnected";
+          isConnecting = false;
+          connectionPromise = null;
+          throttledLog(`MQTT: Connection closed`);
+
+          await updateMQTTStatus({
+            is_connected: false,
+            connection_state: "disconnected",
+            broker_url: mqttBrokerUrl,
+            mode: typeof window !== "undefined" ? localStorage.getItem("mqtt_connection_mode") || "env" : "env"
+          });
+        });
+
+        client!.on("offline", () => {
+          connectionState = "disconnected";
+          throttledLog(`MQTT: Client offline`);
+        });
+      });
+
+    } catch (error) {
+      console.error("MQTT: Connection setup failed:", error);
+      connectionState = "disconnected";
+      isConnecting = false;
+      connectionPromise = null;
+      throw error;
+    }
+  })();
+
+  return connectionPromise;
 }
 
 export function getMQTTClient(): MqttClient | null {
+  if (typeof window !== "undefined") {
+    (window as any).mqttClient = client;
+  }
   return client;
 }
 
 export function getConnectionState(): string {
-  console.log(`getConnectionState called: returning ${connectionState}`);
   return connectionState;
 }
 
 export function isClientConnected(): boolean {
-  const connected = client?.connected || false;
-  console.log(`isClientConnected called: client exists=${!!client}, connected=${connected}`);
-  return connected;
+  return client?.connected || false;
 }
 
 export function resetConnection(): void {
   reconnectAttempts = 0;
+  connectionFailures = 0; // Reset failure counter
   connectionState = "disconnected";
-  
+
   if (client) {
     client.end(true);
     client = null;
   }
-  
+
   isConnecting = false;
-  console.log("MQTT: Connection reset. Ready for new connection attempt.");
+  console.log("MQTT: Connection reset");
 }
 
 export function disconnectMQTT(): void {
-  if (client && client.connected) {
-    client.end(false, () => {
-      console.log("MQTT: Client disconnected gracefully.");
-      client = null;
-      isConnecting = false;
-      connectionState = "disconnected";
-      reconnectAttempts = 0;
-    });
-  } else if (client) {
+  if (client) {
     client.end(true, () => {
-      console.log("MQTT: Client forced disconnection.");
+      console.log("MQTT: Client disconnected");
       client = null;
       isConnecting = false;
       connectionState = "disconnected";
@@ -339,47 +362,36 @@ export function disconnectMQTT(): void {
   }
 }
 
-// Backward compatible wrapper - returns the client without waiting
 export function connectMQTT(): MqttClient {
-  // For existing code that expects synchronous behavior
-  // We'll start the async connection but return immediately with a placeholder
-  connectMQTTAsync().catch(console.error);
-
-  // Return existing client or create placeholder
   if (client) {
     return client;
   }
 
-  // Create a temporary client with fallback URL for immediate return
   const { mqttBrokerUrl } = getAppConfig();
-  return mqtt.connect(mqttBrokerUrl, {
+  client = mqtt.connect(mqttBrokerUrl, {
     clean: true,
     connectTimeout: 5000,
     reconnectPeriod: 3000,
     keepalive: 60,
   });
+
+  return client;
 }
 
-// Function to force reconnection when mode changes
 export async function reconnectMQTT(): Promise<MqttClient> {
-  console.log("MQTT: Forcing reconnection due to mode change...");
+  console.log("MQTT: Forcing reconnection...");
 
-  // Force disconnect from current broker
   if (client) {
-    console.log("MQTT: Disconnecting from current broker...");
     client.end(true);
     client = null;
   }
 
-  // Reset all connection state
   isConnecting = false;
   connectionState = "disconnected";
   reconnectAttempts = 0;
-  currentBrokerUrl = null; // Force URL re-evaluation
+  currentBrokerUrl = null;
 
-  // Wait a bit to ensure clean disconnect
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  console.log("MQTT: Starting fresh connection with new configuration...");
   return await connectMQTTAsync();
 }

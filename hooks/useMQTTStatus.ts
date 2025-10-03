@@ -1,48 +1,100 @@
 // hooks/useMQTTStatus.ts
 "use client";
 
-import { useEffect, useState } from "react";
-import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
+import { useEffect, useState, useRef } from "react";
+import { connectMQTTAsync, getMQTTClient, getConnectionState } from "@/lib/mqttClient";
 
 export function useMQTTStatus() {
-  const initialClient = getMQTTClient();
-
-  const [status, setStatus] = useState(() => {
-    if (!initialClient) return "connecting";
-    if (initialClient.connected) return "connected";
-    if (initialClient.disconnected) return "disconnected";
-    return "connecting";
-  });
+  const [status, setStatus] = useState<string>("connecting");
+  const initializationRef = useRef(false);
 
   useEffect(() => {
-    const client = connectMQTT();
-
-    if (client.connected) {
-      setStatus("connected");
-    } else if (client.disconnected) {
-      setStatus("disconnected");
-    } else {
-      setStatus("connecting");
+    // Prevent multiple initializations
+    if (initializationRef.current) {
+      return;
     }
 
-    const handleConnect = () => setStatus("connected");
-    const handleError = () => setStatus("error");
-    const handleClose = () => setStatus("disconnected");
-    const handleReconnect = () => setStatus("connecting");
-    const handleOffline = () => setStatus("disconnected");
+    initializationRef.current = true;
 
-    client.on("connect", handleConnect);
-    client.on("error", handleError);
-    client.on("close", handleClose);
-    client.on("reconnect", handleReconnect);
-    client.on("offline", handleOffline);
+    const initializeStatusHook = async () => {
+      try {
+        console.log("🔧 useMQTTStatus: Initializing MQTT connection...");
+
+        // Initialize MQTT connection if not already done
+        const client = getMQTTClient();
+        if (!client || !client.connected) {
+          console.log("🔧 useMQTTStatus: No active connection, initializing...");
+          await connectMQTTAsync();
+        } else {
+          console.log("🔧 useMQTTStatus: Connection already exists");
+        }
+
+        const updateStatus = () => {
+          const currentState = getConnectionState();
+          setStatus(currentState);
+        };
+
+        // Initial status update
+        updateStatus();
+
+        // Get client for event listeners
+        const activeClient = getMQTTClient();
+        if (activeClient) {
+          const handleConnect = () => {
+            console.log("useMQTTStatus: Connected event received");
+            setStatus("connected");
+          };
+          const handleError = () => {
+            console.log("useMQTTStatus: Error event received");
+            setStatus("error");
+          };
+          const handleClose = () => {
+            console.log("useMQTTStatus: Close event received");
+            setStatus("disconnected");
+          };
+          const handleReconnect = () => {
+            console.log("useMQTTStatus: Reconnect event received");
+            setStatus("connecting");
+          };
+          const handleOffline = () => {
+            console.log("useMQTTStatus: Offline event received");
+            setStatus("disconnected");
+          };
+
+          activeClient.on("connect", handleConnect);
+          activeClient.on("error", handleError);
+          activeClient.on("close", handleClose);
+          activeClient.on("reconnect", handleReconnect);
+          activeClient.on("offline", handleOffline);
+
+          // Cleanup function
+          return () => {
+            activeClient.off("connect", handleConnect);
+            activeClient.off("error", handleError);
+            activeClient.off("close", handleClose);
+            activeClient.off("reconnect", handleReconnect);
+            activeClient.off("offline", handleOffline);
+          };
+        }
+
+        // Set up periodic status check as fallback
+        const statusCheckInterval = setInterval(updateStatus, 2000);
+
+        return () => {
+          if (statusCheckInterval) clearInterval(statusCheckInterval);
+        };
+      } catch (error) {
+        console.error("useMQTTStatus: Failed to initialize:", error);
+        setStatus("error");
+      }
+    };
+
+    // Start initialization and cleanup
+    const cleanupPromise = initializeStatusHook();
 
     return () => {
-      client.off("connect", handleConnect);
-      client.off("error", handleError);
-      client.off("close", handleClose);
-      client.off("reconnect", handleReconnect);
-      client.off("offline", handleOffline);
+      initializationRef.current = false;
+      cleanupPromise?.then(cleanupFn => cleanupFn?.());
     };
   }, []);
 

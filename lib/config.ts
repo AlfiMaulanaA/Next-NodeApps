@@ -60,28 +60,28 @@ export function getEnvMQTTBrokerUrl(): string {
   let protocol: string;
 
   if (isDevelopment) {
-    // Development: Use ENV variables
-    host = process.env.NEXT_PUBLIC_MQTT_BROKER_HOST || "192.168.0.193";
-    port = process.env.NEXT_PUBLIC_MQTT_BROKER_PORT || "9000";
+    // Development: Use TCP connection for simplicity
+    host = process.env.NEXT_PUBLIC_MQTT_BROKER_HOST || "localhost";
+    port = process.env.NEXT_PUBLIC_MQTT_BROKER_PORT || "1883";
     protocol = "ws";
   } else if (isProduction) {
     // Production: Use window.location.hostname
     if (typeof window !== "undefined") {
       host = window.location.hostname;
-      port = process.env.NEXT_PUBLIC_MQTT_BROKER_PORT || "9000";
+      port = process.env.NEXT_PUBLIC_MQTT_BROKER_PORT || "1883";
       protocol = window.location.protocol === "https:" ? "wss" : "ws";
     } else {
       // Fallback for SSR
       host = process.env.NEXT_PUBLIC_MQTT_BROKER_HOST || "localhost";
-      port = process.env.NEXT_PUBLIC_MQTT_BROKER_PORT || "9000";
+      port = process.env.NEXT_PUBLIC_MQTT_BROKER_PORT || "1883";
       protocol = "ws";
     }
   } else {
     // Fallback
     host = process.env.NEXT_PUBLIC_MQTT_BROKER_HOST || "localhost";
-    port = process.env.NEXT_PUBLIC_MQTT_BROKER_PORT || "9000";
+    port = process.env.NEXT_PUBLIC_MQTT_BROKER_PORT || "1883";
     protocol = "ws";
   }
 
-  return `${protocol}://${host}:${port}`;
+  return `${protocol}://${host}:${port}/mqtt`;
 }

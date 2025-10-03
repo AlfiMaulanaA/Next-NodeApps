@@ -34,8 +34,14 @@ export function MQTTModeProvider({ children }: { children: React.ReactNode }) {
     const initializeMQTT = async () => {
       try {
         console.log("Initializing MQTT connection on app startup...");
-        await connectMQTTAsync();
+        const mqttClient = await connectMQTTAsync();
         console.log("MQTT connection initialized successfully");
+
+        // Expose client to window for debugging
+        if (typeof window !== "undefined") {
+          (window as any).mqttClient = mqttClient;
+          console.log("MQTT client exposed to window.mqttClient");
+        }
       } catch (error) {
         console.error("Failed to initialize MQTT connection:", error);
       }

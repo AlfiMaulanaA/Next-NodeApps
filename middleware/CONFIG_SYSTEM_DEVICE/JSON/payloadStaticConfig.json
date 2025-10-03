@@ -1,21 +1,121 @@
 [
   {
-    "topic": "Test/Topic/1",
-    "qos":0,
-    "retain":true,
-    "lwt":true,
-    "interval":10,
+    "id": "sensor_temp_001",
+    "topic": "home/sensor/temperature",
     "data": {
-      "Nama ": "Alfi Maulana",
-      "Umur": 21,
-      "Hobi": [
-        "gambar",
-        "noton"
-      ],
-      "Alamat": {
-        "Kota": "Bandung",
-        "Desa": "Padalrang"
-      }
-    }
+      "sensor_id": "TEMP_001",
+      "location": "Living Room",
+      "temperature": 25,
+      "humidity": 60,
+      "battery_level": 85
+    },
+    "interval": 31,
+    "qos": 1,
+    "lwt": true,
+    "retain": false,
+    "created_at": "2025-09-29T16:27:50.000000",
+    "updated_at": "2025-09-30T16:29:21.984257",
+    "version": 4
+  },
+  {
+    "id": "sensor_humidity_001",
+    "topic": "home/sensor/humidity",
+    "data": {
+      "sensor_id": "HUM_001",
+      "location": "Kitchen",
+      "temperature": 24.8,
+      "humidity": 65,
+      "co2_level": 450
+    },
+    "interval": 45,
+    "qos": 0,
+    "lwt": true,
+    "retain": true,
+    "created_at": "2025-09-29T16:27:50.000000",
+    "updated_at": "2025-09-29T16:33:45.226851",
+    "version": 1
+  },
+  {
+    "id": "device_status_001",
+    "topic": "home/device/status",
+    "data": {
+      "device_id": "MAIN_HUB",
+      "status": "online",
+      "uptime": 3600,
+      "cpu_usage": 15.5,
+      "memory_usage": 45.2
+    },
+    "interval": 60,
+    "qos": 2,
+    "lwt": true,
+    "retain": true,
+    "created_at": "2025-09-29T16:27:50.000000",
+    "updated_at": "2025-09-29T16:33:45.226861",
+    "version": 1
+  },
+  {
+    "id": "energy_monitor_001",
+    "topic": "home/energy/monitor",
+    "data": {
+      "device_id": "ENERGY_MONITOR",
+      "current_power": 1250,
+      "daily_consumption": 28,
+      "voltage": 220,
+      "current": 5
+    },
+    "interval": 30,
+    "qos": 1,
+    "lwt": false,
+    "retain": false,
+    "created_at": "2025-09-29T16:27:50.000000",
+    "updated_at": "2025-09-30T14:10:58.237881",
+    "version": 3
+  },
+  {
+    "id": "4939dc0e61f07344",
+    "topic": "test/isolation/sensor_1759138425",
+    "data": {
+      "isolation_test": true,
+      "timestamp": 1759138425
+    },
+    "interval": 30,
+    "qos": 0,
+    "lwt": true,
+    "retain": false,
+    "created_at": "2025-09-29T16:33:45.225785",
+    "updated_at": "2025-09-30T14:58:52.453728",
+    "version": 3
+  },
+  {
+    "id": "2dd773c053604d7a",
+    "topic": "ikhsal/data/4",
+    "data": {
+      "name_id": "ikhsaln",
+      "age": 25,
+      "isMale": true
+    },
+    "interval": 5,
+    "qos": 1,
+    "lwt": true,
+    "retain": true,
+    "created_at": "2025-09-30T15:15:58.584787",
+    "updated_at": "2025-09-30T15:27:19.019865",
+    "version": 4
+  },
+  {
+    "id": "32eab54b0fe246fc",
+    "topic": "test/topik/2",
+    "data": {
+      "status_card": "Employee",
+      "id_card": 1,
+      "IT_Department": true
+    },
+    "interval": 3,
+    "qos": 0,
+    "lwt": false,
+    "retain": false,
+    "created_at": "2025-09-30T17:29:01.241850",
+    "updated_at": "2025-10-03T14:46:42.238524",
+    "version": 3
   }
 ]

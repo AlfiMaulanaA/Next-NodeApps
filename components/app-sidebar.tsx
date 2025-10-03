@@ -160,26 +160,26 @@ const menuData = {
         },
       ],
     },
-    // {
-    //   title: "Data Payload",
-    //   items: [
-    //     {
-    //       title: "Static Payload",
-    //       url: "/payload/static",
-    //       icon: FileText,
-    //     },
-    //     {
-    //       title: "Dynamic Payload",
-    //       url: "/payload/dynamic",
-    //       icon: Activity,
-    //     },
-    //     {
-    //       title: "Device Discovery",
-    //       url: "/payload/discover",
-    //       icon: Send,
-    //     },
-    //   ],
-    // },
+    {
+      title: "Data Payload",
+      items: [
+        {
+          title: "Static Payload",
+          url: "/payload/static",
+          icon: FileText,
+        },
+        {
+          title: "Dynamic Payload",
+          url: "/payload/dynamic",
+          icon: Activity,
+        },
+        {
+          title: "Device Discovery",
+          url: "/payload/discover",
+          icon: Send,
+        },
+      ],
+    },
     {
       title: "System Settings",
       items: [
