@@ -68,11 +68,11 @@ const menuData = {
           url: "/",
           icon: BarChart3,
         },
-        // {
-        //   title: "Systems Health",
-        //   url: "/dashboard",
-        //   icon: BarChart3,
-        // },
+        {
+          title: "Systems Health",
+          url: "/dashboard",
+          icon: BarChart3,
+        },
       ],
     },
     {
@@ -103,11 +103,11 @@ const menuData = {
           url: "/network/protocol/snmp",
           icon: Network,
         },
-        // {
-        //   title: "API Management",
-        //   url: "/api",
-        //   icon: Network,
-        // },
+        {
+          title: "API Management",
+          url: "/api",
+          icon: Network,
+        },
       ],
     },
     {
@@ -162,6 +162,11 @@ const menuData = {
           title: "Scheduled Tasks",
           url: "/control/schedule",
           icon: Activity,
+        },
+        {
+          title: "Payload Remapping",
+          url: "/control/remapping",
+          icon: Settings,
         },
       ],
     },

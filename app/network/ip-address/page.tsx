@@ -649,20 +649,20 @@ Netmask: ${editConfig.netmask}`
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="space-y-3">
                       <div>
-                        <label className="font-medium text-gray-700">
+                        <label className="font-medium text-foreground">
                           IP Address
                         </label>
-                        <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded">
+                        <p className="mt-1 font-mono bg-muted px-2 py-1 rounded text-muted-foreground">
                           {eth0Config?.current_address ||
                             eth0Config?.address ||
                             "Not assigned"}
                         </p>
                       </div>
                       <div>
-                        <label className="font-medium text-gray-700">
+                        <label className="font-medium text-foreground">
                           Gateway
                         </label>
-                        <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded flex items-center">
+                        <p className="mt-1 font-mono bg-muted px-2 py-1 rounded flex items-center text-muted-foreground">
                           <Router className="w-3 h-3 mr-1" />
                           {eth0Config?.gateway || "Not set"}
                         </p>
@@ -670,18 +670,18 @@ Netmask: ${editConfig.netmask}`
                     </div>
                     <div className="space-y-3">
                       <div>
-                        <label className="font-medium text-gray-700">
+                        <label className="font-medium text-foreground">
                           Netmask
                         </label>
-                        <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded">
+                        <p className="mt-1 font-mono bg-muted px-2 py-1 rounded text-muted-foreground">
                           {eth0Config?.netmask || "Not set"}
                         </p>
                       </div>
                       <div>
-                        <label className="font-medium text-gray-700">
+                        <label className="font-medium text-foreground">
                           DNS Servers
                         </label>
-                        <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded flex items-center">
+                        <p className="mt-1 font-mono bg-muted px-2 py-1 rounded flex items-center text-muted-foreground">
                           <Globe className="w-3 h-3 mr-1" />
                           {eth0Config?.["dns-nameservers"] || "Not set"}
                         </p>
@@ -709,12 +709,12 @@ Netmask: ${editConfig.netmask}`
                         </DialogHeader>
                         <div className="space-y-6">
                           {/* Method Toggle */}
-                          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                          <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
                             <div>
-                              <Label className="text-base font-medium">
+                              <Label className="text-base font-medium text-foreground">
                                 Configuration Method
                               </Label>
-                              <p className="text-sm text-gray-600 mt-1">
+                              <p className="text-sm text-muted-foreground mt-1">
                                 {editConfig.method === "static"
                                   ? "Manual IP configuration"
                                   : "Automatic DHCP configuration"}
@@ -866,20 +866,20 @@ Netmask: ${editConfig.netmask}`
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="space-y-3">
                     <div>
-                      <label className="font-medium text-gray-700">
+                      <label className="font-medium text-foreground">
                         IP Address
                       </label>
-                      <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded">
+                      <p className="mt-1 font-mono bg-muted px-2 py-1 rounded text-muted-foreground">
                         {wlan0Config.current_address ||
                           wlan0Config.address ||
                           "Not assigned"}
                       </p>
                     </div>
                     <div>
-                      <label className="font-medium text-gray-700">
+                      <label className="font-medium text-foreground">
                         Connection
                       </label>
-                      <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded flex items-center">
+                      <p className="mt-1 font-mono bg-muted px-2 py-1 rounded flex items-center text-muted-foreground">
                         <Shield className="w-3 h-3 mr-1" />
                         {wlan0Config.connection || "Not connected"}
                       </p>
@@ -887,17 +887,17 @@ Netmask: ${editConfig.netmask}`
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <label className="font-medium text-gray-700">
+                      <label className="font-medium text-foreground">
                         Gateway
                       </label>
-                      <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded flex items-center">
+                      <p className="mt-1 font-mono bg-muted px-2 py-1 rounded flex items-center text-muted-foreground">
                         <Router className="w-3 h-3 mr-1" />
                         {wlan0Config.gateway || "Not set"}
                       </p>
                     </div>
                     <div>
-                      <label className="font-medium text-gray-700">DNS</label>
-                      <p className="mt-1 font-mono bg-gray-50 px-2 py-1 rounded flex items-center">
+                      <label className="font-medium text-foreground">DNS</label>
+                      <p className="mt-1 font-mono bg-muted px-2 py-1 rounded flex items-center text-muted-foreground">
                         <Globe className="w-3 h-3 mr-1" />
                         {wlan0Config["dns-nameservers"] || "Not set"}
                       </p>
@@ -905,8 +905,8 @@ Netmask: ${editConfig.netmask}`
                   </div>
                 </div>
               ) : (
-                <div className="text-center p-8 text-sm text-gray-500">
-                  <Wifi className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                <div className="text-center p-8 text-sm text-muted-foreground">
+                  <Wifi className="w-8 h-8 mx-auto mb-2 text-muted-foreground/60" />
                   <p>
                     WiFi interface (wlan0) is not available or not configured.
                   </p>

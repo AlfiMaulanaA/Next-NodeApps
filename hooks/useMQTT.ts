@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { connectMQTT, getMQTTClient, getConnectionState, isClientConnected } from "@/lib/mqttClient";
+import {
+  connectMQTT,
+  getMQTTClient,
+  getConnectionState,
+  isClientConnected,
+} from "@/lib/mqttClient";
 import type { MqttClient } from "mqtt";
 
 interface UseMQTTOptions {
@@ -12,23 +17,29 @@ interface UseMQTTOptions {
 
 export function useMQTT(options: UseMQTTOptions = {}) {
   const { topics = [], autoSubscribe = true, enableLogging = false } = options;
-  
-  const [connectionStatus, setConnectionStatus] = useState<string>("Disconnected");
+
+  const [connectionStatus, setConnectionStatus] =
+    useState<string>("Disconnected");
   const [isOnline, setIsOnline] = useState(false);
   const clientRef = useRef<MqttClient | null>(null);
   const subscribedTopicsRef = useRef<Set<string>>(new Set());
-  const messageHandlersRef = useRef<Map<string, (topic: string, message: Buffer) => void>>(new Map());
+  const messageHandlersRef = useRef<
+    Map<string, (topic: string, message: Buffer) => void>
+  >(new Map());
 
   // Throttled logging
-  const log = useCallback((message: string, type: "log" | "error" = "log") => {
-    if (enableLogging) {
-      if (type === "error") {
-        console.error(`[MQTT Hook] ${message}`);
-      } else {
-        console.log(`[MQTT Hook] ${message}`);
+  const log = useCallback(
+    (message: string, type: "log" | "error" = "log") => {
+      if (enableLogging) {
+        if (type === "error") {
+          // console.error(`[MQTT Hook] ${message}`);
+        } else {
+          // console.log(`[MQTT Hook] ${message}`);
+        }
       }
-    }
-  }, [enableLogging]);
+    },
+    [enableLogging]
+  );
 
   // Initialize MQTT connection
   useEffect(() => {
@@ -39,7 +50,6 @@ export function useMQTT(options: UseMQTTOptions = {}) {
       const handleConnect = () => {
         setConnectionStatus("Connected");
         setIsOnline(true);
-        log("Connected to MQTT broker");
 
         // Auto-subscribe to topics if enabled
         if (autoSubscribe && topics.length > 0) {
@@ -50,26 +60,22 @@ export function useMQTT(options: UseMQTTOptions = {}) {
       const handleError = (err: Error) => {
         setConnectionStatus(`Error: ${err.message}`);
         setIsOnline(false);
-        log(`MQTT Error: ${err.message}`, "error");
       };
 
       const handleClose = () => {
         setConnectionStatus("Disconnected");
         setIsOnline(false);
         subscribedTopicsRef.current.clear();
-        log("Connection closed");
       };
 
       const handleOffline = () => {
         setConnectionStatus("Offline");
         setIsOnline(false);
-        log("Client offline");
       };
 
       const handleReconnect = () => {
         setConnectionStatus("Reconnecting");
         setIsOnline(false);
-        log("Reconnecting...");
       };
 
       // Set up event listeners
@@ -93,7 +99,7 @@ export function useMQTT(options: UseMQTTOptions = {}) {
         client.off("reconnect", handleReconnect);
 
         // Unsubscribe from topics
-        Array.from(subscribedTopicsRef.current).forEach(topic => {
+        Array.from(subscribedTopicsRef.current).forEach((topic) => {
           unsubscribeFromTopic(topic);
         });
       };
@@ -104,86 +110,103 @@ export function useMQTT(options: UseMQTTOptions = {}) {
   }, [topics, autoSubscribe, log]);
 
   // Subscribe to topics
-  const subscribeToTopics = useCallback((topicList: string[]) => {
-    const client = clientRef.current;
-    if (!client || !client.connected) {
-      log("Cannot subscribe: client not connected", "error");
-      return;
-    }
+  const subscribeToTopics = useCallback(
+    (topicList: string[]) => {
+      const client = clientRef.current;
+      if (!client || !client.connected) {
+        log("Cannot subscribe: client not connected", "error");
+        return;
+      }
 
-    topicList.forEach(topic => {
-      if (!subscribedTopicsRef.current.has(topic)) {
-        client.subscribe(topic, (err) => {
+      topicList.forEach((topic) => {
+        if (!subscribedTopicsRef.current.has(topic)) {
+          client.subscribe(topic, (err) => {
+            if (err) {
+              log(`Failed to subscribe to ${topic}: ${err.message}`, "error");
+            } else {
+              subscribedTopicsRef.current.add(topic);
+              log(`Subscribed to ${topic}`);
+            }
+          });
+        }
+      });
+    },
+    [log]
+  );
+
+  // Unsubscribe from topic
+  const unsubscribeFromTopic = useCallback(
+    (topic: string) => {
+      const client = clientRef.current;
+      if (client && subscribedTopicsRef.current.has(topic)) {
+        client.unsubscribe(topic, (err) => {
           if (err) {
-            log(`Failed to subscribe to ${topic}: ${err.message}`, "error");
+            log(`Failed to unsubscribe from ${topic}: ${err.message}`, "error");
           } else {
-            subscribedTopicsRef.current.add(topic);
-            log(`Subscribed to ${topic}`);
+            subscribedTopicsRef.current.delete(topic);
+            messageHandlersRef.current.delete(topic);
+            log(`Unsubscribed from ${topic}`);
           }
         });
       }
-    });
-  }, [log]);
-
-  // Unsubscribe from topic
-  const unsubscribeFromTopic = useCallback((topic: string) => {
-    const client = clientRef.current;
-    if (client && subscribedTopicsRef.current.has(topic)) {
-      client.unsubscribe(topic, (err) => {
-        if (err) {
-          log(`Failed to unsubscribe from ${topic}: ${err.message}`, "error");
-        } else {
-          subscribedTopicsRef.current.delete(topic);
-          messageHandlersRef.current.delete(topic);
-          log(`Unsubscribed from ${topic}`);
-        }
-      });
-    }
-  }, [log]);
+    },
+    [log]
+  );
 
   // Add message handler for specific topic
-  const addMessageHandler = useCallback((topic: string, handler: (topic: string, message: Buffer) => void) => {
-    messageHandlersRef.current.set(topic, handler);
-    
-    const client = clientRef.current;
-    if (client) {
-      // Remove existing handler if any
-      const existingHandler = messageHandlersRef.current.get(topic);
-      if (existingHandler) {
-        client.off("message", existingHandler);
-      }
+  const addMessageHandler = useCallback(
+    (topic: string, handler: (topic: string, message: Buffer) => void) => {
+      messageHandlersRef.current.set(topic, handler);
 
-      // Add new handler
-      const wrappedHandler = (receivedTopic: string, message: Buffer) => {
-        if (receivedTopic === topic) {
-          handler(receivedTopic, message);
+      const client = clientRef.current;
+      if (client) {
+        // Remove existing handler if any
+        const existingHandler = messageHandlersRef.current.get(topic);
+        if (existingHandler) {
+          client.off("message", existingHandler);
         }
-      };
 
-      client.on("message", wrappedHandler);
-    }
-  }, []);
+        // Add new handler
+        const wrappedHandler = (receivedTopic: string, message: Buffer) => {
+          if (receivedTopic === topic) {
+            handler(receivedTopic, message);
+          }
+        };
+
+        client.on("message", wrappedHandler);
+      }
+    },
+    []
+  );
 
   // Publish message
-  const publishMessage = useCallback((topic: string, message: string | object, options: { qos?: 0 | 1 | 2; retain?: boolean } = {}) => {
-    const client = clientRef.current;
-    if (!client || !client.connected) {
-      log("Cannot publish: client not connected", "error");
-      return false;
-    }
-
-    const payload = typeof message === "string" ? message : JSON.stringify(message);
-    
-    client.publish(topic, payload, options, (err) => {
-      if (err) {
-        log(`Failed to publish to ${topic}: ${err.message}`, "error");
-      } else {
-        log(`Published to ${topic}`);
+  const publishMessage = useCallback(
+    (
+      topic: string,
+      message: string | object,
+      options: { qos?: 0 | 1 | 2; retain?: boolean } = {}
+    ) => {
+      const client = clientRef.current;
+      if (!client || !client.connected) {
+        log("Cannot publish: client not connected", "error");
+        return false;
       }
-    });
 
-    return true;
-  }, [log]);
+      const payload =
+        typeof message === "string" ? message : JSON.stringify(message);
+
+      client.publish(topic, payload, options, (err) => {
+        if (err) {
+          log(`Failed to publish to ${topic}: ${err.message}`, "error");
+        } else {
+          log(`Published to ${topic}`);
+        }
+      });
+
+      return true;
+    },
+    [log]
+  );
 
   return {
     client: clientRef.current,
@@ -194,6 +217,6 @@ export function useMQTT(options: UseMQTTOptions = {}) {
     unsubscribeFromTopic,
     addMessageHandler,
     publishMessage,
-    subscribedTopics: Array.from(subscribedTopicsRef.current)
+    subscribedTopics: Array.from(subscribedTopicsRef.current),
   };
 }

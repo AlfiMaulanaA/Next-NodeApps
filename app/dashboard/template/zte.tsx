@@ -133,7 +133,7 @@ export default function OverviewDashboard() {
               <div className="flex justify-between items-center mt-1">
             <p className="text-xs text-muted-foreground">All registered devices</p>
             {noDeviceRegistered && ( // Menggunakan variabel yang sudah didefinisikan
-                <div className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-medium border border-blue-300">
+                <div className="px-2 py-0.5 rounded-full badge-info text-xs font-medium border">
                   No devices registered
                 </div>
                 )}
@@ -151,7 +151,7 @@ export default function OverviewDashboard() {
             <div className="flex justify-between items-center mt-1">
               <p className="text-xs text-muted-foreground">Devices currently online</p>
               {allDevicesOnline && (
-                <div className="px-2 py-0.5 rounded-full bg-green-100 text-green-600 text-xs font-medium border border-green-300">
+                <div className="px-2 py-0.5 rounded-full badge-success text-xs font-medium border">
                   All devices are online
                 </div>
               )}
@@ -171,7 +171,7 @@ export default function OverviewDashboard() {
                 
             <p className="text-xs text-muted-foreground">Devices currently offline</p>
             {noDevicesOnline && (
-              <div className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-medium border border-red-300">
+              <div className="px-2 py-0.5 rounded-full badge-error text-xs font-medium border">
                 All devices are offline
               </div>
             )}
@@ -213,7 +213,7 @@ export default function OverviewDashboard() {
                             </div>
                             <div className="text-xs">Topic: {d.profile?.topic}</div>
                           </div>
-                          <span className={`text-xs font-semibold ml-2 ${statusSummary[d.profile?.name]?.includes("success") ? "text-green-600 bg-green-200" : "text-red-600 bg-red-200"} rounded-full px-2 py-1`}>
+                          <span className={`text-xs font-semibold ml-2 rounded-full px-2 py-1 ${statusSummary[d.profile?.name]?.includes("success") ? "status-online" : "status-offline"}`}>
                             {statusSummary[d.profile?.name]?.includes("success") ? "Online" : "Offline"}
                           </span>
                         </div>

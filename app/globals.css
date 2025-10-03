@@ -184,3 +184,71 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Custom dark-mode compatible badge classes */
+@layer components {
+  /* Success/Online State */
+  .badge-success {
+    @apply bg-green-100 text-green-800 border-green-300;
+  }
+  .dark .badge-success {
+    @apply bg-green-900/30 text-green-400 border-green-800;
+  }
+
+  /* Error/Offline State */
+  .badge-error {
+    @apply bg-red-100 text-red-800 border-red-300;
+  }
+  .dark .badge-error {
+    @apply bg-red-900/30 text-red-400 border-red-800;
+  }
+
+  /* Info/Neutral State */
+  .badge-info {
+    @apply bg-blue-100 text-blue-800 border-blue-300;
+  }
+  .dark .badge-info {
+    @apply bg-blue-900/30 text-blue-400 border-blue-800;
+  }
+
+  /* Data badge */
+  .badge-data {
+    @apply bg-muted text-muted-foreground border-border;
+  }
+
+  /* Status online large badge */
+  .status-online {
+    @apply text-green-700 bg-green-200/80;
+  }
+  .dark .status-online {
+    @apply text-green-300 bg-green-900/50;
+  }
+
+  /* Status offline large badge */
+  .status-offline {
+    @apply text-red-700 bg-red-200/80;
+  }
+  .dark .status-offline {
+    @apply text-red-300 bg-red-900/50;
+  }
+
+  /* Content text that should be readable in both themes */
+  .text-content {
+    @apply text-foreground;
+  }
+
+  /* MQTT data text */
+  .text-mqtt-data {
+    @apply text-foreground;
+  }
+
+  /* Data key labels */
+  .text-data-key {
+    @apply text-foreground font-medium;
+  }
+
+  /* Data values */
+  .text-data-value {
+    @apply text-muted-foreground;
+  }
+}

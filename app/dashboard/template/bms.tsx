@@ -188,7 +188,7 @@ export default function OverviewDashboard() {
                   All registered devices
                 </p>
                 {noModbusRegistered && noI2cRegistered && (
-                  <div className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-medium border border-blue-300">
+                  <div className="px-2 py-0.5 rounded-full badge-info text-xs font-medium border">
                     No devices registered
                   </div>
                 )}
@@ -216,7 +216,7 @@ export default function OverviewDashboard() {
                   totalModbusDevices > 0 &&
                   allI2cOnline &&
                   totalI2cDevices > 0 && ( // Check if both types are all online
-                    <div className="px-2 py-0.5 rounded-full bg-green-100 text-green-600 text-xs font-medium border border-green-300">
+                    <div className="px-2 py-0.5 rounded-full badge-success text-xs font-medium border">
                       All devices are online
                     </div>
                   )}
@@ -244,7 +244,7 @@ export default function OverviewDashboard() {
                   totalModbusDevices > 0 &&
                   noI2cOnline &&
                   totalI2cDevices > 0 && ( // Check if both types are all offline
-                    <div className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-medium border border-red-300">
+                    <div className="px-2 py-0.5 rounded-full badge-error text-xs font-medium border">
                       All devices are offline
                     </div>
                   )}
@@ -294,13 +294,13 @@ export default function OverviewDashboard() {
                             </div>
                           </div>
                           <span
-                            className={`text-xs font-semibold ml-2 ${
+                            className={`text-xs font-semibold ml-2 rounded-full px-2 py-1 ${
                               statusSummary[d.profile?.name]?.includes(
                                 "success"
                               )
-                                ? "text-green-600 bg-green-200"
-                                : "text-red-600 bg-red-200"
-                            } rounded-full px-2 py-1`}
+                                ? "status-online"
+                                : "status-offline"
+                            }`}
                           >
                             {statusSummary[d.profile?.name]?.includes("success")
                               ? "Online"
@@ -354,13 +354,13 @@ export default function OverviewDashboard() {
                           {/* Assuming statusSummary might also contain I2C device status,
                               or you'd need a separate mechanism for I2C status. */}
                           <span
-                            className={`text-xs font-semibold ml-2 ${
+                            className={`text-xs font-semibold ml-2 rounded-full px-2 py-1 ${
                               statusSummary[d.profile?.name]?.includes(
                                 "success"
                               )
-                                ? "text-green-600 bg-green-200"
-                                : "text-red-600 bg-red-200"
-                            } rounded-full px-2 py-1`}
+                                ? "status-online"
+                                : "status-offline"
+                            }`}
                           >
                             {statusSummary[d.profile?.name]?.includes("success")
                               ? "Online"

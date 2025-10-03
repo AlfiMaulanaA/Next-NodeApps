@@ -33,13 +33,32 @@ export default function OverviewDashboard() {
   const [deviceTopicData, setDeviceTopicData] = useState<Record<string, any>>(
     {}
   );
+  // State untuk menyimpan status device (online/offline)
+  const [deviceStatus, setDeviceStatus] = useState<Record<string, string>>({});
+
+  // Function to parse status message and extract device name and status
+  const parseStatusMessage = (statusMessage: string): { deviceName: string; isSuccess: boolean } | null => {
+    // Format: "SeedStudio_PH_1 data acquisition failed" atau "RELAY data acquisition success"
+    const regex = /^(.+?)\s+data acquisition\s+(success|failed)/i;
+    const match = statusMessage.match(regex);
+
+    if (match) {
+      const deviceName = match[1].trim();
+      const status = match[2].toLowerCase();
+      return {
+        deviceName,
+        isSuccess: status === 'success'
+      };
+    }
+    return null;
+  };
 
   // Function to render dynamic JSON data with badges for each key-value pair
   const renderDynamicJSON = (data: any): JSX.Element => {
     if (data === null || data === undefined) {
       return (
         <div className="flex flex-wrap gap-1">
-          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-600 border">
+          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs badge-data border">
             null
           </span>
         </div>
@@ -50,10 +69,10 @@ export default function OverviewDashboard() {
       return (
         <div className="flex flex-wrap gap-1">
           <span
-            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${
               data
-                ? "bg-green-100 text-green-800 border border-green-300"
-                : "bg-red-100 text-red-800 border border-red-300"
+                ? "badge-success"
+                : "badge-error"
             }`}
           >
             {data.toString()}
@@ -65,7 +84,7 @@ export default function OverviewDashboard() {
     if (typeof data === "number") {
       return (
         <div className="flex flex-wrap gap-1">
-          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800 border border-gray-300">
+          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs badge-data border">
             {data}
           </span>
         </div>
@@ -75,7 +94,7 @@ export default function OverviewDashboard() {
     if (typeof data === "string") {
       return (
         <div className="flex flex-wrap gap-1">
-          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800 border border-gray-300">
+          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs badge-data border">
             {data}
           </span>
         </div>
@@ -86,7 +105,7 @@ export default function OverviewDashboard() {
       if (data.length === 0) {
         return (
           <div className="flex flex-wrap gap-1">
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-600 border">
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs badge-data border">
               Empty Array
             </span>
           </div>
@@ -114,7 +133,7 @@ export default function OverviewDashboard() {
       if (entries.length === 0) {
         return (
           <div className="flex flex-wrap gap-1">
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-600 border">
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs badge-data border">
               Empty Object
             </span>
           </div>
@@ -129,7 +148,7 @@ export default function OverviewDashboard() {
                 className="flex items-center gap-2 p-1.5 bg-card border rounded"
               >
                 <div
-                  className="text-xs font-medium text-gray-800 truncate flex-shrink-0"
+                  className="text-xs text-data-key truncate flex-shrink-0"
                   title={key}
                 >
                   {key}:
@@ -146,7 +165,7 @@ export default function OverviewDashboard() {
 
     return (
       <div className="flex flex-wrap gap-1">
-        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-600 border">
+        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs badge-data border">
           {String(data)}
         </span>
       </div>
@@ -198,6 +217,30 @@ export default function OverviewDashboard() {
               }
             });
           }
+        } else if (topic === "modbus_snmp_summ") {
+          // Handle Modbus/SNMP status summary
+          const statusMessage = payload["MODBUS SNMP STATUS"];
+          if (typeof statusMessage === "string") {
+            const parsed = parseStatusMessage(statusMessage);
+            if (parsed) {
+              setDeviceStatus((prev) => ({
+                ...prev,
+                [parsed.deviceName]: parsed.isSuccess ? "online" : "offline"
+              }));
+            }
+          }
+        } else if (topic === "modular_i2c_summ") {
+          // Handle Modular I2C status summary
+          const statusMessage = payload["MODULAR I2C STATUS"];
+          if (typeof statusMessage === "string") {
+            const parsed = parseStatusMessage(statusMessage);
+            if (parsed) {
+              setDeviceStatus((prev) => ({
+                ...prev,
+                [parsed.deviceName]: parsed.isSuccess ? "online" : "offline"
+              }));
+            }
+          }
         } else {
           setDeviceTopicData((prev) => ({ ...prev, [topic]: payload }));
         }
@@ -207,8 +250,13 @@ export default function OverviewDashboard() {
     };
 
     client.on("message", handleMessage);
-    // Subscribe to both Modbus and I2C response topics
-    const baseTopics = ["response_device_modbus", "response_device_i2c"];
+    // Subscribe to device response topics and status summary topics
+    const baseTopics = [
+      "response_device_modbus",
+      "response_device_i2c",
+      "modbus_snmp_summ",
+      "modular_i2c_summ"
+    ];
     baseTopics.forEach((t) => client.subscribe(t));
 
     // Request data for both types of devices
@@ -228,12 +276,39 @@ export default function OverviewDashboard() {
     };
   }, []);
 
+  // Calculate device statistics
   const totalModbusDevices = modbusDevices.length;
   const noModbusRegistered = totalModbusDevices === 0;
 
-  // New stats for I2C devices
   const totalI2cDevices = i2cDevices.length;
   const noI2cRegistered = totalI2cDevices === 0;
+
+  // Count online/offline devices
+  const countDeviceStatus = () => {
+    let online = 0;
+    let offline = 0;
+
+    // Count Modbus devices
+    modbusDevices.forEach((d) => {
+      const status = deviceStatus[d.profile?.name];
+      if (status === "online") online++;
+      else if (status === "offline") offline++;
+    });
+
+    // Count I2C devices
+    i2cDevices.forEach((d) => {
+      const status = deviceStatus[d.profile?.name];
+      if (status === "online") online++;
+      else if (status === "offline") offline++;
+    });
+
+    return { online, offline };
+  };
+
+  const { online: totalOnline, offline: totalOffline } = countDeviceStatus();
+  const totalDevices = totalModbusDevices + totalI2cDevices;
+  const allDevicesOnline = totalDevices > 0 && totalOnline === totalDevices;
+  const noDevicesOnline = totalDevices > 0 && totalOnline === 0;
 
   const appName = process.env.NEXT_PUBLIC_APP_NAME || "MQTT Gateway Dashboard";
 
@@ -273,7 +348,7 @@ export default function OverviewDashboard() {
                   All registered devices
                 </p>
                 {noModbusRegistered && noI2cRegistered ? (
-                  <div className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-medium border border-blue-300">
+                  <div className="px-2 py-0.5 rounded-full badge-info text-xs font-medium border">
                     No devices registered
                   </div>
                 ) : null}
@@ -281,36 +356,48 @@ export default function OverviewDashboard() {
             </CardContent>
           </Card>
 
-          {/* Card for Modbus Devices */}
+          {/* Card for Online Devices */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
-                Modbus/SNMP Devices
+                Online Devices
               </CardTitle>
-              <Link className="h-5 w-5 text-blue-500" />
+              <Wifi className="h-5 w-5 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalModbusDevices}</div>
+              <div className="text-2xl font-bold">{totalOnline}</div>
               <div className="flex justify-between items-center mt-1">
                 <p className="text-xs text-muted-foreground">
-                  Registered Modbus/SNMP devices
+                  Devices currently online
                 </p>
+                {allDevicesOnline && (
+                  <div className="px-2 py-0.5 rounded-full badge-success text-xs font-medium border">
+                    All devices are online
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
 
-          {/* Card for I2C Devices */}
+          {/* Card for Offline Devices */}
           <Card className="shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">I2C Devices</CardTitle>
-              <Microchip className="h-5 w-5 text-purple-500" />
+              <CardTitle className="text-sm font-medium">
+                Offline Devices
+              </CardTitle>
+              <WifiOff className="h-5 w-5 text-red-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalI2cDevices}</div>
+              <div className="text-2xl font-bold">{totalOffline}</div>
               <div className="flex justify-between items-center mt-1">
                 <p className="text-xs text-muted-foreground">
-                  Registered I2C devices
+                  Devices currently offline
                 </p>
+                {noDevicesOnline && totalDevices > 0 && (
+                  <div className="px-2 py-0.5 rounded-full badge-error text-xs font-medium border">
+                    All devices are offline
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -356,7 +443,20 @@ export default function OverviewDashboard() {
                               Topic: {d.profile?.topic}
                             </div>
                           </div>
-                          {/* Status display removed as requested */}
+                          {/* Status badge based on MQTT status summary */}
+                          {deviceStatus[d.profile?.name] && (
+                            <span
+                              className={`text-xs font-semibold ml-2 rounded-full px-2 py-1 ${
+                                deviceStatus[d.profile?.name] === "online"
+                                  ? "status-online"
+                                  : "status-offline"
+                              }`}
+                            >
+                              {deviceStatus[d.profile?.name] === "online"
+                                ? "Online"
+                                : "Offline"}
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs mt-1">
                           <span className="font-semibold">Live Data:</span>
@@ -434,7 +534,20 @@ export default function OverviewDashboard() {
                               Topic: {d.profile?.topic}
                             </div>
                           </div>
-                          {/* Status display removed as requested */}
+                          {/* Status badge based on MQTT status summary */}
+                          {deviceStatus[d.profile?.name] && (
+                            <span
+                              className={`text-xs font-semibold ml-2 rounded-full px-2 py-1 ${
+                                deviceStatus[d.profile?.name] === "online"
+                                  ? "status-online"
+                                  : "status-offline"
+                              }`}
+                            >
+                              {deviceStatus[d.profile?.name] === "online"
+                                ? "Online"
+                                : "Offline"}
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs mt-1">
                           <span className="font-semibold">Live Data:</span>

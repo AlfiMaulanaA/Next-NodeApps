@@ -8,6 +8,7 @@
 #   sudo ./deploy.sh           - Standard deployment (ports 3000, 5000)
 #   sudo ./deploy.sh -p        - Production deployment with port 80 access
 #   sudo ./deploy.sh --production - Production deployment with port 80 access
+#   sudo ./deploy.sh --port-8080  - Production deployment with port 8080 access
 #   sudo ./deploy.sh update-prod  - Pull latest changes and redeploy in production mode
 
 set -e # Exit on any error
@@ -581,7 +582,211 @@ show_partial_status() {
 
 
 
-# Function to create enhanced Nginx configuration
+# Function to create Nginx configuration for port 8080
+create_nginx_8080_config() {
+    log "Creating Nginx configuration for port 8080..."
+
+    # Use the nginx.conf file in the project root if it exists
+    if [ -f "nginx.conf" ]; then
+        log "Using nginx.conf from project root..."
+        sudo cp nginx.conf /etc/nginx/sites-available/newcontainment-8080.conf
+    else
+        log "Creating nginx configuration for port 8080..."
+        sudo tee /etc/nginx/sites-available/newcontainment-8080.conf > /dev/null << 'EOF'
+# Upstream backend server
+upstream newcontainment_backend {
+    server localhost:5000;
+}
+
+# Upstream frontend server
+upstream newcontainment_frontend {
+    server localhost:3000;
+}
+
+# NewContainment Production Nginx Configuration - Port 8080
+server {
+    listen 8080;
+    listen [::]:8080;
+    server_name _;
+
+    # Security headers
+    add_header X-Frame-Options DENY always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-Permitted-Cross-Domain-Policies none always;
+
+    # Remove server signature
+    server_tokens off;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_comp_level 6;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/json
+        application/javascript
+        application/xml+rss
+        application/atom+xml
+        image/svg+xml;
+
+    # Rate limiting for API endpoints
+    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+    limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+
+    # API endpoints - redirect to backend
+    location /api/ {
+        # Apply rate limiting
+        limit_req zone=api burst=20 nodelay;
+
+        proxy_pass http://newcontainment_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+
+        # Backend specific timeouts
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+
+    # WebSocket support for MQTT and real-time features
+    location /ws/ {
+        proxy_pass http://newcontainment_backend/ws/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket specific timeouts
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+
+    # MQTT broker proxy (if needed)
+    location /mqtt/ {
+        proxy_pass http://localhost:1883/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Static assets with caching
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        proxy_pass http://newcontainment_frontend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Cache static assets for 1 month
+        expires 1M;
+        add_header Cache-Control "public, immutable";
+        add_header X-Cache-Status "HIT-STATIC";
+    }
+
+    # Frontend proxy for all other requests
+    location / {
+        proxy_pass http://newcontainment_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+
+        # Frontend specific timeouts
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 10s;
+        proxy_read_timeout 10s;
+    }
+
+    # Health check endpoint
+    location /health {
+        access_log off;
+        return 200 '{"status":"healthy","timestamp":"$time_iso8601","server":"nginx","port":8080}';
+        add_header Content-Type application/json;
+    }
+
+    # Production status endpoint
+    location /status {
+        access_log off;
+        return 200 '{"application":"NewContainment IoT","version":"1.0.0","environment":"production","port":8080}';
+        add_header Content-Type application/json;
+    }
+
+    # Nginx status for monitoring (restrict to localhost)
+    location /nginx_status {
+        stub_status on;
+        access_log off;
+        allow 127.0.0.1;
+        allow ::1;
+        deny all;
+    }
+
+    # Block common attack patterns
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    location ~* /(wp-admin|admin|phpmyadmin|wp-login|xmlrpc) {
+        deny all;
+        access_log off;
+        log_not_found off;
+        return 444;
+    }
+
+    # Custom error pages
+    error_page 404 /404.html;
+    error_page 500 502 503 504 /50x.html;
+
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
+EOF
+    fi
+
+    # Enable the site
+    sudo ln -sf /etc/nginx/sites-available/newcontainment-8080.conf /etc/nginx/sites-enabled/
+
+    # Remove default nginx site if it exists to avoid conflicts
+    sudo rm -f /etc/nginx/sites-enabled/default
+
+    # Test nginx configuration
+    log "Testing nginx configuration..."
+    if sudo nginx -t; then
+        log_success "Nginx configuration test passed"
+    else
+        log_error "Nginx configuration test failed"
+        return 1
+    fi
+
+    log_success "Nginx configuration for port 8080 created and enabled"
+}
+
+# Function to create enhanced Nginx configuration for legacy port 80
 create_nginx_config() {
     log "Creating Nginx directory..."
     mkdir -p "$NGINX_DIR"
@@ -840,6 +1045,131 @@ show_production_status() {
     log_success "🎉 Production deployment completed successfully!"
 }
 
+# Function to setup production environment for port 8080
+setup_production_env_8080() {
+    log "=== Setting Up Production Environment for Port 8080 ==="
+
+    # Install nginx if not present
+    if ! command_exists nginx; then
+        log "Installing Nginx..."
+        sudo apt-get update
+        if sudo apt-get install -y nginx; then
+            log_success "Nginx installed successfully"
+        else
+            log_error "Nginx installation failed"
+            return 1
+        fi
+    fi
+
+    # Create nginx configuration for port 8080
+    if create_nginx_8080_config; then
+        log_success "Nginx configuration for port 8080 created"
+    else
+        log_error "Failed to create nginx configuration for port 8080"
+        return 1
+    fi
+
+    # Restart nginx
+    log "Restarting Nginx..."
+    if sudo systemctl restart nginx; then
+        log_success "Nginx restarted successfully"
+    else
+        log_error "Nginx restart failed"
+        return 1
+    fi
+
+    # Wait for nginx to start
+    sleep 3
+
+    # Test nginx configuration
+    if curl -s http://localhost:8080/health >/dev/null 2>&1; then
+        log_success "Port 8080 is responding"
+    else
+        log_warning "Port 8080 health check failed"
+    fi
+
+    cd "$FRONTEND_DIR"
+
+    # Update CORS to include current server
+    local server_ip=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "localhost")
+    log "Server IP detected: $server_ip"
+
+    # Setup production environment for frontend
+    if [ -f ".env.production" ]; then
+        log "Using production environment configuration"
+        cp .env.production .env.local
+    else
+        log_warning "No .env.production found, using current .env"
+    fi
+
+    log_success "Production environment for port 8080 configured"
+    cd "$PROJECT_ROOT"
+}
+
+# Function to show production status for port 8080
+show_production_status_8080() {
+    log "=== 🚀 Port 8080 Production Deployment Status ==="
+
+    echo ""
+    log "Service Status:"
+
+    if pm2 list 2>/dev/null | grep -q newcontainment-frontend; then
+        echo "  Frontend PM2: $(pm2 list | grep newcontainment-frontend | awk '{print $18}' | head -1)"
+    else
+        echo "  Frontend PM2: not running"
+    fi
+
+    echo "  Nginx: $(sudo systemctl is-active nginx 2>/dev/null || echo 'unknown')"
+
+    echo ""
+    log "🌐 Access URLs:"
+    local server_ip=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "localhost")
+    echo "  🎯 Main Application: http://$server_ip:8080"
+    echo "  🏠 Local Access: http://localhost:8080"
+    echo "  ❤️ Health Check: http://$server_ip:8080/health"
+    echo "  📊 Status Check: http://$server_ip:8080/status"
+
+    echo ""
+    log "🔧 Direct Service Access:"
+    echo "  Frontend (Next.js): http://$server_ip:3000"
+    echo "  Backend (if available): http://$server_ip:5000"
+
+    echo ""
+    log "📊 Port Status:"
+    local ports_output
+    if ports_output=$((netstat -tuln 2>/dev/null || ss -tuln 2>/dev/null) | grep -E ":(8080|3000|5000)"); then
+        echo "$ports_output" | sed 's/^/  /'
+    else
+        echo "  No port information available"
+    fi
+
+    echo ""
+    log "📋 Log Commands:"
+    echo "  📄 Frontend logs: pm2 logs newcontainment-frontend"
+    echo "  🌐 Nginx logs: sudo tail -f /var/log/nginx/access.log"
+    echo "  ⚠️ Nginx errors: sudo tail -f /var/log/nginx/error.log"
+
+    echo ""
+    log "🛠️ Management Commands:"
+    echo "  🔄 Restart frontend: pm2 restart newcontainment-frontend"
+    echo "  🔄 Restart nginx: sudo systemctl restart nginx"
+    echo "  🔄 Restart all: pm2 restart newcontainment-frontend && sudo systemctl restart nginx"
+
+    # Check firewall status if available
+    if command_exists ufw; then
+        echo ""
+        log "🔥 Firewall Status:"
+        local ufw_status=$(sudo ufw status 2>/dev/null | grep -E "(Status|8080)" || echo "UFW not configured")
+        echo "$ufw_status" | sed 's/^/  /'
+        if ! echo "$ufw_status" | grep -q "8080"; then
+            log_warning "Port 8080 may not be allowed in firewall. Run: sudo ufw allow 8080"
+        fi
+    fi
+
+    echo ""
+    log_success "🎉 Port 8080 production deployment completed successfully!"
+}
+
 # Main deployment function
 main() {
     log "=== NewContainment Deployment Script ==="
@@ -848,7 +1178,11 @@ main() {
 
     # Check for production mode flag
     local production_mode=false
-    if [[ "$1" == "--production" || "$1" == "-p" ]]; then
+    local port_8080_mode=false
+    if [[ "$1" == "--port8080" || "$1" == "-8080" ]]; then
+        port_8080_mode=true
+        log "🚀 Port 8080 production mode enabled - will setup port 8080 access"
+    elif [[ "$1" == "--production" || "$1" == "-p" ]]; then
         production_mode=true
         log "🚀 Production mode enabled - will setup port 80 access"
     fi
@@ -920,16 +1254,28 @@ main() {
         # Setup production configurations
         setup_production_env
 
-
         # Restart frontend with new configs
         log "Restarting frontend for production setup..."
         if [ "$frontend_deployed" = true ] && pm2 list | grep -q newcontainment-frontend; then
             pm2 restart newcontainment-frontend || true
         fi
 
-        # Verify port 80 access
         # Show production-specific status
-        show_partial_status
+        show_production_status
+    elif [ "$port_8080_mode" = true ]; then
+        log "🚀 Setting up port 8080 production environment..."
+
+        # Setup production configurations for port 8080
+        setup_production_env_8080
+
+        # Restart frontend with new configs
+        log "Restarting frontend for port 8080 production setup..."
+        if [ "$frontend_deployed" = true ] && pm2 list | grep -q newcontainment-frontend; then
+            pm2 restart newcontainment-frontend || true
+        fi
+
+        # Show production-specific status for port 8080
+        show_production_status_8080
     else
         # Step 4: Show frontend-only status
         show_partial_status

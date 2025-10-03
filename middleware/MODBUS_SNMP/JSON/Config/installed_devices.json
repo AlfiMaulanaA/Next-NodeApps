@@ -1,23 +1,52 @@
 [
   {
     "profile": {
-      "name": "DPC_SC501",
-      "device_type": "rectifier",
-      "manufacturer": "DPC",
-      "part_number" : "SC501",
-      "topic": "TBGPower/T00Q56/parameters",
-      "interval_publish": 60,
-      "custom_by_customer": true,
-      "customer": "tbig",
-      "custom_payload" : false,
+      "name": "SeedStudio_PH_1",
+      "device_type": "water",
+      "manufacturer": "SeedStudio",
+      "part_number": "S_pH_01",
+      "topic": "limbah/ph1",
+      "interval_publish": 1,
+      "custom_by_customer": false,
+      "customer": "",
+      "custom_payload": false,
       "qos": 1
-      },
-    "protocol_setting" : {
-      "protocol": "SNMP",
-      "port":161,
-      "ip_address" : "192.168.88.100",
-      "snmp_version" : 1,
-      "read_community" : "public"
+    },
+    "protocol_setting": {
+      "protocol": "Modbus RTU",
+      "address": 1,
+      "port": "/dev/ttyUSB0",
+      "baudrate": 9600,
+      "parity": "NONE",
+      "bytesize": 8,
+      "stop_bit": 1,
+      "timeout": 1,
+      "endianness": "Little Endian"
+    }
+  },
+  {
+    "profile": {
+      "name": "SeedStudio_PH_2",
+      "device_type": "water",
+      "manufacturer": "SeedStudio",
+      "part_number": "S_pH_01",
+      "topic": "limbah/ph2",
+      "interval_publish": 1,
+      "custom_payload": false,
+      "custom_by_customer": false,
+      "customer": "",
+      "qos": 1
+    },
+    "protocol_setting": {
+      "protocol": "Modbus RTU",
+      "address": 2,
+      "port": "/dev/ttyUSB0",
+      "baudrate": 9600,
+      "parity": "NONE",
+      "bytesize": 8,
+      "stop_bit": 1,
+      "timeout": 1,
+      "endianness": "Little Endian"
     }
   }
 ]

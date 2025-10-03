@@ -138,11 +138,6 @@ export function MQTTModeProvider({ children }: { children: React.ReactNode }) {
       "response_mqtt_active_config",
       handleActiveConfigResponse
     );
-
-    // Cleanup on unmount
-    return () => {
-      console.log("Cleaning up MQTT active config handler");
-    };
   }, [addMessageHandler, activeConfigPromises]);
 
   // Load saved mode from localStorage and initialize MQTT connection
@@ -160,7 +155,7 @@ export function MQTTModeProvider({ children }: { children: React.ReactNode }) {
     // Initialize MQTT connection after setting the mode
     const initializeMQTT = async () => {
       try {
-        console.log("Initializing MQTT connection on app startup...");
+        // console.log("Initializing MQTT connection on app startup...");
         await connectMQTTAsync();
         console.log("MQTT connection initialized successfully");
       } catch (error) {

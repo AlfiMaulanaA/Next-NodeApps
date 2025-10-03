@@ -12,8 +12,10 @@ export function getAppConfig(): AppConfig {
   let apiBaseUrl: string;
 
   // Check if we have a saved MQTT mode preference
-  const savedMode = typeof window !== "undefined" ?
-    localStorage.getItem("mqtt_connection_mode") : null;
+  const savedMode =
+    typeof window !== "undefined"
+      ? localStorage.getItem("mqtt_connection_mode")
+      : null;
 
   if (savedMode === "database") {
     // For legacy compatibility, return a placeholder URL
@@ -28,15 +30,21 @@ export function getAppConfig(): AppConfig {
   const isProduction = process.env.NODE_ENV === "production";
 
   if (isProduction) {
-    if (typeof window !== "undefined" && window.location.protocol === "https:") {
-      apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "https://localhost:8000";
+    if (
+      typeof window !== "undefined" &&
+      window.location.protocol === "https:"
+    ) {
+      apiBaseUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL || "https://localhost:8000";
     } else if (typeof window !== "undefined") {
       apiBaseUrl = `http://${window.location.hostname}:8000`;
     } else {
-      apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+      apiBaseUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
     }
   } else {
-    apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+    apiBaseUrl =
+      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
   }
 
   // Ensure URLs are defined
