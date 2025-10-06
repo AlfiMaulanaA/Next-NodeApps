@@ -48,8 +48,24 @@ import {
   PaginationPrevious,
   PaginationNext,
 } from "@/components/ui/pagination";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MQTTConnectionBadge from "@/components/mqtt-status";
 import { connectMQTT, disconnectMQTT, getMQTTClient, connectMQTTAsync } from "@/lib/mqttClient";
+import TemplateSelector from "@/components/TemplateSelector";
+import BrokerTemplatesEmbedded from "@/components/BrokerTemplatesEmbedded";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface PayloadField {
   key: string;
@@ -67,6 +83,11 @@ interface DataItem {
   version?: number;
   created_at?: string;
   updated_at?: string;
+  template_id?: string;
+  broker_config?: {
+    template_id: string;
+    overrides?: Record<string, any>;
+  };
 }
 
 interface PayloadFormProps {
@@ -78,6 +99,8 @@ interface PayloadFormProps {
     retain: boolean;
   };
   initialFields: PayloadField[];
+  selectedTemplateId: string;
+  onTemplateChange: (templateId: string) => void;
   onSubmit: (
     meta: {
       topic: string;
@@ -95,6 +118,8 @@ interface PayloadFormProps {
 function PayloadForm({
   initialMeta,
   initialFields,
+  selectedTemplateId,
+  onTemplateChange,
   onSubmit,
   onClose,
   title,
@@ -425,6 +450,15 @@ function PayloadForm({
           </div>
         </div>
 
+        {/* Broker Template Selection */}
+        <div className="space-y-4">
+          <TemplateSelector
+            selectedTemplateId={selectedTemplateId}
+            onTemplateChange={onTemplateChange}
+            disabled={false}
+          />
+        </div>
+
         {/* Data Fields Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -486,6 +520,15 @@ export default function StaticPayloadPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showRealtimeData, setShowRealtimeData] = useState(false);
+  const [lastNotificationTime, setLastNotificationTime] = useState(() => {
+    // Initialize from localStorage to persist across page refreshes
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('mqtt-notification-time');
+      return stored ? parseInt(stored) : 0;
+    }
+    return 0;
+  });
+  const [notificationShown, setNotificationShown] = useState(false);
 
   const [currentFormMeta, setCurrentFormMeta] = useState({
     topic: "",
@@ -498,6 +541,8 @@ export default function StaticPayloadPage() {
   const [currentFormFields, setCurrentFormFields] = useState<PayloadField[]>(
     []
   );
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Real-time clock for timestamps
   useEffect(() => {
@@ -556,30 +601,87 @@ export default function StaticPayloadPage() {
 
         if (topic === "response/data/payload") {
           console.log("🎯 [DEBUG] MQTT Client: Processing response/data/payload");
-          if (Array.isArray(msg)) {
-            console.log(`✅ [DEBUG] MQTT Client: Received array with ${msg.length} items`);
+          console.log("📊 [DEBUG] MQTT Client: Raw message type:", typeof msg);
+          console.log("📊 [DEBUG] MQTT Client: Message keys:", typeof msg === 'object' ? Object.keys(msg) : 'not object');
+
+          // Handle new format: {"templates": [...], "payloads": [...]}
+          if (typeof msg === 'object' && msg !== null && 'payloads' in msg) {
+            const payloads = msg.payloads;
+            if (Array.isArray(payloads)) {
+              console.log(`✅ [DEBUG] MQTT Client: Received new format with ${payloads.length} payload items`);
+              console.log("📊 [DEBUG] MQTT Client: Payload contents:", payloads);
+              setItems(payloads);
+              setStatus("connected");
+
+              // Prevent spam notifications - only show once per session and respect cooldown
+              const now = Date.now();
+              if (!notificationShown && now - lastNotificationTime > 3000) {
+                toast.success(`Received ${payloads.length} payload items from template system.`);
+                setLastNotificationTime(now);
+                setNotificationShown(true);
+                // Persist to localStorage
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('mqtt-notification-time', now.toString());
+                }
+              }
+
+              // Subscribe to actual data topics for real-time updates
+              const topicsToSubscribe = payloads.map((item: DataItem) => item.topic);
+              if (topicsToSubscribe.length > 0) {
+                console.log("📡 [DEBUG] MQTT Client: Subscribing to data topics:", topicsToSubscribe);
+                topicsToSubscribe.forEach((topicItem: string) => {
+                  client.subscribe(topicItem, { qos: 0 }, (err: any) => {
+                    if (err) {
+                      console.error(`❌ [DEBUG] MQTT Client: Failed to subscribe to ${topicItem}:`, err);
+                    } else {
+                      console.log(`✅ [DEBUG] MQTT Client: Successfully subscribed to ${topicItem}`);
+                    }
+                  });
+                });
+              }
+            } else {
+              console.error("❌ [DEBUG] MQTT Client: payloads is not an array:", typeof payloads);
+            }
+          }
+          // Handle legacy format: [...]
+          else if (Array.isArray(msg)) {
+            console.log(`✅ [DEBUG] MQTT Client: Received legacy array with ${msg.length} items`);
             console.log("📊 [DEBUG] MQTT Client: Array contents:", msg);
             setItems(msg);
             setStatus("connected");
-            toast.success(`Received ${msg.length} payload items.`);
+
+            // Prevent spam notifications - only show once per session and respect cooldown
+            const now = Date.now();
+            if (!notificationShown && now - lastNotificationTime > 3000) {
+              toast.success(`Received ${msg.length} payload items.`);
+              setLastNotificationTime(now);
+              setNotificationShown(true);
+              // Persist to localStorage
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('mqtt-notification-time', now.toString());
+              }
+            }
 
             // Subscribe to actual data topics for real-time updates
             const topicsToSubscribe = msg.map((item: DataItem) => item.topic);
             if (topicsToSubscribe.length > 0) {
               console.log("📡 [DEBUG] MQTT Client: Subscribing to data topics:", topicsToSubscribe);
-              topicsToSubscribe.forEach((topic: string) => {
-                client.subscribe(topic, { qos: 0 }, (err: any) => {
+              topicsToSubscribe.forEach((topicItem: string) => {
+                client.subscribe(topicItem, { qos: 0 }, (err: any) => {
                   if (err) {
-                    console.error(`❌ [DEBUG] MQTT Client: Failed to subscribe to ${topic}:`, err);
+                    console.error(`❌ [DEBUG] MQTT Client: Failed to subscribe to ${topicItem}:`, err);
                   } else {
-                    console.log(`✅ [DEBUG] MQTT Client: Successfully subscribed to ${topic} (will receive retained messages)`);
+                    console.log(`✅ [DEBUG] MQTT Client: Successfully subscribed to ${topicItem}`);
                   }
                 });
               });
             }
-          } else {
+          }
+          // Handle unexpected format
+          else {
             console.warn("⚠️ [DEBUG] MQTT Client: Unexpected message format on response/data/payload:", msg);
-            console.warn("⚠️ [DEBUG] MQTT Client: Expected array, got:", typeof msg);
+            console.warn("⚠️ [DEBUG] MQTT Client: Expected array or object with payloads, got:", typeof msg);
+            toast.error("Invalid payload format received from broker.");
           }
         } else if (
           topic === "response/data/write" ||
@@ -717,14 +819,24 @@ export default function StaticPayloadPage() {
       lwt: boolean;
       retain: boolean;
     },
-    parsedFields: { key: string; value: any }[]
+    parsedFields: { key: string; value: any }[],
+    templateId?: string
   ) => {
     const dataToSend = Object.fromEntries(
       parsedFields.map((f) => [f.key, f.value])
     );
-    const success = await send("writeData", { ...meta, data: dataToSend }, "response/data/write");
+
+    // Include template_id if selected
+    const payloadData = {
+      ...meta,
+      data: dataToSend,
+      ...(selectedTemplateId && { template_id: selectedTemplateId })
+    };
+
+    const success = await send("writeData", payloadData, "response/data/write");
     if (success) {
       setCreateOpen(false);
+      setSelectedTemplateId(""); // Reset template selection
 
       // Immediate refresh for better UX
       console.log("🔄 [CREATE] Scheduling immediate data refresh");
@@ -916,480 +1028,637 @@ export default function StaticPayloadPage() {
         </div>
       </header>
 
-      {/* Modern Search Bar */}
+      {/* Tabs Navigation */}
       <div className="border-b bg-muted/30">
-        <div className="container px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search topics, data fields..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            <Button
-              variant={showRealtimeData ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowRealtimeData(!showRealtimeData)}
-              className="gap-2 transition-all duration-200 hover:scale-105"
-              title={showRealtimeData ? "Hide Real-time Data" : "Show Real-time Data"}
-            >
-              <Eye className="h-4 w-4" />
-              {showRealtimeData ? "Hide" : "Show"} Real-time
-            </Button>
-          </div>
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Status Messages */}
-        {responseMessage && (
-          <Alert className="animate-in slide-in-from-top-2 duration-300">
-            <AlertDescription className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              {responseMessage}
-            </AlertDescription>
-          </Alert>
-        )}
+        <div className="container px-4">
+          <Tabs defaultValue="static-payload" className="w-full">
+            <div className="flex items-center justify-between py-3">
+              <TabsList className="grid w-fit grid-cols-3">
+                <TabsTrigger value="static-payload" className="flex items-center gap-2">
+                  <Database className="h-4 w-4" />
+                  Static Payload
+                </TabsTrigger>
+                <TabsTrigger value="realtime-data" className="flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  Real-time Data
+                  {Object.keys(realtimeData).length > 0 && (
+                    <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                      {Object.keys(realtimeData).length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="broker-templates" className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  Broker Templates
+                </TabsTrigger>
+              </TabsList>
 
-        {/* Real-time Data Display */}
-        {showRealtimeData && Object.keys(realtimeData).length > 0 && (
-          <Card className="animate-in fade-in-50 duration-500">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-green-500" />
-                  <CardTitle className="text-lg">Real-time MQTT Data</CardTitle>
-                </div>
-                <Badge variant="secondary" className="animate-pulse">
-                  {Object.keys(realtimeData).length} active
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4">
-                {Object.entries(realtimeData).map(([topic, data]: [string, any]) => (
-                  <div key={topic} className="border rounded-lg p-4 bg-gradient-to-r from-muted/30 to-muted/10">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-semibold text-sm flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        {topic}
-                      </h4>
-                      <Badge variant="outline" className="text-xs">
-                        {new Date(data.timestamp).toLocaleTimeString()}
-                      </Badge>
-                    </div>
-                    <div className="bg-muted/50 p-3 rounded-md">
-                      <pre className="text-xs overflow-x-auto whitespace-pre-wrap">
-                        {JSON.stringify(data.data, null, 2)}
-                      </pre>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="relative overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Total Payloads</p>
-                  <p className="text-2xl font-bold tracking-tight">{items.length}</p>
-                </div>
-                <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-primary" />
-                </div>
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary/10"></div>
-            </CardContent>
-          </Card>
-
-          <Card className="relative overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Active</p>
-                  <p className="text-2xl font-bold tracking-tight text-green-600">
-                    {items.filter((item) => item.interval > 0).length}
-                  </p>
-                </div>
-                <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
-                  <Activity className="h-5 w-5 text-green-600" />
-                </div>
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-green-100"></div>
-            </CardContent>
-          </Card>
-
-          <Card className="relative overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Retained</p>
-                  <p className="text-2xl font-bold tracking-tight text-blue-600">
-                    {items.filter((item) => item.retain).length}
-                  </p>
-                </div>
-                <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Target className="h-5 w-5 text-blue-600" />
-                </div>
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-100"></div>
-            </CardContent>
-          </Card>
-
-          <Card className="relative overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">QoS &gt; 0</p>
-                  <p className="text-2xl font-bold tracking-tight text-orange-600">
-                    {items.filter((item) => item.qos > 0).length}
-                  </p>
-                </div>
-                <div className="h-10 w-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <Settings className="h-5 w-5 text-orange-600" />
-                </div>
-              </div>
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-100"></div>
-            </CardContent>
-          </Card>
-        </div>
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5" />
-              Static Payload Data
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-b bg-muted/50">
-                    <TableHead className="w-16 text-center font-semibold">#</TableHead>
-                    <TableHead
-                      onClick={() => handleSort("topic" as keyof DataItem)}
-                      className="cursor-pointer select-none hover:bg-muted/80 transition-colors min-w-[200px]"
+              <div className="flex items-center gap-3">
+                <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={searchOpen}
+                      className="w-[300px] justify-between h-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
                     >
                       <div className="flex items-center gap-2">
-                        Topic
-                        <ArrowUpDown className="h-4 w-4" />
+                        <Search className="h-4 w-4 text-muted-foreground" />
+                        <span className={searchQuery ? "text-foreground" : "text-muted-foreground"}>
+                          {searchQuery || "Search topics, data fields..."}
+                        </span>
                       </div>
-                    </TableHead>
-                    <TableHead className="min-w-[300px]">Data Fields</TableHead>
-                    <TableHead className="min-w-[200px]">Configuration</TableHead>
-                    <TableHead className="w-32 text-center font-semibold">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedData.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-16">
-                        <div className="flex flex-col items-center gap-4">
-                          <div className="h-16 w-16 bg-muted/50 rounded-full flex items-center justify-center">
-                            <FileText className="h-8 w-8 text-muted-foreground" />
-                          </div>
-                          <div className="space-y-2">
-                            <h3 className="text-lg font-semibold">No data found</h3>
-                            <p className="text-muted-foreground max-w-sm">
-                              No payload data received yet. Click refresh to fetch the data.
-                            </p>
-                          </div>
-                          <Button onClick={handleGet} className="mt-2">
-                            <RotateCw className="h-4 w-4 mr-2" />
-                            Get Data
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    paginatedData.map((it, i) => (
-                      <TableRow key={it.topic} className="hover:bg-muted/30 transition-colors">
-                        <TableCell className="text-center font-mono text-sm">
-                          {(currentPage - 1) * pageSize + i + 1}
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="font-medium text-sm">{it.topic}</div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs">
-                                ID: {it.id}
-                              </Badge>
-                              {it.version && (
-                                <Badge variant="secondary" className="text-xs">
-                                  v{it.version}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="max-w-md">
-                            {Object.entries(it.data).length === 0 ? (
-                              <span className="text-sm text-muted-foreground italic">No data fields</span>
-                            ) : (
-                              <div className="border rounded-lg overflow-hidden bg-card/50">
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-xs">
-                                    <thead className="bg-muted/30">
-                                      <tr>
-                                        <th className="px-3 py-2 text-left font-semibold text-muted-foreground border-b">Field</th>
-                                        <th className="px-3 py-2 text-left font-semibold text-muted-foreground border-b">Value</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {Object.entries(it.data).map(([k, v]) => (
-                                        <tr key={k} className="hover:bg-muted/20 transition-colors">
-                                          <td className="px-3 py-2 font-medium text-foreground border-b border-border/50">
-                                            {k}
-                                          </td>
-                                          <td className="px-3 py-2 font-mono text-foreground border-b border-border/50 max-w-[250px] truncate" title={typeof v === "object" ? JSON.stringify(v) : String(v)}>
-                                            {typeof v === "object" ? JSON.stringify(v) : String(v)}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-3">
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              <div>
-                                <span className="text-muted-foreground">Interval:</span>
-                                <div className="font-mono">{it.interval}s</div>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">QoS:</span>
-                                <div className="font-mono">{it.qos}</div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-muted-foreground text-xs">LWT:</span>
-                                <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-all duration-200 ${
-                                  it.lwt
-                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-200'
-                                    : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
-                                }`}>
-                                  <div className={`w-1 h-1 rounded-full ${it.lwt ? 'bg-emerald-500' : 'bg-slate-400'}`}></div>
-                                  <span className="text-xs">{it.lwt ? 'ON' : 'OFF'}</span>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-muted-foreground text-xs">Retain:</span>
-                                <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-all duration-200 ${
-                                  it.retain
-                                    ? 'bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200'
-                                    : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
-                                }`}>
-                                  <div className={`w-1 h-1 rounded-full ${it.retain ? 'bg-blue-500' : 'bg-slate-400'}`}></div>
-                                  <span className="text-xs">{it.retain ? 'ON' : 'OFF'}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-center gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openPreviewModal(it.data)}
-                              className="h-8 w-8 p-0"
-                              title="Preview Data"
+                      <ArrowUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0">
+                    <Command>
+                      <CommandInput
+                        placeholder="Search topics..."
+                        value={searchQuery}
+                        onValueChange={setSearchQuery}
+                      />
+                      <CommandList>
+                        <CommandEmpty>No topics found.</CommandEmpty>
+                        <CommandGroup heading="Available Topics">
+                          {items.map((item) => (
+                            <CommandItem
+                              key={item.topic}
+                              value={item.topic}
+                              onSelect={(currentValue: string) => {
+                                setSearchQuery(currentValue === searchQuery ? "" : currentValue);
+                                setSearchOpen(false);
+                              }}
+                              className="cursor-pointer"
                             >
-                              <Eye className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openUpdateModal(i)}
-                              className="h-8 w-8 p-0"
-                              title="Edit"
+                              <div className="flex items-center gap-2 w-full">
+                                <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0"></div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm truncate">{item.topic}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {Object.keys(item.data).length} fields • QoS {item.qos} • {item.interval}s interval
+                                  </div>
+                                </div>
+                                {item.retain && (
+                                  <Badge variant="outline" className="text-xs ml-auto">
+                                    Retained
+                                  </Badge>
+                                )}
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                        {items.length > 0 && (
+                          <CommandGroup heading="Quick Filters">
+                            <CommandItem
+                              onSelect={() => {
+                                setSearchQuery("retain");
+                                setSearchOpen(false);
+                              }}
+                              className="cursor-pointer"
                             >
-                              <Edit2 className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleDelete(i)}
-                              className="h-8 w-8 p-0"
-                              title="Delete"
+                              <Target className="h-4 w-4 mr-2 text-blue-500" />
+                              Show retained messages only
+                            </CommandItem>
+                            <CommandItem
+                              onSelect={() => {
+                                setSearchQuery("active");
+                                setSearchOpen(false);
+                              }}
+                              className="cursor-pointer"
                             >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                              <Activity className="h-4 w-4 mr-2 text-green-500" />
+                              Show active topics only
+                            </CommandItem>
+                            <CommandItem
+                              onSelect={() => {
+                                setSearchQuery("");
+                                setSearchOpen(false);
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <RotateCw className="h-4 w-4 mr-2 text-muted-foreground" />
+                              Clear search
+                            </CommandItem>
+                          </CommandGroup>
+                        )}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing{" "}
-              {Math.min((currentPage - 1) * pageSize + 1, sorted.length)} to{" "}
-              {Math.min(currentPage * pageSize, sorted.length)} of{" "}
-              {sorted.length} results
-            </p>
-            <Pagination>
-              <PaginationContent>
-                <PaginationPrevious
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className={
-                    currentPage === 1 ? "pointer-events-none opacity-50" : ""
-                  }
-                />
-                {Array.from({ length: totalPages }, (_, idx) => (
-                  <PaginationItem key={idx}>
-                    <PaginationLink
-                      isActive={currentPage === idx + 1}
-                      onClick={() => setCurrentPage(idx + 1)}
-                    >
-                      {idx + 1}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationNext
-                  onClick={() =>
-                    setCurrentPage((p) => Math.min(totalPages, p + 1))
-                  }
-                  className={
-                    currentPage === totalPages
-                      ? "pointer-events-none opacity-50"
-                      : ""
-                  }
-                />
-              </PaginationContent>
-            </Pagination>
-          </div>
-        )}
 
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <PayloadForm
-            title="Create New Data"
-            initialMeta={currentFormMeta}
-            initialFields={currentFormFields}
-            onSubmit={handleCreateSubmit}
-            onClose={() => setCreateOpen(false)}
-          />
-        </Dialog>
+            {/* Tab: Static Payload */}
+            <TabsContent value="static-payload" className="mt-6 space-y-6">
+              {/* Status Messages */}
+              {responseMessage && (
+                <Alert className="animate-in slide-in-from-top-2 duration-300">
+                  <AlertDescription className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    {responseMessage}
+                  </AlertDescription>
+                </Alert>
+              )}
 
-        <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
-          <PayloadForm
-            title="Update Data"
-            initialMeta={currentFormMeta}
-            initialFields={currentFormFields}
-            onSubmit={handleUpdateSubmit}
-            onClose={() => setUpdateOpen(false)}
-          />
-        </Dialog>
+              {/* Statistics Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card className="relative overflow-hidden">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-muted-foreground">Total Payloads</p>
+                        <p className="text-2xl font-bold tracking-tight">{items.length}</p>
+                      </div>
+                      <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <FileText className="h-5 w-5 text-primary" />
+                      </div>
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary/10"></div>
+                  </CardContent>
+                </Card>
 
-        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Preview JSON Payload</DialogTitle>
-            </DialogHeader>
-            <pre
-              className="text-dark p-3 rounded text-xs bg-muted"
-              style={{ fontSize: "0.9rem" }}
-            >
-              {JSON.stringify(previewPayload, null, 2)}
-            </pre>
-          </DialogContent>
-        </Dialog>
+                <Card className="relative overflow-hidden">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-muted-foreground">Active</p>
+                        <p className="text-2xl font-bold tracking-tight text-green-600">
+                          {items.filter((item) => item.interval > 0).length}
+                        </p>
+                      </div>
+                      <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
+                        <Activity className="h-5 w-5 text-green-600" />
+                      </div>
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-green-100"></div>
+                  </CardContent>
+                </Card>
 
-        {/* Delete Confirmation Dialog */}
-        <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader className="space-y-3 pb-4">
-              <DialogTitle className="flex items-center gap-2 text-lg">
-                <Trash2 className="h-5 w-5 text-destructive" />
-                Confirm Delete
-              </DialogTitle>
-              <div className="w-full h-1 bg-gradient-to-r from-destructive/20 to-destructive/5 rounded-full"></div>
-            </DialogHeader>
+                <Card className="relative overflow-hidden">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-muted-foreground">Retained</p>
+                        <p className="text-2xl font-bold tracking-tight text-blue-600">
+                          {items.filter((item) => item.retain).length}
+                        </p>
+                      </div>
+                      <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <Target className="h-5 w-5 text-blue-600" />
+                      </div>
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-100"></div>
+                  </CardContent>
+                </Card>
 
-            <div className="space-y-4">
-              <div className="flex items-start gap-3 p-4 bg-destructive/5 border border-destructive/20 rounded-lg">
-                <div className="flex-shrink-0">
-                  <div className="h-10 w-10 bg-destructive/10 rounded-full flex items-center justify-center">
-                    <Trash2 className="h-5 w-5 text-destructive" />
+                <Card className="relative overflow-hidden">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-muted-foreground">QoS &gt 0</p>
+                        <p className="text-2xl font-bold tracking-tight text-orange-600">
+                          {items.filter((item) => item.qos > 0).length}
+                        </p>
+                      </div>
+                      <div className="h-10 w-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                        <Settings className="h-5 w-5 text-orange-600" />
+                      </div>
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-100"></div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Static Payload Data Table */}
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="h-5 w-5" />
+                    Static Payload Data
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b bg-muted/50">
+                          <TableHead className="w-16 text-center font-semibold">#</TableHead>
+                          <TableHead
+                            onClick={() => handleSort("topic" as keyof DataItem)}
+                            className="cursor-pointer select-none hover:bg-muted/80 transition-colors min-w-[200px]"
+                          >
+                            <div className="flex items-center gap-2">
+                              Topic
+                              <ArrowUpDown className="h-4 w-4" />
+                            </div>
+                          </TableHead>
+                          <TableHead className="min-w-[300px]">Data Fields</TableHead>
+                          <TableHead className="min-w-[200px]">Configuration</TableHead>
+                          <TableHead className="w-32 text-center font-semibold">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedData.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-16">
+                              <div className="flex flex-col items-center gap-4">
+                                <div className="h-16 w-16 bg-muted/50 rounded-full flex items-center justify-center">
+                                  <FileText className="h-8 w-8 text-muted-foreground" />
+                                </div>
+                                <div className="space-y-2">
+                                  <h3 className="text-lg font-semibold">No data found</h3>
+                                  <p className="text-muted-foreground max-w-sm">
+                                    No payload data received yet. Click refresh to fetch the data.
+                                  </p>
+                                </div>
+                                <Button onClick={handleGet} className="mt-2">
+                                  <RotateCw className="h-4 w-4 mr-2" />
+                                  Get Data
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          paginatedData.map((it, i) => (
+                            <TableRow key={it.topic} className="hover:bg-muted/30 transition-colors">
+                              <TableCell className="text-center font-mono text-sm">
+                                {(currentPage - 1) * pageSize + i + 1}
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="font-medium text-sm">{it.topic}</div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-xs">
+                                      ID: {it.id}
+                                    </Badge>
+                                    {it.version && (
+                                      <Badge variant="secondary" className="text-xs">
+                                        v{it.version}
+                                      </Badge>
+                                    )}
+                                    {it.template_id && (
+                                      <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                                        Template: {it.template_id}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="max-w-md">
+                                  {Object.entries(it.data).length === 0 ? (
+                                    <span className="text-sm text-muted-foreground italic">No data fields</span>
+                                  ) : (
+                                    <div className="border rounded-lg overflow-hidden bg-card/50">
+                                      <div className="overflow-x-auto">
+                                        <table className="w-full text-xs">
+                                          <thead className="bg-muted/30">
+                                            <tr>
+                                              <th className="px-3 py-2 text-left font-semibold text-muted-foreground border-b">Field</th>
+                                              <th className="px-3 py-2 text-left font-semibold text-muted-foreground border-b">Value</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {Object.entries(it.data).map(([k, v]) => (
+                                              <tr key={k} className="hover:bg-muted/20 transition-colors">
+                                                <td className="px-3 py-2 font-medium text-foreground border-b border-border/50">
+                                                  {k}
+                                                </td>
+                                                <td className="px-3 py-2 font-mono text-foreground border-b border-border/50 max-w-[250px] truncate" title={typeof v === "object" ? JSON.stringify(v) : String(v)}>
+                                                  {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-3">
+                                  <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <div>
+                                      <span className="text-muted-foreground">Interval:</span>
+                                      <div className="font-mono">{it.interval}s</div>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">QoS:</span>
+                                      <div className="font-mono">{it.qos}</div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-muted-foreground text-xs">LWT:</span>
+                                      <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                                        it.lwt
+                                          ? 'bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-200'
+                                          : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
+                                      }`}>
+                                        <div className={`w-1 h-1 rounded-full ${it.lwt ? 'bg-emerald-500' : 'bg-slate-400'}`}></div>
+                                        <span className="text-xs">{it.lwt ? 'ON' : 'OFF'}</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-muted-foreground text-xs">Retain:</span>
+                                      <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                                        it.retain
+                                          ? 'bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200'
+                                          : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
+                                      }`}>
+                                        <div className={`w-1 h-1 rounded-full ${it.retain ? 'bg-blue-500' : 'bg-slate-400'}`}></div>
+                                        <span className="text-xs">{it.retain ? 'ON' : 'OFF'}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openPreviewModal(it.data)}
+                                    className="h-8 w-8 p-0"
+                                    title="Preview Data"
+                                  >
+                                    <Eye className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openUpdateModal(i)}
+                                    className="h-8 w-8 p-0"
+                                    title="Edit"
+                                  >
+                                    <Edit2 className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleDelete(i)}
+                                    className="h-8 w-8 p-0"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <h4 className="font-medium text-foreground">Are you sure you want to delete this topic?</h4>
+                </CardContent>
+              </Card>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">
-                    This action cannot be undone. The topic and all its associated data will be permanently removed.
+                    Showing{" "}
+                    {Math.min((currentPage - 1) * pageSize + 1, sorted.length)} to{" "}
+                    {Math.min(currentPage * pageSize, sorted.length)} of{" "}
+                    {sorted.length} results
                   </p>
-                  {deleteIndex !== null && (
-                    <div className="mt-3 p-3 bg-muted/50 rounded-md border">
-                      <div className="text-sm">
-                        <span className="font-medium text-foreground">Topic to delete:</span>
-                        <div className="font-mono text-destructive mt-1 break-all">
-                          {items[deleteIndex]?.topic}
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationPrevious
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        className={
+                          currentPage === 1 ? "pointer-events-none opacity-50" : ""
+                        }
+                      />
+                      {Array.from({ length: totalPages }, (_, idx) => (
+                        <PaginationItem key={idx}>
+                          <PaginationLink
+                            isActive={currentPage === idx + 1}
+                            onClick={() => setCurrentPage(idx + 1)}
+                          >
+                            {idx + 1}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ))}
+                      <PaginationNext
+                        onClick={() =>
+                          setCurrentPage((p) => Math.min(totalPages, p + 1))
+                        }
+                        className={
+                          currentPage === totalPages
+                            ? "pointer-events-none opacity-50"
+                            : ""
+                        }
+                      />
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Tab: Real-time Data */}
+            <TabsContent value="realtime-data" className="mt-6">
+              <Card className="animate-in fade-in-50 duration-500">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-5 w-5 text-green-500" />
+                      <CardTitle className="text-lg">Real-time MQTT Data</CardTitle>
+                    </div>
+                    <Badge variant="secondary" className="animate-pulse">
+                      {Object.keys(realtimeData).length} active topics
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Live MQTT messages received from subscribed topics
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  {Object.keys(realtimeData).length === 0 ? (
+                    <div className="text-center py-16">
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="h-16 w-16 bg-muted/50 rounded-full flex items-center justify-center">
+                          <Activity className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <div className="space-y-2">
+                          <h3 className="text-lg font-semibold">No real-time data</h3>
+                          <p className="text-muted-foreground max-w-sm">
+                            Real-time data will appear here when MQTT messages are received on subscribed topics.
+                          </p>
                         </div>
                       </div>
                     </div>
+                  ) : (
+                    <div className="grid gap-4">
+                      {Object.entries(realtimeData).map(([topic, data]: [string, any]) => (
+                        <div key={topic} className="border rounded-lg p-4 bg-gradient-to-r from-muted/30 to-muted/10">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-semibold text-sm flex items-center gap-2">
+                              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                              {topic}
+                            </h4>
+                            <Badge variant="outline" className="text-xs">
+                              {new Date(data.timestamp).toLocaleTimeString()}
+                            </Badge>
+                          </div>
+                          <div className="bg-muted/50 p-3 rounded-md">
+                            <pre className="text-xs overflow-x-auto whitespace-pre-wrap">
+                              {JSON.stringify(data.data, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab: Broker Templates */}
+            <TabsContent value="broker-templates" className="mt-6">
+              <div className="space-y-6">
+                {/* Templates Header */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold tracking-tight">Broker Templates</h2>
+                    <p className="text-muted-foreground">
+                      Manage MQTT broker configurations and templates
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => window.open('/broker-templates', '_blank')}
+                    className="gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Open Full Page
+                  </Button>
+                </div>
+
+                {/* Embedded Broker Templates Content */}
+                <BrokerTemplatesEmbedded />
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <PayloadForm
+          title="Create New Data"
+          initialMeta={currentFormMeta}
+          initialFields={currentFormFields}
+          selectedTemplateId={selectedTemplateId}
+          onTemplateChange={setSelectedTemplateId}
+          onSubmit={handleCreateSubmit}
+          onClose={() => setCreateOpen(false)}
+        />
+      </Dialog>
+
+      <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
+        <PayloadForm
+          title="Update Data"
+          initialMeta={currentFormMeta}
+          initialFields={currentFormFields}
+          selectedTemplateId={selectedTemplateId}
+          onTemplateChange={setSelectedTemplateId}
+          onSubmit={handleUpdateSubmit}
+          onClose={() => setUpdateOpen(false)}
+        />
+      </Dialog>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Preview JSON Payload</DialogTitle>
+          </DialogHeader>
+          <pre
+            className="text-dark p-3 rounded text-xs bg-muted"
+            style={{ fontSize: "0.9rem" }}
+          >
+            {JSON.stringify(previewPayload, null, 2)}
+          </pre>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader className="space-y-3 pb-4">
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Confirm Delete
+            </DialogTitle>
+            <div className="w-full h-1 bg-gradient-to-r from-destructive/20 to-destructive/5 rounded-full"></div>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-4 bg-destructive/5 border border-destructive/20 rounded-lg">
+              <div className="flex-shrink-0">
+                <div className="h-10 w-10 bg-destructive/10 rounded-full flex items-center justify-center">
+                  <Trash2 className="h-5 w-5 text-destructive" />
                 </div>
               </div>
-
-              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-                <p className="text-sm text-amber-800">
-                  <strong>Warning:</strong> This will also stop any active publishing for this topic.
+              <div className="space-y-2">
+                <h4 className="font-medium text-foreground">Are you sure you want to delete this topic?</h4>
+                <p className="text-sm text-muted-foreground">
+                  This action cannot be undone. The topic and all its associated data will be permanently removed.
                 </p>
+                {deleteIndex !== null && (
+                  <div className="mt-3 p-3 bg-muted/50 rounded-md border">
+                    <div className="text-sm">
+                      <span className="font-medium text-foreground">Topic to delete:</span>
+                      <div className="font-mono text-destructive mt-1 break-all">
+                        {items[deleteIndex]?.topic}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            <DialogFooter className="pt-6 border-t">
-              <div className="flex gap-2 w-full">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setDeleteOpen(false);
-                    setDeleteIndex(null);
-                  }}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={confirmDelete}
-                  disabled={isLoading}
-                  className="flex-1 gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <RotateCw className="h-4 w-4 animate-spin" />
-                      Deleting...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="h-4 w-4" />
-                      Delete Topic
-                    </>
-                  )}
-                </Button>
-              </div>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+              <p className="text-sm text-amber-800">
+                <strong>Warning:</strong> This will also stop any active publishing for this topic.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-6 border-t">
+            <div className="flex gap-2 w-full">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeleteOpen(false);
+                  setDeleteIndex(null);
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDelete}
+                disabled={isLoading}
+                className="flex-1 gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <RotateCw className="h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    Delete Topic
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SidebarInset>
   );
 }

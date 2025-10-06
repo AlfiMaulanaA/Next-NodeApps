@@ -1,0 +1,184 @@
+{
+  "templates": [
+    {
+      "template_id": "local_dev_v1",
+      "name": "Local Development Broker",
+      "description": "Local MQTT broker untuk development",
+      "category": "development",
+      "config": {
+        "protocol": "mqtt",
+        "host": "localhost",
+        "port": 1883,
+        "ssl": false,
+        "username": "",
+        "password": "",
+        "qos": 0,
+        "retain": false,
+        "keepalive": 60,
+        "connection_timeout": 5,
+        "reconnect_period": 3
+      },
+      "fallback_brokers": [
+        {
+          "host": "localhost",
+          "port": 9000,
+          "protocol": "ws",
+          "path": "/mqtt"
+        }
+      ],
+      "metadata": {
+        "created_by": "system",
+        "version": "1.0",
+        "last_updated": "2025-01-01T00:00:00Z"
+      }
+    },
+    {
+      "template_id": "cloud_prod_v1",
+      "name": "Production Cloud Broker",
+      "description": "Secure cloud MQTT broker untuk production",
+      "category": "production",
+      "config": {
+        "protocol": "mqtt",
+        "host": "localhost",
+        "port": 1883,
+        "ssl": false,
+        "username": "",
+        "password": "",
+        "qos": 1,
+        "retain": true,
+        "keepalive": 60,
+        "connection_timeout": 5,
+        "reconnect_period": 3
+      },
+      "fallback_brokers": [
+        {
+          "host": "localhost",
+          "port": 9000,
+          "protocol": "ws",
+          "path": "/mqtt"
+        }
+      ],
+      "metadata": {
+        "created_by": "admin",
+        "version": "1.0",
+        "last_updated": "2025-01-01T00:00:00Z"
+      }
+    },
+    {
+      "template_id": "edge_gateway_v1",
+      "name": "Edge Computing Gateway",
+      "description": "Local edge broker untuk processing cepat",
+      "category": "edge",
+      "config": {
+        "protocol": "mqtt",
+        "host": "localhost",
+        "port": 1883,
+        "ssl": false,
+        "username": "",
+        "password": "",
+        "qos": 1,
+        "retain": false,
+        "keepalive": 30,
+        "connection_timeout": 5,
+        "reconnect_period": 3
+      },
+      "fallback_brokers": [
+        {
+          "host": "localhost",
+          "port": 9000,
+          "protocol": "ws",
+          "path": "/mqtt"
+        }
+      ],
+      "metadata": {
+        "created_by": "system",
+        "version": "1.0",
+        "last_updated": "2025-01-01T00:00:00Z"
+      }
+    },
+    {
+      "template_id": "backup_failover_v1",
+      "name": "Backup Failover Broker",
+      "description": "Backup broker untuk failover scenarios",
+      "category": "backup",
+      "config": {
+        "protocol": "mqtt",
+        "host": "localhost",
+        "port": 1883,
+        "ssl": false,
+        "username": "",
+        "password": "",
+        "qos": 1,
+        "retain": true,
+        "keepalive": 60,
+        "connection_timeout": 5,
+        "reconnect_period": 3
+      },
+      "fallback_brokers": [
+        {
+          "host": "localhost",
+          "port": 9000,
+          "protocol": "ws",
+          "path": "/mqtt"
+        }
+      ],
+      "metadata": {
+        "created_by": "admin",
+        "version": "1.0",
+        "last_updated": "2025-01-01T00:00:00Z"
+      }
+    },
+    {
+      "template_id": "custom_broker_v1",
+      "name": "Custom Broker",
+      "description": "For custom broker",
+      "category": "development",
+      "config": {
+        "protocol": "mqtt",
+        "host": "localhost",
+        "port": 1883,
+        "ssl": false,
+        "username": "",
+        "password": "",
+        "qos": 0,
+        "retain": false,
+        "keepalive": 60,
+        "connection_timeout": 5,
+        "reconnect_period": 3
+      },
+      "fallback_brokers": [],
+      "metadata": {
+        "created_by": "user",
+        "version": "1.0",
+        "last_updated": "2025-10-06T03:08:02.828Z",
+        "created_at": "2025-10-06T03:08:02.828Z"
+      }
+    },
+    {
+      "template_id": "custom_broker_v2",
+      "name": "Custom Broker 2",
+      "description": "",
+      "category": "development",
+      "config": {
+        "protocol": "mqtt",
+        "host": "192.168.0.191",
+        "port": 1883,
+        "ssl": false,
+        "username": "",
+        "password": "",
+        "qos": 0,
+        "retain": false,
+        "keepalive": 60,
+        "connection_timeout": 5,
+        "reconnect_period": 3
+      },
+      "fallback_brokers": [],
+      "metadata": {
+        "created_by": "user",
+        "version": "1.0",
+        "last_updated": "2025-10-06T03:14:39.424Z",
+        "created_at": "2025-10-06T03:14:39.424Z"
+      }
+    }
+  ]
+}

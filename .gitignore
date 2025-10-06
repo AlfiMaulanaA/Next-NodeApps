@@ -1,30 +1,135 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
+# Dependencies
 /node_modules
+/.pnp
+.pnp.js
 
-# next.js
+# Testing
+/coverage
+
+# Next.js
 /.next/
 /out/
 
-# production
+# Production
 /build
 
-# debug
+# Misc
+.DS_Store
+*.pem
+
+# Debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# Local env files
+.env*.local
 .env*
 
-# vercel
+# Vercel
 .vercel
 
-# typescript
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
 
-#.gitignore
-token
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# MQTT & System Logs
+mosquitto.log
+mosquitto.log.*
+mqtt_logs/
+system_logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.tmp/
+
+# Configuration backups
+*.bak
+*.backup
+*~
+
+# Sensitive files
+secrets/
+keys/
+*.key
+*.pem
+*.crt
+
+# Build artifacts
+dist/
+build/
+.next/
+out/
+
+# Package manager lock files (uncomment if needed)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Local development
+.local

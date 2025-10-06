@@ -1,0 +1,88 @@
+[
+  {
+    "id": "sensor_temp_001",
+    "topic": "home/sensor/temperature",
+    "data": {
+      "sensor_id": "TEMP_001",
+      "location": "Living Room",
+      "temperature": 25.5,
+      "humidity": 60,
+      "battery_level": 85
+    },
+    "interval": 30,
+    "qos": 1,
+    "lwt": true,
+    "retain": false,
+    "created_at": "2025-09-29T16:27:50.000000",
+    "updated_at": "2025-09-29T16:33:15.216613",
+    "version": 1
+  },
+  {
+    "id": "sensor_humidity_001",
+    "topic": "home/sensor/humidity",
+    "data": {
+      "sensor_id": "HUM_001",
+      "location": "Kitchen",
+      "temperature": 24.8,
+      "humidity": 65,
+      "co2_level": 450
+    },
+    "interval": 45,
+    "qos": 0,
+    "lwt": true,
+    "retain": true,
+    "created_at": "2025-09-29T16:27:50.000000",
+    "updated_at": "2025-09-29T16:33:15.216618",
+    "version": 1
+  },
+  {
+    "id": "device_status_001",
+    "topic": "home/device/status",
+    "data": {
+      "device_id": "MAIN_HUB",
+      "status": "online",
+      "uptime": 3600,
+      "cpu_usage": 15.5,
+      "memory_usage": 45.2
+    },
+    "interval": 60,
+    "qos": 2,
+    "lwt": true,
+    "retain": true,
+    "created_at": "2025-09-29T16:27:50.000000",
+    "updated_at": "2025-09-29T16:33:15.216621",
+    "version": 1
+  },
+  {
+    "id": "energy_monitor_001",
+    "topic": "home/energy/monitor",
+    "data": {
+      "device_id": "ENERGY_MONITOR",
+      "current_power": 1250.5,
+      "daily_consumption": 28.5,
+      "voltage": 220.0,
+      "current": 5.7
+    },
+    "interval": 15,
+    "qos": 1,
+    "lwt": false,
+    "retain": false,
+    "created_at": "2025-09-29T16:27:50.000000",
+    "updated_at": "2025-09-29T16:33:15.216624",
+    "version": 1
+  },
+  {
+    "id": "45811a0ee2c5ed38",
+    "topic": "test/isolation/sensor",
+    "data": {
+      "isolation_test": true
+    },
+    "interval": 30,
+    "qos": 0,
+    "lwt": true,
+    "retain": false,
+    "created_at": "2025-09-29T16:32:15.505630",
+    "updated_at": "2025-09-29T16:33:15.216627",
+    "version": 1
+  }
+]
