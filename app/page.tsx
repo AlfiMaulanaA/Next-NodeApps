@@ -1,10 +1,5 @@
-import Dashboard from "@/app/dashboard/template/default";
-import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import Dashboard from "./dashboard/page";
 
 export default function Page() {
-  return (
-    <ProtectedRoute>
-      <Dashboard />
-    </ProtectedRoute>
-  );
+  return <Dashboard />;
 }

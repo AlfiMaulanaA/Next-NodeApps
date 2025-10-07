@@ -22,6 +22,7 @@ import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import MqttStatus from "@/components/mqtt-status";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 // Define the type for a device
 interface Device {
@@ -81,7 +82,7 @@ export default function DeviceManagerPage() {
 
   const clientRef = useRef<any>(null); // Tetap menggunakan any untuk clientRef jika mqttClient.ts tidak Typed
 
-  // useEffect untuk koneksi MQTT dan langganan awal (response_device_i2c, mqtt_broker_server)
+  // useEffect untuk koneksi MQTT dan langganan awal (response_device_i2c, mqtt_config topics)
   useEffect(() => {
     if (!clientRef.current) {
       clientRef.current = connectMQTT();
@@ -129,9 +130,37 @@ export default function DeviceManagerPage() {
               payload
             );
           }
-        } else if (topic === "mqtt_broker_server") {
-          console.log("[MQTT] Received mqtt_broker_server payload:", payload);
-          setMqttBrokerData(payload as MqttBrokerData); // Type assertion untuk broker data
+        } else if (topic === "mqtt_config/response_mac") {
+          console.log("[MQTT] Received MAC address:", payload);
+          setMqttBrokerData(prev => ({
+            mac_address: payload.mac_address,
+            broker_address: prev?.broker_address || "",
+            broker_port: prev?.broker_port || 1883,
+            username: prev?.username || "",
+            password: prev?.password || ""
+          }));
+        } else if (topic === "mqtt_config/modbus/response") {
+          console.log("[MQTT] Received MODBUS broker config:", payload);
+          if (payload.status === "success") {
+            setMqttBrokerData(prev => ({
+              mac_address: prev?.mac_address || "",
+              broker_address: payload.data.broker_address,
+              broker_port: payload.data.broker_port,
+              username: payload.data.username,
+              password: payload.data.password
+            }));
+          }
+        } else if (topic === "mqtt_config/modular/response") {
+          console.log("[MQTT] Received MODULAR broker config:", payload);
+          if (payload.status === "success") {
+            setMqttBrokerData(prev => ({
+              mac_address: prev?.mac_address || "",
+              broker_address: payload.data.broker_address,
+              broker_port: payload.data.broker_port,
+              username: payload.data.username,
+              password: payload.data.password
+            }));
+          }
         } else {
           console.log(
             `[MQTT] Received device data on topic ${topic}:`,
@@ -154,16 +183,21 @@ export default function DeviceManagerPage() {
 
     client.on("message", handleMessage);
     client.subscribe("response_device_i2c");
-    client.subscribe("mqtt_broker_server", { qos: 1 });
+    client.subscribe("mqtt_config/response_mac", { qos: 1 });
+    client.subscribe("mqtt_config/modbus/response", { qos: 1 });
+    client.subscribe("mqtt_config/modular/response", { qos: 1 });
 
-    client.publish(
-      "command_device_i2c",
-      JSON.stringify({ command: "getDataI2C" })
-    );
+    // Request data dari backend
+    client.publish("command_device_i2c", JSON.stringify({ command: "getDataI2C" }));
+    client.publish("mqtt_config/get_mac_address", JSON.stringify({}));
+    client.publish("mqtt_config/modbus/command", JSON.stringify({ command: "get" }));
+    client.publish("mqtt_config/modular/command", JSON.stringify({ command: "get" }));
 
     return () => {
       client.unsubscribe("response_device_i2c");
-      client.unsubscribe("mqtt_broker_server");
+      client.unsubscribe("mqtt_config/response_mac");
+      client.unsubscribe("mqtt_config/modbus/response");
+      client.unsubscribe("mqtt_config/modular/response");
       client.off("message", handleMessage);
     };
   }, []); // Dependency array tetap kosong karena ini hanya untuk setup awal dan listener
@@ -232,8 +266,12 @@ export default function DeviceManagerPage() {
   ) => {
     if (!clientRef.current || !mqttBrokerData) {
       console.warn("MQTT client not available or broker data missing.");
+      toast.error("Cannot send command, MQTT client is not connected.");
       return;
     }
+
+    // Show loading toast
+    const toastId = toast.loading("Sending command...");
 
     // Ekstrak nomor PIN dari inputKey (misal: "drycontactInput1" -> 1)
     const pinNumberMatch = inputKey.match(/\d+/);
@@ -256,12 +294,20 @@ export default function DeviceManagerPage() {
 
     const controlTopic = "modular";
 
-    clientRef.current.publish(controlTopic, JSON.stringify(commandPayload));
-    console.log(
-      `[MQTT] Sending command to ${controlTopic}: ${JSON.stringify(
-        commandPayload
-      )}`
-    );
+    try {
+      clientRef.current.publish(controlTopic, JSON.stringify(commandPayload));
+      console.log(
+        `[MQTT] Sending command to ${controlTopic}: ${JSON.stringify(
+          commandPayload
+        )}`
+      );
+
+      // Update loading toast to success
+      toast.success(`${device.profile.name} pin ${pin} set to ${newState ? "ON" : "OFF"}`, { id: toastId });
+    } catch (error) {
+      console.error("Failed to publish MQTT message:", error);
+      toast.error("Failed to send command", { id: toastId });
+    }
 
     // Opsional: Perbarui UI secara optimis
     setDeviceTopicPayloads((prevPayloads) => {
@@ -297,10 +343,17 @@ export default function DeviceManagerPage() {
   };
 
   const refreshData = () => {
-    clientRef.current?.publish(
+    if (!clientRef.current) {
+      toast.error("Cannot refresh data, MQTT client is not connected.");
+      return;
+    }
+
+    clientRef.current.publish(
       "command_device_i2c",
       JSON.stringify({ command: "getDataI2C" })
     );
+
+    toast.success("Device data refreshed successfully");
   };
 
   // Calculate summary data
@@ -367,55 +420,60 @@ export default function DeviceManagerPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Summary Cards - Modern Design */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Cpu className="h-5 w-5" />
-              <CardTitle>Device Monitoring Overview</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 rounded-xl border">
-                <Server className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                  {totalDevices}
-                </div>
-                <div className="text-sm text-blue-600 dark:text-blue-400">
-                  Total Devices
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 rounded-xl border">
-                <Activity className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-                  {activeDevices}
-                </div>
-                <div className="text-sm text-green-600 dark:text-green-400">
-                  Active Devices
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 rounded-xl border">
-                <CircleCheck className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                  {relayDevices}
-                </div>
-                <div className="text-sm text-purple-600 dark:text-purple-400">
-                  Relay Devices
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 rounded-xl border">
-                <CircleX className="h-8 w-8 mx-auto mb-2 text-orange-600" />
-                <div className="text-2xl font-bold text-orange-700 dark:text-orange-300">
-                  {sensorDevices}
-                </div>
-                <div className="text-sm text-orange-600 dark:text-orange-400">
-                  Sensor Devices
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Summary Cards - Consistent with other control pages */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Devices</CardTitle>
+              <Server className="h-5 w-5 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalDevices}</div>
+              <p className="text-xs text-muted-foreground">
+                Connected devices
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Devices</CardTitle>
+              <Activity className="h-5 w-5 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{activeDevices}</div>
+              <p className="text-xs text-muted-foreground">
+                With live data
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Relay Devices</CardTitle>
+              <CircleCheck className="h-5 w-5 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{relayDevices}</div>
+              <p className="text-xs text-muted-foreground">
+                Control devices
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Sensor Devices</CardTitle>
+              <CircleX className="h-5 w-5 text-orange-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{sensorDevices}</div>
+              <p className="text-xs text-muted-foreground">
+                Input devices
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* MQTT Broker Info Card */}
         <Card className="border-l-4 border-l-gray-400">

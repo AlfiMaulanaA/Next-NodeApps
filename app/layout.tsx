@@ -2,12 +2,13 @@
 import type React from "react";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+// @ts-ignore - CSS import side effect
 import "./globals.css";
 import dynamic from "next/dynamic";
 import { ThemeProvider } from "next-themes";
 
 // Mengambil nama aplikasi dan ikon dari environment variables atau menggunakan nilai default
-const AppName = process.env.NEXT_PUBLIC_APP_NAME || "Acrylic Dashboard";
+const AppName = process.env.NEXT_PUBLIC_APP_NAME || " MQTT Gateway";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -35,11 +36,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider
-          attribute="class" // Menggunakan class HTML untuk theme (misal: "dark")
-          defaultTheme="light" // Theme default
-          enableSystem // Memungkinkan sistem OS menentukan theme
-        >
+          <ThemeProvider
+            attribute="class" // Menggunakan class HTML untuk theme (misal: "dark")
+            defaultTheme="dark" // Theme default
+            enableSystem // Memungkinkan sistem OS menentukan theme
+          >
           {/* Semua konten aplikasi dibungkus oleh ClientLayout */}
           <ClientLayout>{children}</ClientLayout>
         </ThemeProvider>

@@ -1,0 +1,302 @@
+{
+  "snmpConfiguration": [
+    {
+      "objectName": "snmpIPAddress",
+      "oid": "1.3.6.1.4.1.10000.11.5.10.0",
+      "access": "Read Only",
+      "description": "Device IP address (Default: 192.168.0.100)"
+    },
+    {
+      "objectName": "snmpNetmask",
+      "oid": "1.3.6.1.4.1.10000.11.5.20.0",
+      "access": "Read Only",
+      "description": "Network Netmask (Default: 255.255.255.0)"
+    },
+    {
+      "objectName": "snmpGateway",
+      "oid": "1.3.6.1.4.1.10000.11.5.30.0",
+      "access": "Read Only",
+      "description": "Network Gateway (Default: 192.168.0.1)"
+    },
+    {
+      "objectName": "snmpVersion",
+      "oid": "1.3.6.1.4.1.10000.11.5.40.0",
+      "access": "Read Write",
+      "description": "SNMP Version (V1, V2c, V3) (Default: V1)"
+    },
+    {
+      "objectName": "snmpCommunity",
+      "oid": "1.3.6.1.4.1.10000.11.5.50.0",
+      "access": "Read Write",
+      "description": "Community string for SNMP V1/V2c (Default: public)"
+    },
+    {
+      "objectName": "snmpPort",
+      "oid": "1.3.6.1.4.1.10000.11.5.60.0",
+      "access": "Read Write",
+      "description": "SNMP Port (Default: 161)"
+    },
+    {
+      "objectName": "systemOID",
+      "oid": "1.3.6.1.4.1.10000.11.5.70.0",
+      "access": "Read Write",
+      "description": "Unique System OID (Default: .1.3.6.1.4.1.10000.10)"
+    }
+  ],
+  "batteryData": [
+    {
+      "category": "Main Data",
+      "objectName": "packVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.1.0",
+      "access": "Read Only",
+      "unit": "V (Volts)",
+      "notes": "Original Value / 100"
+    },
+    {
+      "category": "Main Data",
+      "objectName": "current",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.2.0",
+      "access": "Read Only",
+      "unit": "A (Amperes)",
+      "notes": "Original Value / 100"
+    },
+    {
+      "category": "Main Data",
+      "objectName": "remainingCapacity",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.3.0",
+      "access": "Read Only",
+      "unit": "Ah (Ampere-hours)",
+      "notes": "Original Value / 100"
+    },
+    {
+      "category": "Main Data",
+      "objectName": "totalCapacity",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.4.0",
+      "access": "Read Only",
+      "unit": "Ah (Ampere-hours)",
+      "notes": "Original Value / 100"
+    },
+    {
+      "category": "Main Data",
+      "objectName": "SOC",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.6.0",
+      "access": "Read Only",
+      "unit": "% (Percent)",
+      "notes": "Original Value / 10"
+    },
+    {
+      "category": "Main Data",
+      "objectName": "SOH",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.7.0",
+      "access": "Read Only",
+      "unit": "% (Percent)",
+      "notes": "Original Value / 10"
+    },
+    {
+      "category": "Main Data",
+      "objectName": "cycle",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.8.0",
+      "access": "Read Only",
+      "unit": "Cycles",
+      "notes": "Total cycle count"
+    },
+    {
+      "category": "Cell Statistics",
+      "objectName": "averageOfCellVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.9.0",
+      "access": "Read Only",
+      "unit": "V (Volts)",
+      "notes": "Original Value / 1000"
+    },
+    {
+      "category": "Cell Statistics",
+      "objectName": "maxCellVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.10.0",
+      "access": "Read Only",
+      "unit": "V (Volts)",
+      "notes": "Original Value / 1000"
+    },
+    {
+      "category": "Cell Statistics",
+      "objectName": "minCellVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.11.0",
+      "access": "Read Only",
+      "unit": "V (Volts)",
+      "notes": "Original Value / 1000"
+    },
+    {
+      "category": "Cell Statistics",
+      "objectName": "averageOfCellTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.12.0",
+      "access": "Read Only",
+      "unit": "°C (Celsius)",
+      "notes": "Original Value / 100"
+    },
+    {
+      "category": "Cell Statistics",
+      "objectName": "maxCellTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.13.0",
+      "access": "Read Only",
+      "unit": "°C (Celsius)",
+      "notes": "Original Value / 100"
+    },
+    {
+      "category": "Cell Statistics",
+      "objectName": "minCellTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.14.0",
+      "access": "Read Only",
+      "unit": "°C (Celsius)",
+      "notes": "Original Value / 100"
+    },
+    {
+      "category": "Environment Sensors",
+      "objectName": "environmentTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.34.0",
+      "access": "Read Only",
+      "unit": "°C (Celsius)",
+      "notes": "Original Value / 100"
+    },
+    {
+      "category": "Environment Sensors",
+      "objectName": "mosfetTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.35.0",
+      "access": "Read Only",
+      "unit": "°C (Celsius)",
+      "notes": "Original Value / 100"
+    }
+  ],
+  "systemEvents": [
+    {
+      "category": "Protection Status",
+      "eventName": "OverVoltageProtect",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.37.0",
+      "access": "Read Only",
+      "unit": "Status Flag",
+      "notes": "0=Normal, 1=Active"
+    },
+    {
+      "category": "Protection Status",
+      "eventName": "UnderVoltageProtect",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.38.0",
+      "access": "Read Only",
+      "unit": "Status Flag",
+      "notes": "0=Normal, 1=Active"
+    },
+    {
+      "category": "Protection Status",
+      "eventName": "ChargeOverCurrentProtect",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.39.0",
+      "access": "Read Only",
+      "unit": "Status Flag",
+      "notes": "0=Normal, 1=Active"
+    },
+    {
+      "category": "Protection Status",
+      "eventName": "DischargeOverCurrentProtect",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.40.0",
+      "access": "Read Only",
+      "unit": "Status Flag",
+      "notes": "0=Normal, 1=Active"
+    },
+    {
+      "category": "Protection Status",
+      "eventName": "ShortCircuitProtect",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.41.0",
+      "access": "Read Only",
+      "unit": "Status Flag",
+      "notes": "0=Normal, 1=Active"
+    },
+    {
+      "category": "Protection Status",
+      "eventName": "HighTemperatureProtect",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.42.0",
+      "access": "Read Only",
+      "unit": "Status Flag",
+      "notes": "0=Normal, 1=Active"
+    },
+    {
+      "category": "Operational Status",
+      "eventName": "SOCLowAlarm",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.43.0",
+      "access": "Read Only",
+      "unit": "Status Flag",
+      "notes": "0=Normal, 1=Alarm Active"
+    },
+    {
+      "category": "Operational Status",
+      "eventName": "Discharging",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.44.0",
+      "access": "Read Only",
+      "unit": "Status Flag",
+      "notes": "0=No, 1=Yes"
+    },
+    {
+      "category": "Operational Status",
+      "eventName": "Charging",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.45.0",
+      "access": "Read Only",
+      "unit": "Status Flag",
+      "notes": "0=No, 1=Yes"
+    },
+    {
+      "category": "Operational Status",
+      "eventName": "ChargerOnline",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.46.0",
+      "access": "Read Only",
+      "unit": "Status Flag",
+      "notes": "0=Offline, 1=Online"
+    }
+  ],
+  "snmpTraps": [
+    {
+      "category": "Basic Traps",
+      "trapName": "batteryLowVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.13.1"
+    },
+    {
+      "category": "Basic Traps",
+      "trapName": "batteryHighVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.13.2"
+    },
+    {
+      "category": "Basic Traps",
+      "trapName": "batteryLowSOC",
+      "oid": "1.3.6.1.4.1.10000.11.13.3"
+    },
+    {
+      "category": "Basic Traps",
+      "trapName": "batteryHighTemp",
+      "oid": "1.3.6.1.4.1.10000.11.13.4"
+    },
+    {
+      "category": "Protection Traps",
+      "trapName": "batteryOverVoltageProtect",
+      "oid": "1.3.6.1.4.1.10000.11.14.1"
+    },
+    {
+      "category": "Protection Traps",
+      "trapName": "batteryUnderVoltageProtect",
+      "oid": "1.3.6.1.4.1.10000.11.14.2"
+    },
+    {
+      "category": "Protection Traps",
+      "trapName": "batteryChargeOCProtect",
+      "oid": "1.3.6.1.4.1.10000.11.14.3"
+    },
+    {
+      "category": "Protection Traps",
+      "trapName": "batteryDischargeOCProtect",
+      "oid": "1.3.6.1.4.1.10000.11.14.4"
+    },
+    {
+      "category": "Protection Traps",
+      "trapName": "batteryShortCircuitProtect",
+      "oid": "1.3.6.1.4.1.10000.11.14.5"
+    },
+    {
+      "category": "Protection Traps",
+      "trapName": "batteryHighTempProtect",
+      "oid": "1.3.6.1.4.1.10000.11.14.6"
+    }
+  ]
+}

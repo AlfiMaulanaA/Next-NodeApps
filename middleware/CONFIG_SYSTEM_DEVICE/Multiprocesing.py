@@ -19,19 +19,22 @@ def run_script(script_name):
 if __name__ == '__main__':
     # Daftar file Python yang ingin dijalankan
     scripts = [
+        'ApiCombined.py',
         'AutomationLogic.py',
-        'AutomationValue.py',
         'AutomationSchedule.py',
+        'AutomationUnified.py',
+        'AutomationValue.py',
         'AutomationVoice.py',
         'Button.py',
         'DeviceConfig.py',
         'ErrorLogger.py',
         'LibraryConfig.py',
         'Network.py',
+        'RemapPayload.py',
         'Settings.py',
-        'UserManagement.py',
-        'rpi_config_manager.py',
-        'ApiCombined.py'
+        'openvpn_service.py',
+        'ikev2_service.py',
+        'wireguard_service.py',
     ]
 
     # Membuat dan menjalankan proses untuk setiap file

@@ -23,6 +23,7 @@ import {
   FileDown,
 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface MIBDownloadStatus {
   status: "idle" | "downloading" | "success" | "error";
@@ -118,31 +119,31 @@ export function MIBDownloader() {
     setDownloadStatus({ status: "idle" });
   };
 
-  // Get status icon and color
+  // Get status icon and color - theme compatible
   const getStatusDisplay = () => {
     switch (downloadStatus.status) {
       case "downloading":
         return {
           icon: <Loader2 className="h-4 w-4 animate-spin" />,
-          color: "bg-blue-100 text-blue-800",
+          color: "bg-blue-500/10 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
           label: "Downloading",
         };
       case "success":
         return {
           icon: <CheckCircle className="h-4 w-4" />,
-          color: "bg-green-100 text-green-800",
+          color: "bg-green-500/10 text-green-700 dark:bg-green-500/20 dark:text-green-300",
           label: "Success",
         };
       case "error":
         return {
           icon: <XCircle className="h-4 w-4" />,
-          color: "bg-red-100 text-red-800",
+          color: "bg-red-500/10 text-red-700 dark:bg-red-500/20 dark:text-red-300",
           label: "Error",
         };
       default:
         return {
           icon: <FileText className="h-4 w-4" />,
-          color: "bg-gray-100 text-gray-800",
+          color: "bg-muted text-muted-foreground",
           label: "Ready",
         };
     }
@@ -151,22 +152,22 @@ export function MIBDownloader() {
   const statusDisplay = getStatusDisplay();
 
   return (
-    <Card className="w-full">
-      <CardHeader>
+    <Card className="w-full bg-card border border-border">
+      <CardHeader className="border-b border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-orange-100 rounded-lg">
-              <FileDown className="h-5 w-5 text-orange-600" />
+            <div className="p-2 bg-primary/10 dark:bg-primary/20 rounded-lg">
+              <FileDown className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <CardTitle className="text-lg">SNMP MIB Downloader</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-lg text-foreground">SNMP MIB Downloader</CardTitle>
+              <CardDescription className="text-muted-foreground">
                 Download SHOTO Management Information Base (MIB) file for SNMP
                 configuration
               </CardDescription>
             </div>
           </div>
-          <Badge className={statusDisplay.color}>
+          <Badge className={cn(statusDisplay.color, "border-0")}>
             {statusDisplay.icon}
             <span className="ml-1">{statusDisplay.label}</span>
           </Badge>
@@ -175,10 +176,10 @@ export function MIBDownloader() {
 
       <CardContent className="space-y-4">
         {/* File Information */}
-        <Alert className="border-blue-200 bg-blue-50">
-          <FileText className="h-4 w-4" />
+        <Alert className="border-border bg-muted/30">
+          <FileText className="h-4 w-4 text-primary" />
           <AlertDescription>
-            <div className="space-y-1">
+            <div className="space-y-1 text-foreground">
               <p>
                 <strong>File:</strong> GSPE_SHOTO_MIB_v1_1.mib
               </p>
@@ -196,18 +197,19 @@ export function MIBDownloader() {
         {/* Download Status */}
         {downloadStatus.status !== "idle" && (
           <Alert
-            className={
+            className={cn(
+              "border-border",
               downloadStatus.status === "success"
-                ? "border-green-200 bg-green-50"
+                ? "bg-green-500/5 dark:bg-green-500/10"
                 : downloadStatus.status === "error"
-                ? "border-red-200 bg-red-50"
-                : "border-blue-200 bg-blue-50"
-            }
+                ? "bg-red-500/5 dark:bg-red-500/10"
+                : "bg-blue-500/5 dark:bg-blue-500/10"
+            )}
           >
             <div className="flex items-start gap-3">
               {statusDisplay.icon}
               <div className="flex-1">
-                <p className="font-medium">{downloadStatus.message}</p>
+                <p className="font-medium text-foreground">{downloadStatus.message}</p>
                 {downloadStatus.fileName && (
                   <p className="text-sm text-muted-foreground">
                     File: {downloadStatus.fileName}
@@ -264,7 +266,7 @@ export function MIBDownloader() {
         </div>
 
         {/* Technical Info */}
-        <div className="pt-4 border-t text-sm text-muted-foreground space-y-1">
+        <div className="pt-4 border-t border-border text-sm text-muted-foreground space-y-1">
           <p>
             <strong>Download Method:</strong> Direct file access
           </p>

@@ -1,39 +1,33 @@
 "use client";
 
-import { useTotalErrorCount } from "@/hooks/useTotalErrorCount";
-import { useState } from "react";
-import UserProfile from "@/components/auth/UserProfile";
-import { useAuth } from "@/contexts/AuthContext";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { memo } from "react";
 import {
   LogOut,
   BarChart3,
   Settings,
   Wifi,
-  Database,
-  Users,
   FileText,
   Activity,
-  Zap,
   Network,
-  Play,
   Send,
-  Shield,
   HardDrive,
+  Combine,
+  Search,
+  ArrowLeftRight,
+  Hand,
+  Code,
+  Calculator,
+  Mic,
+  Clock,
+  Monitor,
+  Cpu,
+  Shield,
+  Info,
+  Lock,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   Sidebar,
   SidebarContent,
@@ -49,8 +43,7 @@ import {
   SidebarMenuBadge,
 } from "@/components/ui/sidebar";
 import { Separator } from "@radix-ui/react-separator";
-import { deleteCookie } from "cookies-next";
-import { useRouter } from "next/navigation";
+import { useTotalErrorCount } from "@/hooks/useTotalErrorCount";
 
 const appName = process.env.NEXT_PUBLIC_APP_NAME || "MQTT Gateway Dashboard";
 
@@ -68,45 +61,50 @@ const menuData = {
           url: "/",
           icon: BarChart3,
         },
-        {
-          title: "Systems Health",
-          url: "/dashboard",
-          icon: BarChart3,
-        },
       ],
     },
     {
       title: "Network Configuration",
       items: [
         {
-          title: "IP Configuration",
+          title: "IP Address Settings",
           url: "/network/ip-address",
           icon: Network,
         },
         {
-          title: "Wifi",
+          title: "WiFi Settings",
           url: "/network/wifi",
           icon: Wifi,
         },
         {
-          title: "MQTT Broker",
+          title: "MQTT Broker Config",
           url: "/network/mqtt",
           icon: Send,
         },
         {
           title: "Modbus Protocol",
           url: "/network/protocol/modbus",
-          icon: Database,
+          icon: HardDrive,
         },
         {
           title: "SNMP Protocol",
           url: "/network/protocol/snmp",
-          icon: Network,
+          icon: Monitor,
         },
         {
-          title: "API Management",
+          title: "API Control Panel",
           url: "/api",
-          icon: Network,
+          icon: Code,
+        },
+        {
+          title: "VPN Settings",
+          url: "/network/vpn",
+          icon: Lock,
+        },
+        {
+          title: "VPN Config",
+          url: "/network/vpn/config",
+          icon: Settings,
         },
       ],
     },
@@ -114,24 +112,39 @@ const menuData = {
       title: "Device Management",
       items: [
         {
-          title: "Modbus Devices",
+          title: "Modbus Device Manager",
           url: "/devices/modbus",
-          icon: Database,
+          icon: HardDrive,
         },
         {
-          title: "Modbus Data",
-          url: "/modbus-data",
-          icon: Database,
+          title: "SNMP MIB Data",
+          url: "/snmp-data",
+          icon: Activity,
         },
         {
-          title: "Modular I2C",
+          title: "Modular I2C Devices",
           url: "/devices/modular",
-          icon: Zap,
+          icon: Cpu,
         },
         {
-          title: "Threshold Settings",
+          title: "Threshold & Alerts",
           url: "/devices/threshold",
           icon: Shield,
+        },
+      ],
+    },
+    {
+      title: "Payload Management",
+      items: [
+        {
+          title: "Payload Discover & Publisher",
+          url: "/payload/discover",
+          icon: Search,
+        },
+        {
+          title: "Payload Remapping",
+          url: "/payload/remapping",
+          icon: ArrowLeftRight,
         },
       ],
     },
@@ -141,32 +154,32 @@ const menuData = {
         {
           title: "Manual Control",
           url: "/control/manual",
-          icon: Play,
+          icon: Hand,
+        },
+        {
+          title: "Unified Automation",
+          url: "/control/unified",
+          icon: Combine,
         },
         {
           title: "Logic Control",
           url: "/control/logic",
-          icon: Settings,
+          icon: Code,
         },
         {
           title: "Value Control",
           url: "/control/value",
-          icon: Database,
+          icon: Calculator,
         },
         {
           title: "Voice Control",
           url: "/control/voice",
-          icon: Wifi,
+          icon: Mic,
         },
         {
-          title: "Scheduled Tasks",
+          title: "Scheduler Control",
           url: "/control/schedule",
-          icon: Activity,
-        },
-        {
-          title: "Payload Remapping",
-          url: "/control/remapping",
-          icon: Settings,
+          icon: Clock,
         },
       ],
     },
@@ -178,15 +191,10 @@ const menuData = {
           url: "/settings/setting",
           icon: Settings,
         },
-        {
-          title: "System Health",
-          url: "/settings/system",
-          icon: Activity,
-        },
-        {
-          title: "MQTT Configuration",
-          url: "/settings/mqtt",
-          icon: Send,
+         {
+          title: "RTC DS3231 Sync",
+          url: "/settings/rtc-sync",
+          icon: Clock,
         },
         {
           title: "Device Library",
@@ -194,31 +202,32 @@ const menuData = {
           icon: HardDrive,
         },
         {
-          title: "User Management",
-          url: "/settings/users",
-          icon: Users,
-        },
-        {
           title: "Error Logs",
           url: "/settings/error-log",
           icon: FileText,
         },
+        {
+          title: "Information",
+          url: "/info",
+          icon: Info,
+        },
+        
       ],
     },
   ],
 };
 
-export function AppSidebar() {
+export const AppSidebar = memo(function AppSidebar() {
   const pathname = usePathname();
   const totalErrors = useTotalErrorCount();
   const router = useRouter();
-  const { logout } = useAuth();
-  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
-  const performLogout = async () => {
-    await logout(); // Use AuthContext logout to clear user state and localStorage
-    deleteCookie("authToken", { path: "/" }); // Also delete cookie for completeness
-    router.replace("/auth/login"); // Redirect to login page
+  // Simple logout function
+  const handleLogout = () => {
+    localStorage.removeItem("isAuthenticated");
+    localStorage.removeItem("user");
+    sessionStorage.clear();
+    window.location.href = "/auth/login";
   };
 
   return (
@@ -260,7 +269,7 @@ export function AppSidebar() {
                       <SidebarMenuButton
                         asChild
                         isActive={pathname === item.url}
-                        className="group flex items-center gap-2 px-3 py-2 rounded-md w-full transition-colors text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
+                        className="group flex items-center gap-2 px-3 py-2 rounded-md w-full transition-colors text-sidebar-foreground hover:bg-muted/50 hover:text-sidebar-accent-foreground data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-medium data-[active=true]:border-l-2 data-[active=true]:border-l-primary"
                       >
                         <Link href={item.url}>
                           <IconComponent className="h-4 w-4 text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground" />
@@ -281,46 +290,35 @@ export function AppSidebar() {
         ))}
 
         <SidebarFooter className="p-4 bg-background border-t border-sidebar-border">
-          <UserProfile />
+          {/* Simple user info */}
+          <div className="flex items-center gap-3 px-3 py-2 mb-2">
+            <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center">
+              <span className="text-primary font-medium text-sm">A</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-sidebar-foreground truncate">
+                Administrator
+              </p>
+              <p className="text-xs text-sidebar-foreground/70 truncate">
+                admin@gmail.com
+              </p>
+            </div>
+          </div>
 
-          <Separator className="my-2 bg-sidebar-border h-px" />
           <SidebarMenu>
             <SidebarMenuItem>
-              <AlertDialog
-                open={showLogoutDialog}
-                onOpenChange={setShowLogoutDialog}
+              <SidebarMenuButton
+                onClick={handleLogout}
+                className="flex items-center gap-2 text-destructive bg-destructive/5 hover:bg-destructive/20 hover:text-destructive-foreground transition-colors px-3 py-3 rounded-md w-full border border-transparent hover:border-destructive/40"
               >
-                <AlertDialogTrigger asChild>
-                  <SidebarMenuButton className="flex items-center gap-2 text-destructive bg-destructive/5 hover:bg-destructive/20 hover:text-destructive-foreground focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2 transition-colors px-3 py-3 rounded-md w-full border border-transparent hover:border-destructive/40">
-                    <LogOut className="h-4 w-4" />
-                    <span className="text-sm font-medium">Logout</span>
-                  </SidebarMenuButton>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Konfirmasi Logout</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Apakah Anda yakin ingin logout dari aplikasi? Anda akan
-                      diarahkan ke halaman login.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Batal</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={performLogout}
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    >
-                      Logout
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+                <LogOut className="h-4 w-4" />
+                <span className="text-sm font-medium">Logout</span>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
       </SidebarContent>
       <SidebarRail />
-      <br />
     </Sidebar>
   );
-}
+});

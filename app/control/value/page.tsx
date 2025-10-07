@@ -110,13 +110,16 @@ interface ControlAction {
   message_template_id?: string;
   channel_integration_id?: string;
   description?: string;
+  delay_on?: number;
+  delay_off?: number;
+  latching?: boolean;
 }
 
 interface AutomationValueRule {
   id: string;
   rule_name: string;
   description: string;
-  group_rule_name: string;
+  group_rule_name?: string; // Now optional
   created_at?: string;
   updated_at?: string;
   trigger_groups: TriggerGroup[];
@@ -301,11 +304,7 @@ const AutomationValueControl = () => {
         }
         const data = await response.json();
         setDeviceProfiles(data);
-        console.log(
-          "Device profiles loaded:",
-          Object.keys(data).length,
-          "categories"
-        );
+        // Device profiles loaded
       } catch (error) {
         console.error("Error loading device profiles:", error);
         toast.error("Failed to load device profiles from devices.json");
@@ -349,9 +348,7 @@ const AutomationValueControl = () => {
       const payload =
         typeof message === "string" ? message : JSON.stringify(message);
       client.publish(topic, payload);
-      console.log(`Published to ${topic}:`, payload);
     } else {
-      console.error("MQTT client not connected for publishing.");
       toast.error("Cannot send command, MQTT client is not connected.");
     }
   }, []);
@@ -413,7 +410,6 @@ const AutomationValueControl = () => {
         currentClient = connectMQTT();
 
         currentClient.on("connect", () => {
-          console.log("Connected to MQTT Broker");
           setMqttConnectionStatus("Connected");
 
           // Subscribe to all required topics
@@ -422,8 +418,6 @@ const AutomationValueControl = () => {
             TOPICS.MODBUS_AVAILABLES,
             TOPICS.MODULAR_AVAILABLES,
           ]);
-
-          console.log("Subscribed to automation value topics");
 
           // Load initial data
           setTimeout(() => {
@@ -638,14 +632,7 @@ const AutomationValueControl = () => {
       return;
     }
 
-    if (!currentRule.group_rule_name.trim()) {
-      setAlertDialogContent({
-        title: "Validation Error",
-        description: "Please enter a group rule name.",
-      });
-      setAlertDialogOpen(true);
-      return;
-    }
+    // Group rule name is now optional
 
     if (currentRule.trigger_groups.length === 0) {
       setAlertDialogContent({
@@ -1734,7 +1721,7 @@ const AutomationValueControl = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="groupRuleName">Group Rule Name *</Label>
+                  <Label htmlFor="groupRuleName">Group Rule Name</Label>
                   <Input
                     id="groupRuleName"
                     value={currentRule.group_rule_name}
@@ -1744,8 +1731,7 @@ const AutomationValueControl = () => {
                         group_rule_name: e.target.value,
                       }))
                     }
-                    placeholder="Enter group rule name"
-                    required
+                    placeholder="Enter group rule name (optional)"
                   />
                 </div>
 
@@ -2156,56 +2142,6 @@ const AutomationValueControl = () => {
                                 )}
                               </div>
                             </div>
-
-                            {/* Delay Settings Section */}
-                            <div className="space-y-3">
-                              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                Delay Timing (Optional)
-                              </Label>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div>
-                                  <Label className="text-xs">
-                                    Delay ON (seconds)
-                                  </Label>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    value={trigger.delay_on || 0}
-                                    onChange={(e) =>
-                                      updateTrigger(groupIndex, triggerIndex, {
-                                        ...trigger,
-                                        delay_on: parseInt(e.target.value) || 0,
-                                      })
-                                    }
-                                    placeholder="0"
-                                  />
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Wait time before activating
-                                  </p>
-                                </div>
-                                <div>
-                                  <Label className="text-xs">
-                                    Delay OFF (seconds)
-                                  </Label>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    value={trigger.delay_off || 0}
-                                    onChange={(e) =>
-                                      updateTrigger(groupIndex, triggerIndex, {
-                                        ...trigger,
-                                        delay_off:
-                                          parseInt(e.target.value) || 0,
-                                      })
-                                    }
-                                    placeholder="0"
-                                  />
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Wait time before deactivating
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
                           </div>
                         );
                       })}
@@ -2280,6 +2216,21 @@ const AutomationValueControl = () => {
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
+                    </div>
+
+                    {/* Description - Moved to the top */}
+                    <div>
+                      <Label className="text-xs">Description</Label>
+                      <Input
+                        value={action.description || ""}
+                        onChange={(e) =>
+                          updateAction(actionIndex, {
+                            ...action,
+                            description: e.target.value,
+                          })
+                        }
+                        placeholder="Action description (optional)"
+                      />
                     </div>
 
                     {/* Action Configuration */}
@@ -2375,6 +2326,75 @@ const AutomationValueControl = () => {
                                 </SelectItem>
                               </SelectContent>
                             </Select>
+                          </div>
+
+                          {/* Latching Toggle */}
+                          <div className="flex items-center space-x-2">
+                            <Switch
+                              id={`latching-${actionIndex}`}
+                              checked={action.latching || false}
+                              onCheckedChange={(checked) =>
+                                updateAction(actionIndex, {
+                                  ...action,
+                                  latching: checked,
+                                })
+                              }
+                            />
+                            <Label
+                              htmlFor={`latching-${actionIndex}`}
+                              className="text-xs font-medium"
+                            >
+                              Latching Mode
+                            </Label>
+                          </div>
+                        </div>
+
+                        {/* Delay Settings - Added after relay configuration */}
+                        <div className="space-y-3">
+                          <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            Delay Timing (Optional)
+                          </Label>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-xs">
+                                Delay ON (seconds)
+                              </Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={action.delay_on || 0}
+                                onChange={(e) =>
+                                  updateAction(actionIndex, {
+                                    ...action,
+                                    delay_on: parseInt(e.target.value) || 0,
+                                  })
+                                }
+                                placeholder="0"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Wait time before executing action
+                              </p>
+                            </div>
+                            <div>
+                              <Label className="text-xs">
+                                Delay OFF (seconds)
+                              </Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={action.delay_off || 0}
+                                onChange={(e) =>
+                                  updateAction(actionIndex, {
+                                    ...action,
+                                    delay_off: parseInt(e.target.value) || 0,
+                                  })
+                                }
+                                placeholder="0"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Wait time before stopping action (applied after ON delay)
+                              </p>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2482,20 +2502,6 @@ const AutomationValueControl = () => {
                         </div>
                       </div>
                     )}
-
-                    <div>
-                      <Label className="text-xs">Description</Label>
-                      <Input
-                        value={action.description || ""}
-                        onChange={(e) =>
-                          updateAction(actionIndex, {
-                            ...action,
-                            description: e.target.value,
-                          })
-                        }
-                        placeholder="Action description"
-                      />
-                    </div>
                   </div>
                 ))}
               </div>

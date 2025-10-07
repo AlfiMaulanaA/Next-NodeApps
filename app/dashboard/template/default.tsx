@@ -23,9 +23,10 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { connectMQTT } from "@/lib/mqttClient";
 import { useIsMobile } from "@/hooks/use-mobile";
-import DeviceDataDisplay from "@/components/DeviceDataDisplay";
+
 
 export default function OverviewDashboard() {
   const [modbusDevices, setModbusDevices] = useState<any[]>([]);
@@ -53,7 +54,9 @@ export default function OverviewDashboard() {
     return null;
   };
 
-  // Function to render dynamic JSON data with badges for each key-value pair
+
+
+  // Function to render dynamic JSON data with better handling for nested objects
   const renderDynamicJSON = (data: any): JSX.Element => {
     if (data === null || data === undefined) {
       return (
@@ -111,6 +114,27 @@ export default function OverviewDashboard() {
           </div>
         );
       }
+
+      // Group cell voltages and temperatures for better display
+      if (data.length > 10 && data.every(item => typeof item === 'number')) {
+        // Likely cell voltages or temperatures array
+        const gridCols = Math.min(data.length, 8); // Max 8 columns
+        return (
+          <div className="space-y-2">
+            <div className="text-xs text-muted-foreground font-medium">
+              Array ({data.length} items) - Cell Data
+            </div>
+            <div className={`grid grid-cols-${Math.max(2, Math.min(8, data.length))} gap-1`}>
+              {data.map((item, index) => (
+                <div key={index} className="text-center p-1 bg-muted rounded text-xs">
+                  Cell {index + 1}: {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="space-y-2">
           <div className="text-xs text-muted-foreground font-medium">
@@ -139,26 +163,208 @@ export default function OverviewDashboard() {
           </div>
         );
       }
-      return (
-        <div className="space-y-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            {entries.map(([key, value]) => (
-              <div
-                key={key}
-                className="flex items-center gap-2 p-1.5 bg-card border rounded"
-              >
-                <div
-                  className="text-xs text-data-key truncate flex-shrink-0"
-                  title={key}
-                >
-                  {key}:
+
+      // Special handling for System Event objects
+      if (entries.length > 5 && entries.every(([_, value]) => value === 0 || value === 1)) {
+        // Likely protection events or alarms
+        const activeEvents = entries.filter(([_, value]) => value === 1);
+        const inactiveEvents = entries.filter(([_, value]) => value === 0);
+
+        return (
+          <div className="space-y-2">
+            <div className="text-xs text-muted-foreground font-medium">
+              System Events ({entries.length} total)
+            </div>
+            <div className="space-y-2">
+              {activeEvents.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-red-600 mb-1">Active Alarms:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {activeEvents.map(([key, value]) => (
+                      <span key={key} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
+                        {key} ({value})
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1 flex-1 min-w-0">
-                  {renderDynamicJSON(value)}
+              )}
+              {inactiveEvents.length > 0 && activeEvents.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-green-600 mb-1">Normal:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {inactiveEvents.slice(0, 10).map(([key, value]) => (
+                      <span key={key} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                        {key} ({value})
+                      </span>
+                    ))}
+                    {inactiveEvents.length > 10 && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border">
+                        +{inactiveEvents.length - 10} more
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )}
+            </div>
           </div>
+        );
+      }
+
+      // Group similar data types for better organization
+      const voltageKeys = entries.filter(([key]) => key.includes('Voltage'));
+      const tempKeys = entries.filter(([key]) => key.includes('Temperature') || key.includes('Temp'));
+      const capacityKeys = entries.filter(([key]) => key.includes('capacity') || key.includes('Capacity'));
+      const basicKeys = entries.filter(([key]) =>
+        !key.includes('Voltage') &&
+        !key.includes('Temperature') &&
+        !key.includes('Temp') &&
+        !key.includes('capacity') &&
+        !key.includes('Capacity') &&
+        entries.find(([k]) => k === key)?.[1] !== 'object'
+      );
+
+      return (
+        <div className="space-y-4">
+          {/* Basic Parameters */}
+          {basicKeys.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground font-medium">
+                Basic Parameters
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {basicKeys.map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between p-2 bg-card border rounded"
+                  >
+                    <div className="text-xs text-data-key truncate pr-2">
+                      {key}:
+                    </div>
+                    <div className="text-xs font-medium text-foreground">
+                      {typeof value === 'number' ? value.toString() :
+                       typeof value === 'boolean' ? (
+                         <Badge variant={value ? "success" : "destructive"}>
+                           {value.toString()}
+                         </Badge>
+                       ) :
+                       typeof value === 'string' ? value :
+                       'Complex Data'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Capacity Information */}
+          {capacityKeys.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground font-medium">
+                Capacity Information
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {capacityKeys.map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between p-2 bg-card border rounded"
+                  >
+                    <div className="text-xs text-data-key truncate pr-2">
+                      {key}:
+                    </div>
+                    <div className="text-xs font-medium text-foreground">
+                      {typeof value === 'number' ? value.toString() :
+                       typeof value === 'boolean' ? value.toString() :
+                       typeof value === 'string' ? value :
+                       'Complex Data'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Voltage Information */}
+          {voltageKeys.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground font-medium">
+                Voltage Information ({voltageKeys.length} items)
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                {voltageKeys.slice(0, 20).map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between p-2 bg-card border rounded"
+                  >
+                    <div className="text-xs text-data-key truncate pr-2">
+                      {key}:
+                    </div>
+                    <div className="text-xs font-medium text-foreground">
+                      {typeof value === 'number' ? value.toString() :
+                       typeof value === 'boolean' ? value.toString() :
+                       typeof value === 'string' ? value :
+                       'Complex Data'}
+                    </div>
+                  </div>
+                ))}
+                {voltageKeys.length > 20 && (
+                  <div className="col-span-full text-xs text-center py-2 bg-muted rounded">
+                    +{voltageKeys.length - 20} more voltage readings hidden
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Temperature Information */}
+          {tempKeys.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground font-medium">
+                Temperature Information ({tempKeys.length} items)
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                {tempKeys.slice(0, 16).map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between p-2 bg-card border rounded"
+                  >
+                    <div className="text-xs text-data-key truncate pr-2">
+                      {key}:
+                    </div>
+                    <div className="text-xs font-medium text-foreground">
+                      {typeof value === 'number' ? value.toString() :
+                       typeof value === 'boolean' ? value.toString() :
+                       typeof value === 'string' ? value :
+                       'Complex Data'}
+                    </div>
+                  </div>
+                ))}
+                {tempKeys.length > 16 && (
+                  <div className="col-span-full text-xs text-center py-2 bg-muted rounded">
+                    +{tempKeys.length - 16} more temperature readings hidden
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Any remaining complex objects */}
+          {entries.filter(([key]) => {
+            const isHandled = [...basicKeys, ...capacityKeys, ...voltageKeys, ...tempKeys].find(([k]) => k === key);
+            return !isHandled;
+          }).map(([key, value]) => (
+            <div key={key} className="space-y-2">
+              <div className="text-xs text-muted-foreground font-medium">
+                {key}
+              </div>
+              <div className="p-3 bg-card border rounded">
+                {typeof value === 'object' && value !== null ? JSON.stringify(value, null, 2) :
+                 typeof value === 'number' ? value.toString() :
+                 typeof value === 'boolean' ? value.toString() :
+                 typeof value === 'string' ? value :
+                 'Unknown Data'}
+              </div>
+            </div>
+          ))}
         </div>
       );
     }
@@ -242,7 +448,23 @@ export default function OverviewDashboard() {
             }
           }
         } else {
-          setDeviceTopicData((prev) => ({ ...prev, [topic]: payload }));
+          // Filter out status messages and only store device data payloads
+          const isStatusMessage = typeof payload === 'string' && payload.includes('data acquisition');
+
+          if (!isStatusMessage) {
+            // Store device data payloads (both old format and new format)
+            const isDeviceData = (
+              typeof payload === 'object' &&
+              payload !== null &&
+              (payload.device_name || payload.mac) && // Support both old and new format
+              (payload.value || typeof payload.value === 'string') // Support both formats
+            );
+
+            if (isDeviceData) {
+              setDeviceTopicData((prev) => ({ ...prev, [topic]: payload }));
+            }
+            // Ignore status messages and invalid payloads
+          }
         }
       } catch (e) {
         console.error("[MQTT] Invalid JSON:", e);
@@ -476,6 +698,7 @@ export default function OverviewDashboard() {
                                   const parsedValue = JSON.parse(
                                     topicData.value
                                   );
+                                  console.log(`Parsed value for ${d.profile?.topic}:`, parsedValue);
                                   return renderDynamicJSON(parsedValue);
                                 } else {
                                   return (
@@ -485,9 +708,10 @@ export default function OverviewDashboard() {
                                   );
                                 }
                               } catch (err) {
+                                console.error(`Error parsing data for ${d.profile?.topic}:`, err);
                                 return (
                                   <span className="text-red-600">
-                                    Invalid data format
+                                    Invalid data format: {err instanceof Error ? err.message : String(err)}
                                   </span>
                                 );
                               }
@@ -576,9 +800,10 @@ export default function OverviewDashboard() {
                                   );
                                 }
                               } catch (err) {
+                                console.error(`Error parsing data for ${d.profile?.topic}:`, err);
                                 return (
                                   <span className="text-red-600">
-                                    Invalid data format
+                                    Invalid data format: {err instanceof Error ? err.message : String(err)}
                                   </span>
                                 );
                               }

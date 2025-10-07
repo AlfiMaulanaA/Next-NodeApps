@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  RotateCcw,
 } from "lucide-react";
 import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
 import MqttStatus from "@/components/mqtt-status";
@@ -39,6 +40,10 @@ const MODBUS_STATUS_TOPIC = "IOT/Containment/modbustcp/status";
 const SERVICE_COMMAND_TOPIC = "service/command";
 const SERVICE_RESPONSE_TOPIC = "service/response"; // Topic to receive service command responses
 
+// IP Synchronization Topics
+const NETWORK_SYNC_COMMAND_TOPIC = "rpi/network/sync_ip";
+const NETWORK_SYNC_RESPONSE_TOPIC = "rpi/network/sync_ip_response";
+
 export default function ModbusTCPSettingsPage() {
   // --- State Variables ---
   const [modbusIP, setModbusIP] = useState(""); // Current IP from backend
@@ -47,6 +52,7 @@ export default function ModbusTCPSettingsPage() {
   const [inputPort, setInputPort] = useState(""); // User input for Port
   const [modbusStatus, setModbusStatus] = useState("Unknown"); // Status of Modbus TCP service
   const [isLoading, setIsLoading] = useState(true); // Loading state for initial data fetch and config save
+  const [isSyncing, setIsSyncing] = useState(false); // Loading state for IP sync operation
   const clientRef = useRef<MqttClient | null>(null); // Reference to the MQTT client instance
 
   // Dialog states for confirmation
@@ -165,6 +171,40 @@ export default function ModbusTCPSettingsPage() {
     []
   ); // Dependancy array is empty as clientRef.current is a stable ref
 
+  /**
+   * Synchronize IP configuration from network settings to Modbus TCP service
+   */
+  const syncIPToServices = useCallback(() => {
+    const client = clientRef.current;
+    if (!client || !client.connected) {
+      toast({
+        title: "Error",
+        description: "MQTT not connected. Cannot sync IP.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    client.publish(NETWORK_SYNC_COMMAND_TOPIC, JSON.stringify({}), {}, (err) => {
+      if (err) {
+        console.error("[DEBUG] IP sync publish error:", err);
+        toast({
+          title: "Error",
+          description: `Failed to start IP sync: ${err.message}`,
+          variant: "destructive",
+        });
+        setIsSyncing(false);
+      } else {
+        console.log("[DEBUG] Successfully published IP sync command");
+        toast({
+          title: "Syncing",
+          description: "Synchronizing IP to all services...",
+        });
+      }
+    });
+  }, []); // Dependancy array is empty as clientRef.current is a stable ref
+
   // --- useEffect for MQTT Connection and Message Handling ---
   useEffect(() => {
     const mqttClientInstance = connectMQTT();
@@ -174,6 +214,7 @@ export default function ModbusTCPSettingsPage() {
       MODBUS_SETTING_DATA_TOPIC,
       MODBUS_STATUS_TOPIC,
       SERVICE_RESPONSE_TOPIC, // Subscribe to service command responses
+      NETWORK_SYNC_RESPONSE_TOPIC, // Subscribe to IP sync responses
     ];
 
     // Initial subscription attempt for all topics
@@ -257,6 +298,22 @@ export default function ModbusTCPSettingsPage() {
               variant: "destructive",
             });
             console.error("Service command error response:", payload);
+          }
+        } else if (topic === NETWORK_SYNC_RESPONSE_TOPIC) {
+          setIsSyncing(false);
+          if (payload.status === "success") {
+            toast({
+              title: "Success",
+              description: "IP synchronization completed successfully",
+            });
+            // Re-fetch settings after IP sync to show updated configs
+            setTimeout(() => getCurrentSetting(), 500);
+          } else {
+            toast({
+              title: "Sync Failed",
+              description: payload.message || "IP synchronization failed",
+              variant: "destructive",
+            });
           }
         }
       } catch (e) {
@@ -507,6 +564,40 @@ export default function ModbusTCPSettingsPage() {
             >
               <RefreshCw className="w-4 h-4 mr-2" /> Restart Modbus TCP Service
             </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* IP Synchronization Section */}
+      <div className="p-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">IP Synchronization</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Synchronize current network IP to Modbus TCP service configuration
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Current IP: {modbusIP || "Not configured"}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  This will update the Modbus TCP IP address to match the current network settings
+                </p>
+              </div>
+              <Button
+                onClick={syncIPToServices}
+                disabled={isSyncing || isLoading || !modbusIP}
+                variant="outline"
+              >
+                {isSyncing ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                )}
+                Sync IP to Modbus TCP
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>

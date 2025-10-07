@@ -1,4 +1,4 @@
-SHOTO-BATTERY-GSPE-MIB DEFINITIONS ::= BEGIN
+BATTERY-MANAGEMENT-MIB DEFINITIONS ::= BEGIN
 
 IMPORTS
     MODULE-IDENTITY, OBJECT-TYPE, NOTIFICATION-TYPE,
@@ -10,7 +10,7 @@ IMPORTS
         FROM SNMPv2-CONF;
 
 PT-GSPE MODULE-IDENTITY
-    LAST-UPDATED "202412240000Z"
+    LAST-UPDATED "202501040000Z"
     ORGANIZATION "BMS Battery Management System"
     CONTACT-INFO 
         "Contact: BMS Support Team
@@ -20,17 +20,17 @@ PT-GSPE MODULE-IDENTITY
         "This MIB module defines objects for monitoring and managing
          battery systems including Shoto SDA10-48100 lithium batteries
          and battery chargers through SNMP protocol."
-    REVISION "202412240000Z"
-    DESCRIPTION "Initial version with enhanced System Event support"
+    REVISION "202501040000Z"
+    DESCRIPTION "Revised version with payload-matching naming convention"
     ::= { enterprises 10000 }
 
 -- Enterprise and organizational structure
-ShotoBattery       OBJECT IDENTIFIER ::= { PT-GSPE 11 }
-Config       OBJECT IDENTIFIER ::= { ShotoBattery 5 }
-Equipment    OBJECT IDENTIFIER ::= { ShotoBattery 12 }
-Traps        OBJECT IDENTIFIER ::= { ShotoBattery 13 }
-TrapProtect  OBJECT IDENTIFIER ::= { ShotoBattery 14 }
-TrapStatus   OBJECT IDENTIFIER ::= { ShotoBattery 15 }
+ShotoBattery     OBJECT IDENTIFIER ::= { PT-GSPE 11 }
+Config           OBJECT IDENTIFIER ::= { ShotoBattery 5 }
+Equipment        OBJECT IDENTIFIER ::= { ShotoBattery 12 }
+Traps            OBJECT IDENTIFIER ::= { ShotoBattery 13 }
+TrapProtect      OBJECT IDENTIFIER ::= { ShotoBattery 14 }
+TrapStatus       OBJECT IDENTIFIER ::= { ShotoBattery 15 }
 
 -- Configuration Objects (5.x.0)
 ConfigGroup  OBJECT IDENTIFIER ::= { Config 1 }
@@ -126,455 +126,500 @@ siteName OBJECT-TYPE
     DESCRIPTION "Installation site name"
     ::= { Config 130 }
 
--- Equipment ObjectsS
-batteryShoto    OBJECT IDENTIFIER ::= { Equipment 1 }
+-- Equipment Objects - Battery Data (matches MQTT payload naming)
+batteryData    OBJECT IDENTIFIER ::= { Equipment 1 }
 
--- Shoto Battery Objects (12.2.x.0)
-shotoPackVoltage OBJECT-TYPE
+-- Battery Main Parameters (1-14) - Naming matches payload keys
+packVoltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Battery pack voltage in centi-volts (divide by 100 for actual volts)"
-    ::= { batteryShoto 1 }
+    DESCRIPTION "Pack Voltage - Battery pack voltage in centi-volts (divide by 100 for actual volts)
+                 MQTT Payload Key: 'Pack Voltage'"
+    ::= { batteryData 1 }
 
-shotoCurrent OBJECT-TYPE
+current OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-amperes"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Battery current in centi-amperes (divide by 100 for actual amperes)"
-    ::= { batteryShoto 2 }
+    DESCRIPTION "Current - Battery current in centi-amperes (divide by 100 for actual amperes)
+                 MQTT Payload Key: 'Current'"
+    ::= { batteryData 2 }
 
-shotoRemainingCapacity OBJECT-TYPE
+remainingCapacity OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-ampere-hours"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Remaining capacity in centi-ampere-hours"
-    ::= { batteryShoto 3 }
+    DESCRIPTION "Remaining capacity - Remaining capacity in centi-ampere-hours
+                 MQTT Payload Key: 'Remaining capacity'"
+    ::= { batteryData 3 }
 
-shotoTotalCapacity OBJECT-TYPE
+totalCapacity OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-ampere-hours"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Total capacity in centi-ampere-hours"
-    ::= { batteryShoto 4 }
+    DESCRIPTION "Total Capacity - Total capacity in centi-ampere-hours
+                 MQTT Payload Key: 'Total Capacity'"
+    ::= { batteryData 4 }
 
-shotoTotalDischargeCapacity OBJECT-TYPE
+totalDischargeCapacity OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "ampere-hours"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Total discharge capacity in ampere-hours"
-    ::= { batteryShoto 5 }
+    DESCRIPTION "Total Discharge Capacity - Total discharge capacity in ampere-hours
+                 MQTT Payload Key: 'Total Discharge Capacity'"
+    ::= { batteryData 5 }
 
-shotoSOC OBJECT-TYPE
+soc OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "deci-percent"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "State of Charge in deci-percent (divide by 10 for actual percentage)"
-    ::= { batteryShoto 6 }
+    DESCRIPTION "SOC - State of Charge in deci-percent (divide by 10 for actual percentage)
+                 MQTT Payload Key: 'SOC'"
+    ::= { batteryData 6 }
 
-shotoSOH OBJECT-TYPE
+soh OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "deci-percent"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "State of Health in deci-percent (divide by 10 for actual percentage)"
-    ::= { batteryShoto 7 }
+    DESCRIPTION "SOH - State of Health in deci-percent (divide by 10 for actual percentage)
+                 MQTT Payload Key: 'SOH'"
+    ::= { batteryData 7 }
 
-shotoCycle OBJECT-TYPE
+cycle OBJECT-TYPE
     SYNTAX      Integer32
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Battery cycle count"
-    ::= { batteryShoto 8 }
+    DESCRIPTION "Cycle - Battery cycle count
+                 MQTT Payload Key: 'Cycle'"
+    ::= { batteryData 8 }
 
-shotoAverageOfCellVoltage OBJECT-TYPE
-    SYNTAX      Integer32
-    UNITS       "milli-volts"
-    MAX-ACCESS  read-only
-    STATUS      current
-    DESCRIPTION "Average cell voltage in milli-volts (divide by 1000 for volts)"
-    ::= { batteryShoto 9 }
-
-shotoMaxCellVoltage OBJECT-TYPE
+averagOfCellVotage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Maximum cell voltage in milli-volts"
-    ::= { batteryShoto 10 }
+    DESCRIPTION "Averag of Cell Votage - Average cell voltage in milli-volts (divide by 1000 for volts)
+                 MQTT Payload Key: 'Averag of Cell Votage' (note: typo in original)"
+    ::= { batteryData 9 }
 
-shotoMinCellVoltage OBJECT-TYPE
+maxCellVoltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Minimum cell voltage in milli-volts"
-    ::= { batteryShoto 11 }
+    DESCRIPTION "Max Cell Voltage - Maximum cell voltage in milli-volts
+                 MQTT Payload Key: 'Max Cell Voltage'"
+    ::= { batteryData 10 }
 
-shotoAverageOfCellTemperature OBJECT-TYPE
+minCellVoltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Min Cell Voltage - Minimum cell voltage in milli-volts
+                 MQTT Payload Key: 'Min Cell Voltage'"
+    ::= { batteryData 11 }
+
+averagOfCellTemperature OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-celsius"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Average cell temperature in centi-celsius (divide by 100 for degrees C)"
-    ::= { batteryShoto 12 }
+    DESCRIPTION "Averag of Cell Temperature - Average cell temperature in centi-celsius (divide by 100 for degrees C)
+                 MQTT Payload Key: 'Averag of Cell Temperature'"
+    ::= { batteryData 12 }
 
-shotoMaxCellTemperature OBJECT-TYPE
+maxCellTemperature OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-celsius"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Maximum cell temperature in centi-celsius"
-    ::= { batteryShoto 13 }
+    DESCRIPTION "Max Cell Temperature - Maximum cell temperature in centi-celsius
+                 MQTT Payload Key: 'Max Cell Temperature'"
+    ::= { batteryData 13 }
 
-shotoMinCellTemperature OBJECT-TYPE
+minCellTemperature OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-celsius"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Minimum cell temperature in centi-celsius"
-    ::= { batteryShoto 14 }
+    DESCRIPTION "Min Cell Temperature - Minimum cell temperature in centi-celsius
+                 MQTT Payload Key: 'Min Cell Temperature'"
+    ::= { batteryData 14 }
 
 -- Individual Cell Voltages (15-29)
-shotoCell1Voltage OBJECT-TYPE
+cell1Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 1 voltage in milli-volts"
-    ::= { batteryShoto 15 }
+    DESCRIPTION "Cell1 Voltage - Cell 1 voltage in milli-volts
+                 MQTT Payload Key: 'Cell1 Voltage'"
+    ::= { batteryData 15 }
 
-shotoCell2Voltage OBJECT-TYPE
+cell2Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 2 voltage in milli-volts"
-    ::= { batteryShoto 16 }
+    DESCRIPTION "Cell2 Voltage - Cell 2 voltage in milli-volts
+                 MQTT Payload Key: 'Cell2 Voltage'"
+    ::= { batteryData 16 }
 
-shotoCell3Voltage OBJECT-TYPE
+cell3Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 3 voltage in milli-volts"
-    ::= { batteryShoto 17 }
+    DESCRIPTION "Cell3 Voltage - Cell 3 voltage in milli-volts
+                 MQTT Payload Key: 'Cell3 Voltage'"
+    ::= { batteryData 17 }
 
-shotoCell4Voltage OBJECT-TYPE
+cell4Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 4 voltage in milli-volts"
-    ::= { batteryShoto 18 }
+    DESCRIPTION "Cell4 Voltage - Cell 4 voltage in milli-volts
+                 MQTT Payload Key: 'Cell4 Voltage'"
+    ::= { batteryData 18 }
 
-shotoCell5Voltage OBJECT-TYPE
+cell5Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 5 voltage in milli-volts"
-    ::= { batteryShoto 19 }
+    DESCRIPTION "Cell5 Voltage - Cell 5 voltage in milli-volts
+                 MQTT Payload Key: 'Cell5 Voltage'"
+    ::= { batteryData 19 }
 
-shotoCell6Voltage OBJECT-TYPE
+cell6Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 6 voltage in milli-volts"
-    ::= { batteryShoto 20 }
+    DESCRIPTION "Cell6 Voltage - Cell 6 voltage in milli-volts
+                 MQTT Payload Key: 'Cell6 Voltage'"
+    ::= { batteryData 20 }
 
-shotoCell7Voltage OBJECT-TYPE
+cell7Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 7 voltage in milli-volts"
-    ::= { batteryShoto 21 }
+    DESCRIPTION "Cell7 Voltage - Cell 7 voltage in milli-volts
+                 MQTT Payload Key: 'Cell7 Voltage'"
+    ::= { batteryData 21 }
 
-shotoCell8Voltage OBJECT-TYPE
+cell8Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 8 voltage in milli-volts"
-    ::= { batteryShoto 22 }
+    DESCRIPTION "Cell8 Voltage - Cell 8 voltage in milli-volts
+                 MQTT Payload Key: 'Cell8 Voltage'"
+    ::= { batteryData 22 }
 
-shotoCell9Voltage OBJECT-TYPE
+cell9Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 9 voltage in milli-volts"
-    ::= { batteryShoto 23 }
+    DESCRIPTION "Cell9 Voltage - Cell 9 voltage in milli-volts
+                 MQTT Payload Key: 'Cell9 Voltage'"
+    ::= { batteryData 23 }
 
-shotoCell10Voltage OBJECT-TYPE
+cell10Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 10 voltage in milli-volts"
-    ::= { batteryShoto 24 }
+    DESCRIPTION "Cell10 Voltage - Cell 10 voltage in milli-volts
+                 MQTT Payload Key: 'Cell10 Voltage'"
+    ::= { batteryData 24 }
 
-shotoCell11Voltage OBJECT-TYPE
+cell11Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 11 voltage in milli-volts"
-    ::= { batteryShoto 25 }
+    DESCRIPTION "Cell11 Voltage - Cell 11 voltage in milli-volts
+                 MQTT Payload Key: 'Cell11 Voltage'"
+    ::= { batteryData 25 }
 
-shotoCell12Voltage OBJECT-TYPE
+cell12Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 12 voltage in milli-volts"
-    ::= { batteryShoto 26 }
+    DESCRIPTION "Cell12 Voltage - Cell 12 voltage in milli-volts
+                 MQTT Payload Key: 'Cell12 Voltage'"
+    ::= { batteryData 26 }
 
-shotoCell13Voltage OBJECT-TYPE
+cell13Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 13 voltage in milli-volts"
-    ::= { batteryShoto 27 }
+    DESCRIPTION "Cell13 Voltage - Cell 13 voltage in milli-volts
+                 MQTT Payload Key: 'Cell13 Voltage'"
+    ::= { batteryData 27 }
 
-shotoCell14Voltage OBJECT-TYPE
+cell14Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 14 voltage in milli-volts"
-    ::= { batteryShoto 28 }
+    DESCRIPTION "Cell14 Voltage - Cell 14 voltage in milli-volts
+                 MQTT Payload Key: 'Cell14 Voltage'"
+    ::= { batteryData 28 }
 
-shotoCell15Voltage OBJECT-TYPE
+cell15Voltage OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "milli-volts"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell 15 voltage in milli-volts"
-    ::= { batteryShoto 29 }
+    DESCRIPTION "Cell15 Voltage - Cell 15 voltage in milli-volts
+                 MQTT Payload Key: 'Cell15 Voltage'"
+    ::= { batteryData 29 }
 
 -- Cell Temperatures (30-33)
-shotoCellTemperature1 OBJECT-TYPE
+cellTemperature1 OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-celsius"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell temperature 1 in centi-celsius"
-    ::= { batteryShoto 30 }
+    DESCRIPTION "Cell temperature 1 - Cell temperature 1 in centi-celsius
+                 MQTT Payload Key: 'Cell temperature 1'"
+    ::= { batteryData 30 }
 
-shotoCellTemperature2 OBJECT-TYPE
+cellTemperature2 OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-celsius"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell temperature 2 in centi-celsius"
-    ::= { batteryShoto 31 }
+    DESCRIPTION "Cell temperature 2 - Cell temperature 2 in centi-celsius
+                 MQTT Payload Key: 'Cell temperature 2'"
+    ::= { batteryData 31 }
 
-shotoCellTemperature3 OBJECT-TYPE
+cellTemperature3 OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-celsius"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell temperature 3 in centi-celsius"
-    ::= { batteryShoto 32 }
+    DESCRIPTION "Cell temperature 3 - Cell temperature 3 in centi-celsius
+                 MQTT Payload Key: 'Cell temperature 3'"
+    ::= { batteryData 32 }
 
-shotoCellTemperature4 OBJECT-TYPE
+cellTemperature4 OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-celsius"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Cell temperature 4 in centi-celsius"
-    ::= { batteryShoto 33 }
+    DESCRIPTION "Cell temperature 4 - Cell temperature 4 in centi-celsius
+                 MQTT Payload Key: 'Cell temperature 4'"
+    ::= { batteryData 33 }
 
 -- Environment Sensors (34-35)
-shotoEnvironmentTemperature OBJECT-TYPE
+environmentTemperature OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-celsius"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Environment temperature in centi-celsius"
-    ::= { batteryShoto 34 }
+    DESCRIPTION "Environment Temperature - Environment temperature in centi-celsius
+                 MQTT Payload Key: 'Environment Temperature'"
+    ::= { batteryData 34 }
 
-shotoMOSFETTemperature OBJECT-TYPE
+mosfetTemperature OBJECT-TYPE
     SYNTAX      Integer32
     UNITS       "centi-celsius"
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "MOSFET temperature in centi-celsius"
-    ::= { batteryShoto 35 }
+    DESCRIPTION "MOSFET temperature - MOSFET temperature in centi-celsius
+                 MQTT Payload Key: 'MOSFET temperature'"
+    ::= { batteryData 35 }
 
 -- System Event (36) - Legacy single value
-shotoSystemEvent OBJECT-TYPE
+systemEvent OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "System Event - Raw system event register value (legacy - use individual System Event parameters below)
+                 MQTT Payload Key: 'System Event' (raw UINT16 value)"
+    ::= { batteryData 36 }
+
+-- System Event Individual Parameters (37-46) - Matches payload 'System Event' dictionary
+systemEventOverVoltageProtect OBJECT-TYPE
     SYNTAX      Integer32 (0..1)
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "System event status (legacy - use individual System Event parameters below)"
-    ::= { batteryShoto 36 }
+    DESCRIPTION "Over Voltage Protect - Over voltage protection status (0=normal, 1=protection active)
+                 MQTT Payload Key: 'System Event' -> 'Over Voltage Protect'"
+    ::= { batteryData 37 }
 
--- Enhanced System Event Parameters (37-47) - Individual alarms
-shotoSystemEventOverVoltage OBJECT-TYPE
+systemEventUnderVoltageProtect OBJECT-TYPE
     SYNTAX      Integer32 (0..1)
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Over voltage protection status (0=normal, 1=protection active)"
-    ::= { batteryShoto 37 }
+    DESCRIPTION "Under Voltage Protect - Under voltage protection status (0=normal, 1=protection active)
+                 MQTT Payload Key: 'System Event' -> 'Under Voltage Protect'"
+    ::= { batteryData 38 }
 
-shotoSystemEventUnderVoltage OBJECT-TYPE
+systemEventChargeOverCurrentProtect OBJECT-TYPE
     SYNTAX      Integer32 (0..1)
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Under voltage protection status (0=normal, 1=protection active)"
-    ::= { batteryShoto 38 }
+    DESCRIPTION "Charge over current Protect - Charge over current protection status (0=normal, 1=protection active)
+                 MQTT Payload Key: 'System Event' -> 'Charge over current Protect'"
+    ::= { batteryData 39 }
 
-shotoSystemEventChargeOC OBJECT-TYPE
+systemEventDischargeOverCurrentProtect OBJECT-TYPE
     SYNTAX      Integer32 (0..1)
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Charge over current protection status (0=normal, 1=protection active)"
-    ::= { batteryShoto 39 }
+    DESCRIPTION "Discharge over current Protect - Discharge over current protection status (0=normal, 1=protection active)
+                 MQTT Payload Key: 'System Event' -> 'Discharge over current Protect'"
+    ::= { batteryData 40 }
 
-shotoSystemEventDischargeOC OBJECT-TYPE
+systemEventShortReverseCircuitProtect OBJECT-TYPE
     SYNTAX      Integer32 (0..1)
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Discharge over current protection status (0=normal, 1=protection active)"
-    ::= { batteryShoto 40 }
+    DESCRIPTION "Short/Reverse circuit Protect - Short circuit protection status (0=normal, 1=protection active)
+                 MQTT Payload Key: 'System Event' -> 'Short/Reverse circuit Protect'"
+    ::= { batteryData 41 }
 
-shotoSystemEventShortCircuit OBJECT-TYPE
+systemEventHighTemperaturePrtect OBJECT-TYPE
     SYNTAX      Integer32 (0..1)
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Short circuit protection status (0=normal, 1=protection active)"
-    ::= { batteryShoto 41 }
+    DESCRIPTION "High temperature Prtect - High temperature protection status (0=normal, 1=protection active)
+                 MQTT Payload Key: 'System Event' -> 'High temperature Prtect' (note: typo in original)"
+    ::= { batteryData 42 }
 
-shotoSystemEventHighTemp OBJECT-TYPE
+systemEventSOCLowAlarm OBJECT-TYPE
     SYNTAX      Integer32 (0..1)
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "High temperature protection status (0=normal, 1=protection active)"
-    ::= { batteryShoto 42 }
+    DESCRIPTION "SOC Low alarm - SOC low alarm status (0=normal, 1=alarm active)
+                 MQTT Payload Key: 'System Event' -> 'SOC Low alarm'"
+    ::= { batteryData 43 }
 
-shotoSystemEventSOCLow OBJECT-TYPE
+systemEventDischarging OBJECT-TYPE
     SYNTAX      Integer32 (0..1)
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "SOC low alarm status (0=normal, 1=alarm active)"
-    ::= { batteryShoto 43 }
+    DESCRIPTION "Discharging - Discharging status (0=not discharging, 1=discharging)
+                 MQTT Payload Key: 'System Event' -> 'Discharging'"
+    ::= { batteryData 44 }
 
-shotoSystemEventDischarging OBJECT-TYPE
+systemEventChargeing OBJECT-TYPE
     SYNTAX      Integer32 (0..1)
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Discharging status (0=not discharging, 1=discharging)"
-    ::= { batteryShoto 44 }
+    DESCRIPTION "Chargeing - Charging status (0=not charging, 1=charging)
+                 MQTT Payload Key: 'System Event' -> 'Chargeing' (note: typo in original)"
+    ::= { batteryData 45 }
 
-shotoSystemEventCharging OBJECT-TYPE
+systemEventChargeOnline OBJECT-TYPE
     SYNTAX      Integer32 (0..1)
     MAX-ACCESS  read-only
     STATUS      current
-    DESCRIPTION "Charging status (0=not charging, 1=charging)"
-    ::= { batteryShoto 45 }
+    DESCRIPTION "Charge Online - Charge online status (0=offline, 1=online)
+                 MQTT Payload Key: 'System Event' -> 'Charge Online'"
+    ::= { batteryData 46 }
 
-shotoSystemEventChargeOnline OBJECT-TYPE
-    SYNTAX      Integer32 (0..1)
-    MAX-ACCESS  read-only
-    STATUS      current
-    DESCRIPTION "Charge online status (0=offline, 1=online)"
-    ::= { batteryShoto 46 }
-
-
--- Trap Definitions
+-- Trap Definitions - Using new naming
 batteryLowVoltage NOTIFICATION-TYPE
-    OBJECTS { shotoPackVoltage, shotoSOC, deviceName, siteName }
+    OBJECTS { packVoltage, soc, deviceName, siteName }
     STATUS  current
     DESCRIPTION "Battery pack voltage below threshold alarm"
     ::= { Traps 1 }
 
 batteryHighVoltage NOTIFICATION-TYPE
-    OBJECTS { shotoPackVoltage, shotoSOC, deviceName, siteName }
+    OBJECTS { packVoltage, soc, deviceName, siteName }
     STATUS  current
     DESCRIPTION "Battery pack voltage above threshold alarm"
     ::= { Traps 2 }
 
 batteryLowSOC NOTIFICATION-TYPE
-    OBJECTS { shotoSOC, shotoPackVoltage, deviceName, siteName }
+    OBJECTS { soc, packVoltage, deviceName, siteName }
     STATUS  current
     DESCRIPTION "Battery State of Charge below threshold alarm"
     ::= { Traps 3 }
 
 batteryHighTemp NOTIFICATION-TYPE
-    OBJECTS { shotoMaxCellTemperature, shotoPackVoltage, shotoSOC, deviceName, siteName }
+    OBJECTS { maxCellTemperature, packVoltage, soc, deviceName, siteName }
     STATUS  current
     DESCRIPTION "Battery temperature above threshold alarm"
     ::= { Traps 4 }
 
 -- BMS Protection Traps
 batteryOverVoltageProtect NOTIFICATION-TYPE
-    OBJECTS { shotoSystemEventOverVoltage, shotoPackVoltage, deviceName, siteName }
+    OBJECTS { systemEventOverVoltageProtect, packVoltage, deviceName, siteName }
     STATUS  current
     DESCRIPTION "BMS Over Voltage Protection activated"
     ::= { TrapProtect 1 }
 
 batteryUnderVoltageProtect NOTIFICATION-TYPE
-    OBJECTS { shotoSystemEventUnderVoltage, shotoPackVoltage, deviceName, siteName }
+    OBJECTS { systemEventUnderVoltageProtect, packVoltage, deviceName, siteName }
     STATUS  current
     DESCRIPTION "BMS Under Voltage Protection activated"
     ::= { TrapProtect 2 }
 
 batteryChargeOCProtect NOTIFICATION-TYPE
-    OBJECTS { shotoSystemEventChargeOC, shotoCurrent, deviceName, siteName }
+    OBJECTS { systemEventChargeOverCurrentProtect, current, deviceName, siteName }
     STATUS  current
     DESCRIPTION "BMS Charge Over Current Protection activated"
     ::= { TrapProtect 3 }
 
 batteryDischargeOCProtect NOTIFICATION-TYPE
-    OBJECTS { shotoSystemEventDischargeOC, shotoCurrent, deviceName, siteName }
+    OBJECTS { systemEventDischargeOverCurrentProtect, current, deviceName, siteName }
     STATUS  current
     DESCRIPTION "BMS Discharge Over Current Protection activated"
     ::= { TrapProtect 4 }
 
 batteryShortCircuitProtect NOTIFICATION-TYPE
-    OBJECTS { shotoSystemEventShortCircuit, shotoPackVoltage, deviceName, siteName }
+    OBJECTS { systemEventShortReverseCircuitProtect, packVoltage, deviceName, siteName }
     STATUS  current
     DESCRIPTION "BMS Short Circuit Protection activated"
     ::= { TrapProtect 5 }
 
 batteryHighTempProtect NOTIFICATION-TYPE
-    OBJECTS { shotoSystemEventHighTemp, shotoMaxCellTemperature, deviceName, siteName }
+    OBJECTS { systemEventHighTemperaturePrtect, maxCellTemperature, deviceName, siteName }
     STATUS  current
     DESCRIPTION "BMS High Temperature Protection activated"
     ::= { TrapProtect 6 }
 
 -- BMS Status Traps
 batterySOCLowAlarm NOTIFICATION-TYPE
-    OBJECTS { shotoSystemEventSOCLow, shotoSOC, deviceName, siteName }
+    OBJECTS { systemEventSOCLowAlarm, soc, deviceName, siteName }
     STATUS  current
     DESCRIPTION "BMS SOC Low Alarm"
     ::= { TrapStatus 1 }
 
 batteryDischargingStatus NOTIFICATION-TYPE
-    OBJECTS { shotoSystemEventDischarging, shotoCurrent, deviceName, siteName }
+    OBJECTS { systemEventDischarging, current, deviceName, siteName }
     STATUS  current
     DESCRIPTION "Battery Discharging Status"
     ::= { TrapStatus 2 }
 
 batteryChargingStatus NOTIFICATION-TYPE
-    OBJECTS { shotoSystemEventCharging, shotoCurrent, deviceName, siteName }
+    OBJECTS { systemEventChargeing, current, deviceName, siteName }
     STATUS  current
     DESCRIPTION "Battery Charging Status"
     ::= { TrapStatus 3 }
 
 batteryChargeOnlineStatus NOTIFICATION-TYPE
-    OBJECTS { shotoSystemEventChargeOnline, shotoPackVoltage, deviceName, siteName }
+    OBJECTS { systemEventChargeOnline, packVoltage, deviceName, siteName }
     STATUS  current
     DESCRIPTION "Battery Charge Online Status"
     ::= { TrapStatus 4 }

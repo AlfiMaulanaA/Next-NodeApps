@@ -79,9 +79,10 @@ export default function MqttConfigPage() {
             if (response.connection) {
               setModularConnection(response.connection);
             }
-            toast.success("MQTT Modular Config Updated! 🎉");
+            toast.success("MQTT Modular Config Updated! 🎉", { id: "mqtt-config" });
+            setDialogOpen(false); // Close dialog on successful update
           } else if (response.status === "error") {
-            toast.error(`Modular Config Error: ${response.message}`);
+            toast.error(`Modular Config Error: ${response.message}`, { id: "mqtt-config" });
           }
         } else if (topic === "mqtt_config/modbus/response") {
           if (response.status === "success" && response.data) {
@@ -89,14 +90,15 @@ export default function MqttConfigPage() {
             if (response.connection) {
               setModbusConnection(response.connection);
             }
-            toast.success("MQTT Modbus Config Updated! 🚀");
+            toast.success("MQTT Modbus Config Updated! 🚀", { id: "mqtt-config" });
+            setDialogOpen(false); // Close dialog on successful update
           } else if (response.status === "error") {
-            toast.error(`Modbus Config Error: ${response.message}`);
+            toast.error(`Modbus Config Error: ${response.message}`, { id: "mqtt-config" });
           }
         }
       } catch (err) {
         toast.error(
-          "Invalid response format from MQTT. Check backend payload."
+          "Invalid response format from MQTT. Check backend payload.", { id: "mqtt-config" }
         );
         console.error(
           "Error parsing MQTT message. Raw string:",
@@ -143,6 +145,7 @@ export default function MqttConfigPage() {
     }
 
     setIsLoading(true);
+    toast.loading("Applying MQTT configuration...", { id: "mqtt-config" });
 
     // Prepare the command payload for Network.py
     const commandPayload = {
@@ -163,14 +166,12 @@ export default function MqttConfigPage() {
 
     client.publish(topic, JSON.stringify(commandPayload), (err) => {
       if (err) {
-        toast.error(`Failed to publish config update: ${err.message} 😭`);
+        toast.error(`Failed to publish config update: ${err.message} 😭`, { id: "mqtt-config" });
         setIsLoading(false);
       } else {
-        toast.success(
-          "Configuration update sent. Waiting for confirmation... 📡"
-        );
-        setDialogOpen(false);
-        // The response will come via the auto-publishing mechanism
+        toast.loading("Configuration update sent. Waiting for confirmation... 📡", { id: "mqtt-config" });
+        // Do NOT close dialog here - wait for backend response
+        // Dialog will be closed in handleMessage on successful response
         setTimeout(() => setIsLoading(false), 2000);
       }
     });

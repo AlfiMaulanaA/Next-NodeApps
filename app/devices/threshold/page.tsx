@@ -86,8 +86,9 @@ export default function BatteryThresholdPage() {
               description:
                 data.message || "Configuration updated successfully!",
             });
+            setOpen(false); // Close dialog on successful update
             // Optionally, re-fetch config to ensure UI is in sync with device
-            client.publish("batteryCharger/config/get", "");
+            setTimeout(() => client.publish("batteryCharger/config/get", ""), 500);
           } else {
             toast({
               title: "Error",
@@ -143,15 +144,17 @@ export default function BatteryThresholdPage() {
             variant: "destructive",
           });
           console.error("Publish error:", err);
+          setOpen(false); // Close on publish error
         } else {
           toast({
             title: "Processing",
             description: "Updating configuration...",
           });
+          // Do NOT close dialog here - wait for backend response
+          // Dialog will be closed in handleMessage when response is received
         }
       }
     );
-    setOpen(false); // Close dialog immediately after sending, response will handle feedback
   };
 
   return (

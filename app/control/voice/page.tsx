@@ -325,6 +325,9 @@ const VoiceControlPage = () => {
         if (payload.status === "success") {
           showToast.success("Success", payload.message);
 
+          // Auto close dialog on success
+          closeModal();
+
           // Refresh data setelah operasi berhasil
           setTimeout(() => {
             refreshVoiceControlData();
@@ -412,7 +415,7 @@ const VoiceControlPage = () => {
 
     publishMessage(message, topicVoiceControlCommand);
 
-    closeModal();
+    // Don't close modal immediately, wait for response
   };
 
   // Delete Function
@@ -492,7 +495,7 @@ const VoiceControlPage = () => {
     } else {
       showToast.warning(
         "Command Not Recognized",
-        'Please use "nyalakan" or "matikan" commands'
+        'Please use "turn on" or "turn off" commands'
       );
       return;
     }
@@ -895,11 +898,11 @@ const VoiceControlPage = () => {
                         rule_name: e.target.value,
                       }))
                     }
-                    placeholder="e.g., lampu utama ruangan meeting"
+                    placeholder="e.g., main room light"
                     required
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    This phrase will be recognized after "nyalakan" or "matikan"
+                    This phrase will be recognized after "turn on" or "turn off"
                   </p>
                 </div>
                 <div>
@@ -913,7 +916,7 @@ const VoiceControlPage = () => {
                         description: e.target.value,
                       }))
                     }
-                    placeholder="e.g., Menyalakan lampu utama ruangan meeting"
+                    placeholder="e.g., Turn on main meeting room light"
                   />
                 </div>
               </div>

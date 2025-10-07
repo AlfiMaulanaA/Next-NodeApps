@@ -66,6 +66,7 @@ error_logger = None
 device_states = {}  # Track current device states for trigger evaluation
 trigger_states = {}  # Track trigger states for auto-off functionality
 trigger_timers = {}  # Track delay timers for triggers
+action_timers = {}  # Track delay timers for actions
 
 # --- Logging Control ---
 device_topic_logging_enabled = False  # Control device topic message logging
@@ -78,7 +79,7 @@ control_broker_connected = False
 mqtt_config_file = '../MODULAR_I2C/JSON/Config/mqtt_config.json'
 config_file = './JSON/automationLogicConfig.json'
 modular_devices_file = '../MODULAR_I2C/JSON/Config/installed_devices.json'
-whatsapp_config_file = './whatsapp_config.json'
+whatsapp_config_file = './JSON/whatsapp_config.json'
 
 # --- MQTT Topic Definitions ---
 # Simplified Topics (localhost broker)
@@ -518,17 +519,93 @@ def on_message_crud(client, userdata, msg):
 
 # --- CRUD Operations ---
 def handle_get_request(client):
-    """Handle get data request"""
+    """Handle get data request - sanitize and prepare config data for UI"""
     try:
+        # Sanitize and prepare config data for UI compatibility
+        sanitized_config = []
+        for rule in config:
+            # Deep copy to avoid modifying original config
+            sanitized_rule = json.loads(json.dumps(rule))
+
+            # Ensure trigger groups have proper defaults
+            if 'trigger_groups' in sanitized_rule:
+                for group in sanitized_rule['trigger_groups']:
+                    # Set default group name if empty
+                    if not group.get('group_name', '').strip():
+                        group['group_name'] = f"Group {sanitized_rule['trigger_groups'].index(group) + 1}"
+
+                    # Ensure group has proper operator default
+                    if not group.get('group_operator'):
+                        group['group_operator'] = "AND"
+
+                    # Ensure trigger conditions have proper defaults
+                    if 'triggers' in group:
+                        for trigger in group['triggers']:
+                            # Clear any old delay settings from triggers (moved to actions)
+                            trigger.pop('delay_on', None)
+                            trigger.pop('delay_off', None)
+
+                            # Ensure required fields have defaults
+                            if not trigger.get('device_name'):
+                                trigger['device_name'] = ""
+                            if not trigger.get('trigger_type'):
+                                trigger['trigger_type'] = "drycontact"
+                            if trigger.get('pin_number') is None:
+                                trigger['pin_number'] = 1
+                            if not trigger.get('condition_operator'):
+                                trigger['condition_operator'] = "is"
+                            if trigger.get('target_value') is None:
+                                trigger['target_value'] = True
+
+            # Ensure actions have proper defaults and sanitize
+            if 'actions' in sanitized_rule:
+                for action in sanitized_rule['actions']:
+                    # Ensure description is present (can be empty string)
+                    if action.get('description') is None:
+                        action['description'] = ""
+
+                    # Ensure delay settings are present
+                    if action.get('delay_on') is None:
+                        action['delay_on'] = 0
+                    if action.get('delay_off') is None:
+                        action['delay_off'] = 0
+
+                    # Ensure other required fields based on action type
+                    if action.get('action_type') == 'control_relay':
+                        if action.get('relay_pin') is None:
+                            action['relay_pin'] = 1
+                        if action.get('target_value') is None:
+                            action['target_value'] = True
+                        if not action.get('target_device'):
+                            action['target_device'] = ""
+                        if not action.get('target_mac'):
+                            action['target_mac'] = ""
+                        if action.get('target_address') is None:
+                            action['target_address'] = 0
+                        if action.get('target_bus') is None:
+                            action['target_bus'] = 0
+
+                    elif action.get('action_type') == 'send_message':
+                        if action.get('message_type') is None:
+                            action['message_type'] = 'whatsapp'
+                        if not action.get('whatsapp_number'):
+                            action['whatsapp_number'] = ""
+                        if not action.get('whatsapp_name'):
+                            action['whatsapp_name'] = ""
+                        if not action.get('message'):
+                            action['message'] = ""
+
+            sanitized_config.append(sanitized_rule)
+
         response = {
             "status": "success",
-            "data": config,
+            "data": sanitized_config,
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         # FIXED: Add connection check for safety
         if client and client.is_connected():
             client.publish(topic_response, json.dumps(response))
-            log_simple("Configuration data sent to client", "SUCCESS")
+            log_simple("Sanitized configuration data sent to client", "SUCCESS")
         else:
             log_simple("Client not connected, cannot send configuration data", "WARNING")
     except Exception as e:
@@ -799,26 +876,24 @@ def evaluate_trigger_group(group, device_name, device_data):
         return False
 
 def evaluate_trigger_condition(trigger, device_data):
-    """Evaluate a single trigger condition with delay support"""
+    """Evaluate a single trigger condition"""
     try:
         trigger_type = trigger.get('trigger_type', 'drycontact')
         pin_number = trigger.get('pin_number', 1)
         condition_operator = trigger.get('condition_operator', 'is')
         target_value = trigger.get('target_value', False)
-        delay_on = trigger.get('delay_on', 0)
-        delay_off = trigger.get('delay_off', 0)
-        
+
         # Get current value from device data
         if trigger_type == 'drycontact':
             field_name = f'drycontactInput{pin_number}'
             current_value = device_data.get(field_name, False)
-            
+
             # Convert to boolean
             if isinstance(current_value, (int, float)):
                 current_value = bool(current_value)
             elif isinstance(current_value, str):
                 current_value = current_value.lower() in ['true', '1', 'on', 'high']
-                
+
             # Evaluate condition
             condition_met = False
             if condition_operator == 'is':
@@ -827,63 +902,16 @@ def evaluate_trigger_condition(trigger, device_data):
                 condition_met = (current_value and target_value)
             elif condition_operator == 'or':
                 condition_met = (current_value or target_value)
-                
-            # Handle delays
+
+            # Clear any existing timer for this trigger
             trigger_key = f"{trigger.get('device_name', '')}_{pin_number}_{condition_operator}"
-            
-            if condition_met and delay_on > 0:
-                # Start delay timer for activation
-                if trigger_key not in trigger_timers:
-                    trigger_timers[trigger_key] = {
-                        'type': 'delay_on',
-                        'start_time': datetime.now(),
-                        'delay': delay_on,
-                        'triggered': False
-                    }
-                    log_simple(f"Delay ON started for trigger {trigger_key}: {delay_on}s")
-                    return False
-                else:
-                    # Check if delay has elapsed
-                    timer = trigger_timers[trigger_key]
-                    if timer['type'] == 'delay_on' and not timer['triggered']:
-                        elapsed = (datetime.now() - timer['start_time']).total_seconds()
-                        if elapsed >= delay_on:
-                            timer['triggered'] = True
-                            log_simple(f"Delay ON completed for trigger {trigger_key}")
-                            return True
-                        else:
-                            return False
-                    return timer['triggered']
-            elif not condition_met and delay_off > 0:
-                # Start delay timer for deactivation
-                if trigger_key in trigger_timers and trigger_timers[trigger_key]['triggered']:
-                    trigger_timers[trigger_key] = {
-                        'type': 'delay_off',
-                        'start_time': datetime.now(),
-                        'delay': delay_off,
-                        'triggered': True
-                    }
-                    log_simple(f"Delay OFF started for trigger {trigger_key}: {delay_off}s")
-                    return True
-                elif trigger_key in trigger_timers:
-                    timer = trigger_timers[trigger_key]
-                    if timer['type'] == 'delay_off':
-                        elapsed = (datetime.now() - timer['start_time']).total_seconds()
-                        if elapsed >= delay_off:
-                            del trigger_timers[trigger_key]
-                            log_simple(f"Delay OFF completed for trigger {trigger_key}")
-                            return False
-                        else:
-                            return True
-                return condition_met
-            else:
-                # No delay, immediate evaluation
-                if trigger_key in trigger_timers:
-                    del trigger_timers[trigger_key]
-                return condition_met
-                
+            if trigger_key in trigger_timers:
+                del trigger_timers[trigger_key]
+
+            return condition_met
+
         return False
-        
+
     except Exception as e:
         log_simple(f"Error evaluating trigger condition: {e}", "ERROR")
         return False
@@ -891,13 +919,14 @@ def evaluate_trigger_condition(trigger, device_data):
 def execute_rule_actions(rule):
     """Execute actions for a triggered rule"""
     try:
+        rule_id = rule.get('id', '')
         actions = rule.get('actions', [])
 
         for action in actions:
             action_type = action.get('action_type', '')
 
             if action_type == 'control_relay':
-                execute_relay_control(action)
+                execute_relay_control(action, rule_id)
             elif action_type == 'send_message':
                 execute_send_message(action, rule)
 
@@ -906,18 +935,23 @@ def execute_rule_actions(rule):
         send_error_log(f"Rule action execution error: {e}", ERROR_TYPE_MINOR)
 
 def execute_rule_actions_off(rule):
-    """Execute OFF actions when rule condition stops being met"""
+    """Execute OFF actions when rule condition stops being met, respecting latching behavior"""
     try:
         actions = rule.get('actions', [])
 
         for action in actions:
             action_type = action.get('action_type', '')
+            is_latching = action.get('latching', False)  # Default to False for backward compatibility
 
             if action_type == 'control_relay':
-                # Create OFF action by inverting target_value
-                off_action = action.copy()
-                off_action['target_value'] = not action.get('target_value', False)
-                execute_relay_control(off_action)
+                if is_latching:
+                    # With latching enabled, don't turn OFF the relay when trigger condition stops
+                    log_simple(f"[LATCHING] 🔒 Relay action with latching enabled - keeping relay ON", "INFO")
+                else:
+                    # Normal behavior - turn OFF the relay when trigger condition stops
+                    off_action = action.copy()
+                    off_action['target_value'] = not action.get('target_value', False)
+                    execute_relay_control(off_action)
             elif action_type == 'send_message':
                 # For messages, we might want to send a different message or skip
                 # For now, we'll skip message actions for OFF events
@@ -927,8 +961,60 @@ def execute_rule_actions_off(rule):
         log_simple(f"Error executing rule OFF actions: {e}", "ERROR")
         send_error_log(f"Rule OFF action execution error: {e}", ERROR_TYPE_MINOR)
 
-def execute_relay_control(action):
-    """Execute relay control action"""
+def execute_relay_control(action, rule_id=""):
+    """Execute relay control action with delay support"""
+    try:
+        # Check for delay settings at action level
+        delay_on = action.get('delay_on', 0)
+        delay_off = action.get('delay_off', 0)
+
+        # Create unique key for this action
+        action_key = f"{rule_id}_{action.get('target_device', '')}_{action.get('relay_pin', 1)}_{action.get('target_value', False)}"
+
+        # Check if this is a delayed action (delay_on for turning ON, delay_off for turning OFF)
+        is_turning_on = action.get('target_value', False)
+        delay_seconds = delay_on if is_turning_on else delay_off
+
+        if delay_seconds > 0:
+            # Schedule delayed execution
+            if action_key not in action_timers:
+                action_timers[action_key] = {
+                    'type': 'delayed_execution',
+                    'start_time': datetime.now(),
+                    'delay': delay_seconds,
+                    'action': action,
+                    'rule_id': rule_id
+                }
+                log_simple(f"Action delayed: {action.get('target_device', '')} pin {action.get('relay_pin', 1)} -> {is_turning_on} (delay: {delay_seconds}s)", "SUCCESS")
+
+                # Start a timer thread to execute after delay
+                def execute_after_delay():
+                    try:
+                        time.sleep(delay_seconds)
+                        # Double-check that timer still exists and execute
+                        if action_key in action_timers:
+                            execute_relay_control_immediate(action_timers[action_key]['action'])
+                            # Clean up timer after execution
+                            if action_key in action_timers:
+                                del action_timers[action_key]
+                    except Exception as e:
+                        log_simple(f"Error in delayed action execution: {e}", "ERROR")
+
+                # Start timer thread
+                timer_thread = threading.Thread(target=execute_after_delay, daemon=True)
+                timer_thread.start()
+            else:
+                log_simple(f"Action already scheduled: {action_key}", "WARNING")
+        else:
+            # Execute immediately (no delay)
+            execute_relay_control_immediate(action)
+
+    except Exception as e:
+        log_simple(f"Error executing relay control: {e}", "ERROR")
+        send_error_log(f"Relay control execution error: {e}", ERROR_TYPE_MINOR)
+
+def execute_relay_control_immediate(action):
+    """Execute relay control action immediately (no delay handling)"""
     try:
         if not (client_control and client_control.is_connected()):
             log_simple("Control client not connected for relay action", "WARNING")
@@ -970,7 +1056,60 @@ def execute_relay_control(action):
         send_error_log(f"Relay control execution error: {e}", ERROR_TYPE_MINOR)
 
 def execute_send_message(action, rule):
-    """Execute send message action (WhatsApp only)"""
+    """Execute send message action with delay support (WhatsApp only)"""
+    try:
+        # Check for delay settings at action level
+        delay_on = action.get('delay_on', 0)
+        delay_off = action.get('delay_off', 0)
+
+        # For message actions, we'll use delay_on as the standard delay
+        delay_seconds = delay_on
+
+        # Skip delay_off for messages as they don't have on/off states like relays
+
+        rule_id = rule.get('id', '')
+        action_key = f"{rule_id}_message_{hash(str(action))}"
+
+        if delay_seconds > 0:
+            # Schedule delayed execution
+            if action_key not in action_timers:
+                action_timers[action_key] = {
+                    'type': 'delayed_message',
+                    'start_time': datetime.now(),
+                    'delay': delay_seconds,
+                    'action': action,
+                    'rule': rule
+                }
+                log_simple(f"Message action delayed: {action.get('message', 'N/A')} (delay: {delay_seconds}s)", "SUCCESS")
+
+                # Start a timer thread to execute after delay
+                def execute_after_delay():
+                    try:
+                        time.sleep(delay_seconds)
+                        # Double-check that timer still exists and execute
+                        if action_key in action_timers:
+                            execute_send_message_immediate(action_timers[action_key]['action'], action_timers[action_key]['rule'])
+                            # Clean up timer after execution
+                            if action_key in action_timers:
+                                del action_timers[action_key]
+                    except Exception as e:
+                        log_simple(f"Error in delayed message execution: {e}", "ERROR")
+
+                # Start timer thread
+                timer_thread = threading.Thread(target=execute_after_delay, daemon=True)
+                timer_thread.start()
+            else:
+                log_simple(f"Message action already scheduled: {action_key}", "WARNING")
+        else:
+            # Execute immediately (no delay)
+            execute_send_message_immediate(action, rule)
+
+    except Exception as e:
+        log_simple(f"Error executing send message: {e}", "ERROR")
+        send_error_log(f"Send message execution error: {e}", ERROR_TYPE_MINOR)
+
+def execute_send_message_immediate(action, rule):
+    """Execute send message action immediately (no delay handling)"""
     try:
         # Always use WhatsApp for send_message actions
         execute_whatsapp_message(action, rule)

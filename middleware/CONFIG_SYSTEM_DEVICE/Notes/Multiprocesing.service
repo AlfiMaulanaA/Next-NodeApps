@@ -3,8 +3,8 @@ Description=Service for Multiprocessing.py script
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /home/npi/BMS_ZTE/MIDDLEWARE/CONFIG_SYSTEM_DEVICES/Multiprocesing.py
-WorkingDirectory=/home/npi/BMS_ZTE/MIDDLEWARE/CONFIG_SYSTEM_DEVICES/
+ExecStart=/usr/bin/python3 /home/npi/Subrack-Controller-Node-NanopiDuo2/MIDDLEWARE/CONFIG_SYSTEM_DEVICE/Multiprocesing.py
+WorkingDirectory=/home/npi/Subrack-Controller-Node-NanopiDuo2/MIDDLEWARE/CONFIG_SYSTEM_DEVICE/
 StandardOutput=inherit
 StandardError=inherit
 Restart=always

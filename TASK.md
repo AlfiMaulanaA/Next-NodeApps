@@ -1,69 +1,160 @@
-modifikasi halaman /control/remapping dan middleware remappingt_payload
+ sudo python3 RemapPayload.py
 
-Ini data message paylad dari device "limbah/ph2"
-{"device_name": "SeedStudio_PH_2", "protocol_type": "MODBUS RTU", "comport": "/dev/ttyUSB0", "modbus_address": 2, "value": "{\"temp\": 28.52, \"ph\": 8.46, \"PollingDuration\": 0.034754037857055664, \"Timestamp\": \"2025-10-02 10:00:45\"}", "Timestamp": "2025-10-02 10:00:45"}
+==================================================
+======= MQTT Payload Remapping =======
+Initializing System...
+==================================================
+[INFO] Loading configurations...
+[INFO] Remapping configuration loaded from ./JSON/remappingConfig.json
+[INFO] Initializing unified error logger...
+Error logger initialized for RemappingPayloadService
+[INFO] Connecting to Remap MQTT broker...
+Error logger connected for RemappingPayloadService
+[OK] Remap MQTT broker connected
+[INFO] Successfully subscribed to command topic: REMAP_COMMAND
+[OK] Subscribed to device topic: Limbah/Modular/relay_mini/1
+[OK] Subscribed to device topic: Limbah/Modular/drycontact/1
+[OK] Subscribed to device topic: IOT/Shoto/1
+[INFO] Total device topics subscribed: 3
+[INFO] Config publishing thread active - posting every 5 seconds
+[OK] Config publishing thread started
+[INFO] Periodic null data published to Remap/RelayDC [config: bf18dc85-9d95-4772-a01b-cce68d7c04f7]: {"name": "Remap Relay and Dry Contact", "StateOfCharge": null, "RelayStatus1": null, "RelayStatus2": null, "DCstatus1": null, "Timestamp": "2025-10-07T15:32:25.313467"}
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
 
-sudo cat JSON/remappingConfig.json
-[sudo] password for npi:
+==================================================
+======= MQTT Payload Remapping =======
+Success To Running
+
+MQTT Broker Remap is Running
+
+==================================
+Log print Data
+
+[OK] MQTT Payload Remapping service started successfully
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Periodic null data published to Remap/RelayDC [config: bf18dc85-9d95-4772-a01b-cce68d7c04f7]: {"name": "Remap Relay and Dry Contact", "StateOfCharge": null, "RelayStatus1": null, "RelayStatus2": null, "DCstatus1": null, "Timestamp": "2025-10-07T15:32:35.354931"}
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Periodic null data published to Remap/RelayDC [config: bf18dc85-9d95-4772-a01b-cce68d7c04f7]: {"name": "Remap Relay and Dry Contact", "StateOfCharge": null, "RelayStatus1": null, "RelayStatus2": null, "DCstatus1": null, "Timestamp": "2025-10-07T15:32:45.401031"}
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+[INFO] Device Limbah/Modular/drycontact/1 data buffered (not publishing) - periodic publish will handle
+^C[WARN] Service stopped by user
+[INFO] Shutting down services...
+[INFO] Config publishing thread will stop with application
+[INFO] Device Limbah/Modular/relay_mini/1 data buffered (not publishing) - periodic publish will handle
+Error logger disconnected normally for RemappingPayloadService
+[OK] Application terminated
+npi@nanopiduo2:~/Subrack-Controller-Node-NanopiDuo2/MIDDLEWARE/CONFIG_SYSTEM_DEVICE$
+
+
+npi@nanopiduo2:~/Subrack-Controller-Node-NanopiDuo2/MIDDLEWARE/CONFIG_SYSTEM_DEVICE/JSON$ sudo cat remappingConfig.json
 [
-{
-"id": "0d930f22-b6d8-4761-aea5-040455ab84e0",
-"name": "PH2 REMAPED",
-"description": "",
-"enabled": true,
-"created_at": "2025-10-02T07:05:36.917Z",
-"updated_at": "2025-10-02 14:05:35",
-"source_devices": [
-{
-"device_id": "226184b3-bda8-44ec-96f9-53cb7a1c39ee",
-"device_name": "SeedStudio_PH_2",
-"mqtt_topic": "limbah/ph2",
-"key_mappings": [
-{
-"original_key": "temp",
-"custom_key": "Temphe"
-}
+  {
+    "id": "bf18dc85-9d95-4772-a01b-cce68d7c04f7",
+    "name": "Remap Relay and Dry Contact",
+    "description": "",
+    "enabled": true,
+    "created_at": "2025-10-07T08:28:35.152Z",
+    "updated_at": "2025-10-07 15:28:35",
+    "source_devices": [
+      {
+        "device_id": "6749d7f0-7d6e-4aec-bd6e-c4679c3cddd6",
+        "device_name": "Shoto_Battery_1",
+        "mqtt_topic": "IOT/Shoto/1",
+        "key_mappings": [
+          {
+            "original_key": "SOC",
+            "custom_key": "StateOfCharge"
+          }
+        ]
+      },
+      {
+        "device_id": "ad70f01f-7090-4553-a8cd-395c3ead2290",
+        "device_name": "RelayMini1",
+        "mqtt_topic": "Limbah/Modular/relay_mini/1",
+        "key_mappings": [
+          {
+            "original_key": "relayMiniOutput1",
+            "custom_key": "RelayStatus1"
+          },
+          {
+            "original_key": "relayMiniOutput2",
+            "custom_key": "RelayStatus2"
+          }
+        ]
+      },
+      {
+        "device_id": "4dfbe5b4-741b-4320-88d2-fa904af15e27",
+        "device_name": "Drycontact1",
+        "mqtt_topic": "Limbah/Modular/drycontact/1",
+        "key_mappings": [
+          {
+            "original_key": "drycontactInput1",
+            "custom_key": "DCstatus1"
+          }
+        ]
+      }
+    ],
+    "mqtt_publish_config": {
+      "broker_url": "mqtt://localhost:1883",
+      "client_id": "remapper_client_b9bd3726",
+      "topic": "Remap/RelayDC",
+      "qos": 1,
+      "retain": false,
+      "lwt": true,
+      "publish_interval_seccond": 10
+    }
+  }
 ]
-}
-],
-"mqtt_publish_config": {
-"broker_url": "mqtt://localhost:1883",
-"client_id": "remapper_client_f9839634",
-"topic": "Remap/PH2",
-"qos": 1,
-"retain": false,
-"lwt": true,
-"publish_interval_seccond": 10
-}
-}
-]
-
-jadi tujuan dari fungsi ini dibuat adalah ingin menjadikan sebuah payload json dimapping ulang untuk keynya, contohnya seperti ini. diatas ada contoh device yang sudah memilki data dari device SeedStudio_PH_2, yang meirim data melalui topic "limbah/ph2". Llau user meremapping datanya tersebut dengan config yang ada, contoh :
-
-untuk device SeedStudio_PH_2, memiliki key temp jadi user ingin mengubah semua key valuenya dari temp ke Temphe. Lalu di publish ulang ke settingan broker yang ada. Yitu mqtt://localhost:1883 ke topic "Remap/PH2".
-
-Jadi setelah ada setingan tersebut apa yang seharusnya terjadi? jadi seharusnya nanti middleware, mensubscribe setiap device yang saya daftarkan diremaping config.
-Dalam kasus ini
-"device_name": "SeedStudio_PH_2",
-"mqtt_topic": "limbah/ph2",
-
-{"device_name": "SeedStudio_PH_2", "protocol_type": "MODBUS RTU", "comport": "/dev/ttyUSB0", "modbus_address": 2, "value": "{\"temp\": 28.52, \"ph\": 8.46, \"PollingDuration\": 0.034754037857055664, \"Timestamp\": \"2025-10-02 10:00:45\"}", "Timestamp": "2025-10-02 10:00:45"}
-
-lalu merubah datanya
-
-dan dikirim ulang melalui konfig mqtt
-"mqtt_publish_config": {
-"broker_url": "mqtt://localhost:1883",
-"client_id": "remapper_client_f9839634",
-"topic": "Remap/PH2",
-"qos": 1,
-"retain": false,
-"lwt": true,
-"publish_interval_seccond": 10
-}
-
-    nanti dikirim ke topic ini "Remap/PH2" dengan payload yang sudah diremap
-
-    {name:PH2 REMAPED, Temphe:28.52, "Timestamp": "2025-10-02 10:00:45"}\
-
-    menjadi seperti ini, ada nama yang kita buat, data yang kita mapping dan otomatis ada timestamp

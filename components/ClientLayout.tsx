@@ -6,8 +6,8 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { usePathname } from "next/navigation";
 import { Toaster } from "sonner";
-import { AuthProvider } from "@/contexts/AuthContext";
 import { MQTTModeProvider } from "@/contexts/MQTTModeContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 export default function ClientLayout({
   children,

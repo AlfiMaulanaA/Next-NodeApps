@@ -67,7 +67,7 @@ import {
   Power,
 } from "lucide-react";
 import MqttStatus from "@/components/mqtt-status";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 
 // Type definitions for updated requirements
 interface TriggerCondition {
@@ -79,8 +79,6 @@ interface TriggerCondition {
   pin_number: number;
   condition_operator: "is" | "and" | "or";
   target_value: boolean;
-  delay_on?: number; // delay in seconds before trigger activates
-  delay_off?: number; // delay in seconds before trigger deactivates
 }
 
 interface TriggerGroup {
@@ -104,6 +102,9 @@ interface ControlAction {
   message_template_id?: string;
   channel_integration_id?: string;
   description?: string;
+  delay_on?: number; // delay in seconds before action activates
+  delay_off?: number; // delay in seconds before action deactivates
+  latching?: boolean;
 }
 
 interface AutomationLogicRule {
@@ -429,11 +430,7 @@ const AutomationLogicControl = () => {
     setLoading(false);
 
     if (payload.status === "success") {
-      toast({
-        title: "Success",
-        description: payload.message,
-        duration: 2000,
-      });
+      toast.success(payload.message);
 
       // Refresh data after successful operation
       setTimeout(() => {
@@ -445,7 +442,7 @@ const AutomationLogicControl = () => {
         closeModal();
       }
     } else {
-      showAlert("Error", payload.message || "An error occurred");
+      toast.error(payload.message || "An error occurred");
     }
   };
 
@@ -477,8 +474,6 @@ const AutomationLogicControl = () => {
                 pin_number: 1,
                 condition_operator: "is",
                 target_value: true,
-                delay_on: 0,
-                delay_off: 0,
               },
             ],
           },
@@ -530,11 +525,6 @@ const AutomationLogicControl = () => {
     // Validation
     if (!currentRule.rule_name.trim()) {
       showAlert("Validation Error", "Please enter a rule name.");
-      return;
-    }
-
-    if (!currentRule.group_rule_name.trim()) {
-      showAlert("Validation Error", "Please enter a group rule name.");
       return;
     }
 
@@ -604,8 +594,6 @@ const AutomationLogicControl = () => {
               pin_number: 1,
               condition_operator: "is",
               target_value: true,
-              delay_on: 0,
-              delay_off: 0,
             },
           ],
         },
@@ -643,8 +631,6 @@ const AutomationLogicControl = () => {
           pin_number: 1,
           condition_operator: "is" as const,
           target_value: true,
-          delay_on: 0,
-          delay_off: 0,
         },
       ],
     };
@@ -1017,13 +1003,6 @@ const AutomationLogicControl = () => {
                                                 : "FALSE"}
                                             </Badge>
                                           </div>
-                                          {((trigger.delay_on ?? 0) > 0 ||
-                                            (trigger.delay_off ?? 0) > 0) && (
-                                            <div className="text-xs text-orange-600">
-                                              Delay: {trigger.delay_on ?? 0}s/
-                                              {trigger.delay_off ?? 0}s
-                                            </div>
-                                          )}
                                         </div>
                                       ))}
                                     {(group.triggers?.length || 0) > 2 && (
@@ -1366,18 +1345,6 @@ const AutomationLogicControl = () => {
                                     </p>
                                   </div>
                                 )}
-                                {((trigger.delay_on ?? 0) > 0 ||
-                                  (trigger.delay_off ?? 0) > 0) && (
-                                  <div>
-                                    <Label className="text-xs text-muted-foreground">
-                                      Delays
-                                    </Label>
-                                    <p className="text-orange-600">
-                                      ON: {trigger.delay_on ?? 0}s, OFF:{" "}
-                                      {trigger.delay_off ?? 0}s
-                                    </p>
-                                  </div>
-                                )}
                               </div>
                             </div>
                           ))}
@@ -1403,6 +1370,16 @@ const AutomationLogicControl = () => {
                         key={actionIdx}
                         className="border rounded-lg p-4 space-y-3"
                       >
+                        {action.description && (
+                          <div className="mb-3">
+                            <Label className="text-xs text-muted-foreground">
+                              Description
+                            </Label>
+                            <p className="text-sm bg-muted/30 p-2 rounded border">
+                              {action.description}
+                            </p>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2">
                           {action.action_type === "control_relay" ? (
                             <Power className="h-4 w-4" />
@@ -1529,6 +1506,16 @@ const AutomationLogicControl = () => {
                                   <p>{action.description}</p>
                                 </div>
                               )}
+                              {((action.delay_on ?? 0) > 0 || (action.delay_off ?? 0) > 0) && (
+                                <div className="md:col-span-2">
+                                  <Label className="text-xs text-muted-foreground">
+                                    Delay Settings
+                                  </Label>
+                                  <p className="text-orange-600">
+                                    ON Delay: {action.delay_on ?? 0}s, OFF Delay: {action.delay_off ?? 0}s
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
@@ -1602,7 +1589,7 @@ const AutomationLogicControl = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="groupRuleName">Group Rule Name *</Label>
+                  <Label htmlFor="groupRuleName">Group Rule Name</Label>
                   <Input
                     id="groupRuleName"
                     value={currentRule.group_rule_name}
@@ -1613,7 +1600,6 @@ const AutomationLogicControl = () => {
                       }))
                     }
                     placeholder="Enter group rule name"
-                    required
                   />
                 </div>
 
@@ -1667,7 +1653,7 @@ const AutomationLogicControl = () => {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1 mr-4">
-                        <Label>Group Name</Label>
+                        <Label>Group Name (Optional)</Label>
                         <Input
                           value={group.group_name}
                           onChange={(e) =>
@@ -1676,7 +1662,7 @@ const AutomationLogicControl = () => {
                               group_name: e.target.value,
                             })
                           }
-                          placeholder="Enter group name"
+                          placeholder="Enter group name (not required)"
                         />
                       </div>
                       <div className="flex items-center gap-2">
@@ -1905,54 +1891,7 @@ const AutomationLogicControl = () => {
                             </div>
                           </div>
 
-                          {/* Delay Settings Section */}
-                          <div className="space-y-3">
-                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                              Delay Timing (Optional)
-                            </Label>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div>
-                                <Label className="text-xs">
-                                  Delay ON (seconds)
-                                </Label>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  value={trigger.delay_on || 0}
-                                  onChange={(e) =>
-                                    updateTrigger(groupIndex, triggerIndex, {
-                                      ...trigger,
-                                      delay_on: parseInt(e.target.value) || 0,
-                                    })
-                                  }
-                                  placeholder="0"
-                                />
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Wait time before activating
-                                </p>
-                              </div>
-                              <div>
-                                <Label className="text-xs">
-                                  Delay OFF (seconds)
-                                </Label>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  value={trigger.delay_off || 0}
-                                  onChange={(e) =>
-                                    updateTrigger(groupIndex, triggerIndex, {
-                                      ...trigger,
-                                      delay_off: parseInt(e.target.value) || 0,
-                                    })
-                                  }
-                                  placeholder="0"
-                                />
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Wait time before deactivating
-                                </p>
-                              </div>
-                            </div>
-                          </div>
+
                         </div>
                       ))}
                     </div>
@@ -1991,6 +1930,20 @@ const AutomationLogicControl = () => {
                     key={actionIndex}
                     className="p-4 border rounded-lg space-y-4"
                   >
+                    <div>
+                      <Label className="text-xs">Description</Label>
+                      <Input
+                        value={action.description || ""}
+                        onChange={(e) =>
+                          updateAction(actionIndex, {
+                            ...action,
+                            description: e.target.value,
+                          })
+                        }
+                        placeholder="Action description (optional)"
+                      />
+                    </div>
+
                     <div className="flex items-center justify-between">
                       <div className="flex-1 mr-4">
                         <Label>Action Type</Label>
@@ -2122,6 +2075,75 @@ const AutomationLogicControl = () => {
                               </SelectContent>
                             </Select>
                           </div>
+
+                          {/* Latching Toggle */}
+                          <div className="flex items-center space-x-2">
+                            <Switch
+                              id={`latching-${actionIndex}`}
+                              checked={action.latching || false}
+                              onCheckedChange={(checked) =>
+                                updateAction(actionIndex, {
+                                  ...action,
+                                  latching: checked,
+                                })
+                              }
+                            />
+                            <Label
+                              htmlFor={`latching-${actionIndex}`}
+                              className="text-xs font-medium"
+                            >
+                              Latching Mode
+                            </Label>
+                          </div>
+                        </div>
+
+                        {/* Delay Settings - Added after relay configuration */}
+                        <div className="space-y-3">
+                          <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            Delay Timing (Optional)
+                          </Label>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-xs">
+                                Delay ON (seconds)
+                              </Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={action.delay_on || 0}
+                                onChange={(e) =>
+                                  updateAction(actionIndex, {
+                                    ...action,
+                                    delay_on: parseInt(e.target.value) || 0,
+                                  })
+                                }
+                                placeholder="0"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Wait time before executing action
+                              </p>
+                            </div>
+                            <div>
+                              <Label className="text-xs">
+                                Delay OFF (seconds)
+                              </Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={action.delay_off || 0}
+                                onChange={(e) =>
+                                  updateAction(actionIndex, {
+                                    ...action,
+                                    delay_off: parseInt(e.target.value) || 0,
+                                  })
+                                }
+                                placeholder="0"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Wait time before stopping action (applied after ON delay)
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -2229,19 +2251,6 @@ const AutomationLogicControl = () => {
                       </div>
                     )}
 
-                    <div>
-                      <Label className="text-xs">Description</Label>
-                      <Input
-                        value={action.description || ""}
-                        onChange={(e) =>
-                          updateAction(actionIndex, {
-                            ...action,
-                            description: e.target.value,
-                          })
-                        }
-                        placeholder="Action description"
-                      />
-                    </div>
                   </div>
                 ))}
               </div>

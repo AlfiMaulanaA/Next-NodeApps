@@ -11,6 +11,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
   // Disable server-side features for static export
 };
 

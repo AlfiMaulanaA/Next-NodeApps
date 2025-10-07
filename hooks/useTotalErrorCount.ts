@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { connectMQTT } from "@/lib/mqttClient"; // Import centralized MQTT connection
 import type { MqttClient } from "mqtt"; // Import MqttClient type for useRef
 
@@ -15,96 +15,105 @@ interface ErrorLog {
     resolved_at?: string; // Timestamp when resolved
 }
 
+// Global static client - only one instance across all hooks
+let globalMQTTClient: MqttClient | null = null;
+let globalSubscriptionCount = 0;
+
 export function useTotalErrorCount() {
     // We'll store the full list of errors to allow for filtering
     const [allErrors, setAllErrors] = useState<ErrorLog[]>([]);
     const clientRef = useRef<MqttClient | null>(null);
 
-    // Filter out specific errors and count only active ones
-    const totalActiveErrors = allErrors.filter(log => {
+    // Memoize error filtering for performance
+    const totalActiveErrors = useMemo(() => {
         // Apply the same filter as ErrorLogPage for consistency
         const ignoredErrorPattern = "MODULAR I2C cannot connect to server broker mqtt";
-        return log.data && !log.data.includes(ignoredErrorPattern) && log.status !== "resolved";
-    }).length;
+        return allErrors.filter(log => {
+            return log.data &&
+                   !log.data.includes(ignoredErrorPattern) &&
+                   log.status !== "resolved";
+        }).length;
+    }, [allErrors]);
+
+    // Optimized message handler with useCallback for stability
+    const handleMessage = useCallback((topic: string, payload: Buffer) => {
+        if (topic === "subrack/error/data") {
+            try {
+                const data = JSON.parse(payload.toString());
+                if (Array.isArray(data)) {
+                    setAllErrors(data);
+                } else {
+                    console.warn("Received non-array payload for error data. Expected an array of logs.", data);
+                    setAllErrors([]);
+                }
+            } catch (e) {
+                console.error("Failed to parse MQTT message for error count:", e);
+                setAllErrors([]);
+            }
+        }
+    }, []);
 
     useEffect(() => {
-        const client = connectMQTT();
+        // Use global MQTT client to avoid multiple connections
+        if (!globalMQTTClient) {
+            globalMQTTClient = connectMQTT();
+        }
+
+        const client = globalMQTTClient;
         clientRef.current = client;
+        globalSubscriptionCount++;
 
-        const topic = "subrack/error/data";
-
-        let hasSubscribed = false;
-
-        // Function to subscribe and handle reconnects
-        const subscribeToTopic = () => {
-            if (client.connected && !hasSubscribed) {
-                client.subscribe(topic, (err) => {
-                    if (err) {
-                        console.error(`Failed to subscribe to ${topic}:`, err);
-                    } else {
-                        hasSubscribed = true;
-                        // Only log first successful subscription
-                        console.log(`Subscribed to ${topic} for error count.`);
+        // Only subscribe if not already subscribed and client is connected
+        if (client.connected) {
+            client.subscribe("subrack/error/data", (err) => {
+                if (err) {
+                    console.error(`Failed to subscribe to error topic:`, err);
+                } else {
+                    // Only log once
+                    if (globalSubscriptionCount === 1) {
+                        console.log("Subscribed to error count topic");
                     }
-                });
-            } else if (!client.connected && !hasSubscribed) {
-                // If not connected, wait for 'connect' event to subscribe
-                const onConnect = () => {
-                    if (!hasSubscribed) {
-                        client.subscribe(topic, (err) => {
-                            if (err) {
-                                console.error(`Failed to subscribe to ${topic}:`, err);
-                            } else {
-                                hasSubscribed = true;
-                                // Suppress reconnect subscription logs
-                            }
-                        });
-                    }
-                };
-                
-                client.once("connect", onConnect);
-            }
-        };
-
-        // Initial subscription attempt
-        subscribeToTopic();
-
-        const handleMessage = (_topic: string, payload: Buffer) => {
-            if (_topic === topic) {
-                try {
-                    const data = JSON.parse(payload.toString());
-                    if (Array.isArray(data)) {
-                        // Assuming 'data' from this topic is the full list of current errors
-                        setAllErrors(data);
-                    } else {
-                        console.warn("Received non-array payload for error data. Expected an array of logs.", data);
-                        // Depending on your backend, you might want to clear or ignore
-                        setAllErrors([]); // Reset if unexpected format
-                    }
-                } catch (e) {
-                    console.error("Failed to parse MQTT message for error count:", e);
-                    setAllErrors([]); // Reset if parsing fails
                 }
-            }
-        };
+            });
+        } else {
+            // Wait for connection
+            const onConnect = () => {
+                if (globalMQTTClient) {
+                    globalMQTTClient.subscribe("subrack/error/data", (err) => {
+                        if (err) {
+                            console.error(`Failed to subscribe to error topic after connect:`, err);
+                        } else if (globalSubscriptionCount === 1) {
+                            console.log("Subscribed to error count topic on connect");
+                        }
+                    });
+                }
+            };
 
-        // Attach event listener for messages
+            client.once("connect", onConnect);
+        }
+
+        // Attach event listener
         client.on("message", handleMessage);
 
-        // --- Cleanup Function ---
+        // Cleanup function
         return () => {
-            // Unsubscribe only if the client is still active/connected
-            if (clientRef.current?.connected) {
-                clientRef.current.unsubscribe(topic, (err) => {
-                    if (err) console.error(`Failed to unsubscribe from ${topic}:`, err);
-                });
+            globalSubscriptionCount--;
+
+            // Only cleanup if this is the last hook using the global client
+            if (globalSubscriptionCount === 0 && clientRef.current) {
+                if (client.connected) {
+                    client.unsubscribe("subrack/error/data", (err) => {
+                        if (err) console.error("Failed to unsubscribe from error topic:", err);
+                    });
+                }
+                client.off("message", handleMessage);
+                // Don't disconnect global client here as it might be used by other hooks
+            } else {
+                // Just remove our message handler
+                client.off("message", handleMessage);
             }
-            // Remove event listeners
-            client.off("message", handleMessage);
-            // It's generally not recommended to remove 'connect' listeners here if connectMQTT manages a global client.
-            // If connectMQTT uses client.once("connect", ...), it's automatically removed after first fire.
         };
-    }, []); // Empty dependency array ensures this runs once on mount and cleans up on unmount
+    }, [handleMessage]); // Only re-run if handleMessage changes (memoized)
 
     return totalActiveErrors;
 }

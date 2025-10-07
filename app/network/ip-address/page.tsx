@@ -44,6 +44,7 @@ import {
   Globe,
   Router,
   Shield,
+  RotateCcw,
 } from "lucide-react";
 import type { MqttClient } from "mqtt";
 import MqttStatus from "@/components/mqtt-status";
@@ -57,6 +58,10 @@ const NETWORK_RESPONSE_TOPIC = "rpi/network/response";
 const MODBUS_TCP_SETTING_COMMAND_TOPIC =
   "IOT/Containment/modbustcp/setting/command";
 const SNMP_SETTING_COMMAND_TOPIC = "IOT/Containment/snmp/setting/command";
+
+// IP Synchronization Topics
+const NETWORK_SYNC_COMMAND_TOPIC = "rpi/network/sync_ip";
+const NETWORK_SYNC_RESPONSE_TOPIC = "rpi/network/sync_ip_response";
 
 // --- Type Definitions ---
 interface NetworkInterface {
@@ -103,6 +108,7 @@ export default function NetworkPage() {
   const clientRef = useRef<MqttClient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isConfiguring, setIsConfiguring] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [currentModbusTcpPort] = useState<number>(502);
 
@@ -399,6 +405,41 @@ Netmask: ${editConfig.netmask}`
     return `${seconds}s ago`;
   };
 
+  /**
+   * Synchronize IP configuration to all protocol services
+   */
+  const syncIPToServices = () => {
+    console.log("[DEBUG] syncIPToServices: Starting IP sync");
+    const client = getMQTTClient();
+    if (!client || !client.connected) {
+      toast({
+        title: "Error",
+        description: "MQTT not connected. Cannot sync IP.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    client.publish(NETWORK_SYNC_COMMAND_TOPIC, JSON.stringify({}), {}, (err) => {
+      if (err) {
+        console.error("[DEBUG] IP sync publish error:", err);
+        toast({
+          title: "Error",
+          description: `Failed to start IP sync: ${err.message}`,
+          variant: "destructive",
+        });
+        setIsSyncing(false);
+      } else {
+        console.log("[DEBUG] Successfully published IP sync command");
+        toast({
+          title: "Syncing",
+          description: "Synchronizing IP to all services...",
+        });
+      }
+    });
+  };
+
   // --- useEffect for MQTT Connection and Auto-Load ---
   useEffect(() => {
     console.log("[DEBUG] Initializing MQTT connection and auto-load");
@@ -471,6 +512,20 @@ Netmask: ${editConfig.netmask}`
 
           setIsLoading(false);
           setIsConfiguring(false);
+        } else if (topic === NETWORK_SYNC_RESPONSE_TOPIC) {
+          setIsSyncing(false);
+          if (data.status === "success") {
+            toast({
+              title: "Success",
+              description: "IP synchronization completed successfully",
+            });
+          } else {
+            toast({
+              title: "Sync Failed",
+              description: data.message || "IP synchronization failed",
+              variant: "destructive",
+            });
+          }
         }
       } catch (err) {
         console.error("[DEBUG] Parse error:", err);
@@ -481,6 +536,7 @@ Netmask: ${editConfig.netmask}`
         });
         setIsLoading(false);
         setIsConfiguring(false);
+        setIsSyncing(false);
       }
     };
 
@@ -612,6 +668,39 @@ Netmask: ${editConfig.netmask}`
             </CardContent>
           </Card>
         </div>
+
+        {/* IP Synchronization Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">IP Synchronization</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Synchronize current network IP to all protocol services (SNMP, Modbus TCP)
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Current IP: {eth0Config?.current_address || "Not connected"}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  This will update SNMP and Modbus TCP service configurations
+                </p>
+              </div>
+              <Button
+                onClick={syncIPToServices}
+                disabled={isSyncing || !eth0Config?.current_address}
+                variant="outline"
+              >
+                {isSyncing ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                )}
+                Sync IP to Services
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Main Interface Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Ethernet Interface */}

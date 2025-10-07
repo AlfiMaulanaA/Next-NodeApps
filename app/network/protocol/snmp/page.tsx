@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { RefreshCw, Save, Settings2, Wifi, Loader2 } from "lucide-react";
+import { RefreshCw, Save, Settings2, Wifi, Loader2, RotateCcw } from "lucide-react";
 import { connectMQTT, getMQTTClient } from "@/lib/mqttClient";
 import MqttStatus from "@/components/mqtt-status";
 import type { MqttClient } from "mqtt";
@@ -31,6 +31,10 @@ const SNMP_STATUS_TOPIC = "IOT/Containment/snmp/status";
 const SNMP_STATUS_COMMAND_TOPIC = "IOT/Containment/snmp/status/command";
 const SERVICE_COMMAND_TOPIC = "service/command";
 const SERVICE_RESPONSE_TOPIC = "service/response";
+
+// IP Synchronization Topics
+const NETWORK_SYNC_COMMAND_TOPIC = "rpi/network/sync_ip";
+const NETWORK_SYNC_RESPONSE_TOPIC = "rpi/network/sync_ip_response";
 
 // --- Type Definitions ---
 interface SnmpConfig {
@@ -64,7 +68,7 @@ export default function SNMPSettingPage() {
     snmpIPaddress: "",
     snmpNetmask: "",
     snmpGateway: "",
-    snmpVersion: "3", // Default to SNMPv3 (string)
+    snmpVersion: "1", // Default to SNMPv1 (string)
     authKey: "",
     privKey: "",
     securityName: "",
@@ -85,6 +89,7 @@ export default function SNMPSettingPage() {
   const [snmpStatus, setSnmpStatus] = useState<string>("Unknown");
   const [isLoading, setIsLoading] = useState(true); // Loading state for initial fetch
   const [isSaving, setIsSaving] = useState(false); // New state for save operation
+  const [isSyncing, setIsSyncing] = useState(false); // Loading state for IP sync operation
   const clientRef = useRef<MqttClient | null>(null);
 
   // --- Utility Functions ---
@@ -169,6 +174,29 @@ export default function SNMPSettingPage() {
   }, []);
 
   /**
+   * Synchronize IP configuration from network settings to SNMP service
+   */
+  const syncIPToServices = useCallback(() => {
+    const client = getMQTTClient();
+    if (!client || !client.connected) {
+      toast.error("MQTT not connected. Cannot sync IP.");
+      return;
+    }
+
+    setIsSyncing(true);
+    client.publish(NETWORK_SYNC_COMMAND_TOPIC, JSON.stringify({}), {}, (err) => {
+      if (err) {
+        console.error("[DEBUG] IP sync publish error:", err);
+        toast.error(`Failed to start IP sync: ${err.message}`);
+        setIsSyncing(false);
+      } else {
+        console.log("[DEBUG] Successfully published IP sync command");
+        toast.loading("Synchronizing IP to all services...", { id: "ipSync" });
+      }
+    });
+  }, []);
+
+  /**
    * Requests the current SNMP settings from the backend via MQTT.
    */
   const getConfig = useCallback(() => {
@@ -222,6 +250,7 @@ export default function SNMPSettingPage() {
       SNMP_SETTING_TOPIC_DATA,
       SNMP_STATUS_TOPIC,
       SERVICE_RESPONSE_TOPIC,
+      NETWORK_SYNC_RESPONSE_TOPIC, // Subscribe to IP sync responses
     ];
 
     // Initial subscription attempt
@@ -261,7 +290,7 @@ export default function SNMPSettingPage() {
             snmpIPaddress: payload.snmpIPaddress || "",
             snmpNetmask: payload.snmpNetmask || "",
             snmpGateway: payload.snmpGateway || "",
-            snmpVersion: String(payload.snmpVersion || "3"), // Explicitly convert to string
+            snmpVersion: String(payload.snmpVersion || "1"), // Explicitly convert to string
             authKey: payload.authKey || "",
             privKey: payload.privKey || "",
             securityName: payload.securityName || "",
@@ -298,6 +327,15 @@ export default function SNMPSettingPage() {
             }
           } else {
             toast.error(payload.message || 'Failed to execute service command.');
+          }
+        } else if (topic === NETWORK_SYNC_RESPONSE_TOPIC) {
+          setIsSyncing(false);
+          if (payload.status === "success") {
+            toast.success("IP synchronization completed successfully");
+            // Re-fetch settings after IP sync to show updated configs
+            setTimeout(() => getConfig(), 500);
+          } else {
+            toast.error(payload.message || "IP synchronization failed");
           }
         }
       } catch (e) {
@@ -481,73 +519,157 @@ export default function SNMPSettingPage() {
               </div>
             )}
 
-            {/* Form Fields (rendered dynamically based on formData) */}
-            {!isLoading && Object.entries(formData).map(([key, value]) => {
-              const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-              const inputType = typeof value === "number" ? "number" : "text"; // Determine input type for non-selects
+            {/* Form Fields (conditionally rendered based on SNMP version) */}
+            {!isLoading && (() => {
+              const commonFields = [
+                'snmpVersion',
+                'snmpIPaddress',
+                'snmpNetmask',
+                'snmpGateway',
+                'snmpPort',
+                'sysOID',
+                'DeviceName',
+                'Site'
+              ];
 
-              // Determine if it's an IP/Netmask field for validation feedback
-              const isIpField = ["snmpIPaddress", "snmpGateway", "ipSnmpManager"].includes(key);
-              const isNetmaskField = key === "snmpNetmask";
-              const showIpError = isIpField && value !== "" && !isValidIP(String(value));
-              const showNetmaskError = isNetmaskField && value !== "" && !isValidNetmask(String(value));
+              // Fields for SNMP v1 and v2c
+              const v1v2cFields = ['snmpCommunity'];
 
-              // Handle Select (dropdown) fields
-              if (["snmpVersion", "securityLevel", "snmpTrapVersion", "snmpTrapEnabled"].includes(key)) {
-                let options: { value: string; label: string }[] = [];
-                if (key === "snmpVersion") {
-                  options = [{ value: "1", label: "1" }, { value: "2c", label: "2c" }, { value: "3", label: "3" }];
-                } else if (key === "securityLevel") {
-                  options = [
-                    { value: "noAuthNoPriv", label: "No Auth, No Priv" },
-                    { value: "authNoPriv", label: "Auth, No Priv" },
-                    { value: "authPriv", label: "Auth, Priv" }
-                  ];
-                } else if (key === "snmpTrapVersion") {
-                  options = [{ value: "1", label: "1" }, { value: "2c", label: "2c" }];
-                } else if (key === "snmpTrapEnabled") {
-                  options = [{ value: "true", label: "Enabled" }, { value: "false", label: "Disabled" }];
+              // Fields for SNMP v3 (including traps which are primarily v3 feature)
+              const v3Fields = [
+                'securityName',
+                'securityLevel',
+                'authKey',
+                'privKey',
+                'snmpTrapEnabled',
+                'ipSnmpManager',
+                'portSnmpManager',
+                'snmpTrapComunity',
+                'snmpTrapVersion',
+                'timeDelaySnmpTrap'
+              ];
+
+              // Determine which version-specific fields to show
+              const versionSpecificFields = formData.snmpVersion === "3" ? v3Fields : v1v2cFields;
+
+              // Combine all fields to display
+              const fieldsToDisplay = [...commonFields, ...versionSpecificFields];
+
+              return Object.entries(formData).map(([key, value]) => {
+                // Skip fields not in the display list
+                if (!fieldsToDisplay.includes(key)) {
+                  return null;
                 }
 
+                // Better label generation that handles acronyms properly
+                const toDisplayLabel = (fieldName: string): string => {
+                  // Special handling for known acronyms
+                  if (fieldName.includes('IP')) {
+                    return fieldName.replace('snmpIPaddress', 'Snmp IP Address')
+                                    .replace('ipSnmpManager', 'Ip Snmp Manager')
+                                    .replace(/([a-z])([A-Z])/g, '$1 $2'); // Handle other camelCase
+                  }
+
+                  // General camelCase to spaced words
+                  return fieldName.replace(/([a-z])([A-Z])/g, '$1 $2')
+                                 .replace(/^./, str => str.toUpperCase());
+                };
+
+                const label = toDisplayLabel(key);
+                const inputType = typeof value === "number" ? "number" : "text";
+
+                // Determine if it's an IP/Netmask field for validation feedback
+                const isIpField = ["snmpIPaddress", "snmpGateway", "ipSnmpManager"].includes(key);
+                const isNetmaskField = key === "snmpNetmask";
+                const showIpError = isIpField && value !== "" && !isValidIP(String(value));
+                const showNetmaskError = isNetmaskField && value !== "" && !isValidNetmask(String(value));
+
+                // Handle Select (dropdown) fields
+                if (["snmpVersion", "securityLevel", "snmpTrapVersion", "snmpTrapEnabled"].includes(key)) {
+                  let options: { value: string; label: string }[] = [];
+                  if (key === "snmpVersion") {
+                    options = [{ value: "1", label: "SNMP v1" }, { value: "2c", label: "SNMP v2c" }, { value: "3", label: "SNMP v3" }];
+                  } else if (key === "securityLevel") {
+                    options = [
+                      { value: "noAuthNoPriv", label: "No Auth, No Priv" },
+                      { value: "authNoPriv", label: "Auth, No Priv" },
+                      { value: "authPriv", label: "Auth, Priv" }
+                    ];
+                  } else if (key === "snmpTrapVersion") {
+                    options = [{ value: "1", label: "SNMP Trap v1" }, { value: "2c", label: "SNMP Trap v2c" }];
+                  } else if (key === "snmpTrapEnabled") {
+                    options = [{ value: "true", label: "Enabled" }, { value: "false", label: "Disabled" }];
+                  }
+
+                  return (
+                    <div key={key} className="flex flex-col gap-1">
+                      <Label htmlFor={key}>{label}</Label>
+                      <Select
+                        value={String(value)}
+                        onValueChange={(val) => handleSelectChange(key as keyof SnmpConfig, val)}
+                        disabled={isSaving}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={`Select ${label}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {options.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                }
+
+                // Handle password fields for sensitive data
+                if (["authKey", "privKey"].includes(key)) {
+                  return (
+                    <div key={key} className="flex flex-col gap-1">
+                      <Label htmlFor={key}>{label}</Label>
+                      <Input
+                        id={key}
+                        name={key}
+                        type="password"
+                        value={String(value)}
+                        onChange={handleChange}
+                        className={showIpError || showNetmaskError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                        disabled={isSaving}
+                        placeholder={key === "authKey" ? "Enter authentication key" : "Enter privacy key"}
+                      />
+                      {showIpError && (
+                        <p className="text-xs text-red-500 mt-1">Invalid IP Address format (e.g., 192.168.1.1).</p>
+                      )}
+                      {showNetmaskError && (
+                        <p className="text-xs text-red-500 mt-1">Invalid Netmask format (e.g., 255.255.255.0).</p>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Handle regular Input fields (text or number)
                 return (
                   <div key={key} className="flex flex-col gap-1">
                     <Label htmlFor={key}>{label}</Label>
-                    <Select value={String(value)} onValueChange={(val) => handleSelectChange(key as keyof SnmpConfig, val)} disabled={isSaving}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={`Select ${label}`} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {options.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      id={key}
+                      name={key}
+                      type={inputType}
+                      value={String(value)}
+                      onChange={handleChange}
+                      className={(showIpError || showNetmaskError) ? "border-red-500 focus-visible:ring-red-500" : ""}
+                      disabled={isSaving}
+                    />
+                    {showIpError && (
+                      <p className="text-xs text-red-500 mt-1">Invalid IP Address format (e.g., 192.168.1.1).</p>
+                    )}
+                    {showNetmaskError && (
+                      <p className="text-xs text-red-500 mt-1">Invalid Netmask format (e.g., 255.255.255.0).</p>
+                    )}
                   </div>
                 );
-              }
-
-              // Handle regular Input fields (text or number)
-              return (
-                <div key={key} className="flex flex-col gap-1">
-                  <Label htmlFor={key}>{label}</Label>
-                  <Input
-                    id={key}
-                    name={key}
-                    type={inputType}
-                    value={String(value)} // Ensure value is always a string for Input component
-                    onChange={handleChange}
-                    className={(showIpError || showNetmaskError) ? "border-red-500 focus-visible:ring-red-500" : ""}
-                    disabled={isSaving}
-                  />
-                  {showIpError && (
-                      <p className="text-xs text-red-500 mt-1">Invalid IP Address format (e.g., 192.168.1.1).</p>
-                  )}
-                  {showNetmaskError && (
-                      <p className="text-xs text-red-500 mt-1">Invalid Netmask format (e.g., 255.255.255.0).</p>
-                  )}
-                </div>
-              );
-            })}
+              });
+            })()}
 
             {/* Save Button */}
             {!isLoading && (
@@ -557,6 +679,38 @@ export default function SNMPSettingPage() {
                 </Button>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* IP Synchronization Section */}
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="text-lg">IP Synchronization</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Synchronize current network IP to SNMP service configuration
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Current SNMP IP: {formData.snmpIPaddress || "Not configured"}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  This will update the SNMP IP address to match the current network settings
+                </p>
+              </div>
+              <Button
+                onClick={syncIPToServices}
+                disabled={isSyncing || isLoading || isSaving || !formData.snmpIPaddress}
+                variant="outline"
+              >
+                {isSyncing ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                )}
+                Sync IP to SNMP
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>

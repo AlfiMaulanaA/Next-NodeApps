@@ -5,10 +5,17 @@ import paho.mqtt.client as mqtt
 import os
 import subprocess
 import logging
-import threading 
+import threading
 from getmac import get_mac_address
 import netifaces as ni
 from datetime import datetime
+
+# Import smbus2 for I2C RTC operations
+try:
+    import smbus2 as smbus
+except ImportError:
+    print("Warning: smbus2 not installed. RTC functionality will not work.")
+    smbus = None
 
 # --- Startup Banner Functions ---
 def print_startup_banner():
@@ -83,6 +90,10 @@ TOPIC_COMMAND_RESET = "command/reset_config" # Topic to trigger factory reset
 TOPIC_RESPONSE_RESET = "response/reset_config" # Response after factory reset
 TOPIC_SYSTEM_STATUS = "system/status" # Topic for publishing real-time system information
 ERROR_LOG_TOPIC = "subrack/error/data" # Topic for publishing error logs (matches frontend expectation)
+
+# RTC Topics
+RTC_SYNC_TOPIC = "rtc/sync" # Topic for RTC synchronization commands
+RTC_SYNC_RESPONSE_TOPIC = "rtc/sync/response" # Topic for RTC sync responses
 
 # --- Default Configurations ---
 # These dictionaries and strings define the "factory default" settings for the system.
@@ -194,9 +205,24 @@ DEFAULT_SNMP_CONFIG = {
     "Site":"JKT"
 }
 
+# New default RTC DS3231 configuration
+DEFAULT_RTC_CONFIG = {
+    "i2c_bus": 2,
+    "i2c_address": 0x68,
+    "enabled": True,
+    "sync_all_methods": True,
+    "internet_sync_enabled": True,
+    "local_sync_enabled": True,
+    "timezone": "WIB",  # Default Indonesian timezone
+    "supported_timezones": ["WIB", "WITA", "WIT"]  # Indonesian timezones
+}
+
 # --- Logging Setup ---
 # Basic logging configuration for console output.
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Path Setup ---
+PARENT_FOLDER = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up two levels to parent
 
 # --- Helper Functions for File Operations ---
 def save_json_config(filepath, config_data):
@@ -649,6 +675,152 @@ def reset_snmp_config(client=None):
     else:
         logging.info("SNMP configuration reset to default.")
 
+# --- RTC DS3231 Functions ---
+def bcd_to_dec(bcd):
+    """Convert BCD to decimal."""
+    return (bcd & 0x0F) + ((bcd >> 4) * 10)
+
+def dec_to_bcd(dec):
+    """Convert decimal to BCD."""
+    return ((dec // 10) << 4) + (dec % 10)
+
+# Indonesian timezone offsets (seconds from UTC)
+INDONESIA_TIMEZONE_OFFSETS = {
+    "WIB": 7 * 3600,   # UTC+7
+    "WITA": 8 * 3600,  # UTC+8
+    "WIT": 9 * 3600    # UTC+9
+}
+
+def get_timezone_offset(timezone):
+    """Get timezone offset in seconds from UTC."""
+    return INDONESIA_TIMEZONE_OFFSETS.get(timezone, 7 * 3600)  # Default WIB
+
+def set_rtc_manual(client=None, i2c_bus=2, i2c_addr=0x68, datetime_components=None):
+    """
+    Manually set DS3231 RTC with specific datetime components.
+    datetime_components: dict with keys - year, month, day, hour, minute, second
+    Returns (success, message)
+    """
+    if smbus is None:
+        error_msg = "smbus2 not installed. Cannot set RTC."
+        logging.error(error_msg)
+        if client:
+            send_error_log(client, "set_rtc_manual", error_msg, "critical")
+        return False, error_msg
+
+    try:
+        # Validate datetime components
+        required_keys = ['year', 'month', 'day', 'hour', 'minute', 'second']
+        if not datetime_components or not all(key in datetime_components for key in required_keys):
+            raise ValueError("Missing required datetime components")
+
+        year = datetime_components['year']
+        month = datetime_components['month']
+        day = datetime_components['day']
+        hour = datetime_components['hour']
+        minute = datetime_components['minute']
+        second = datetime_components['second']
+
+        # Validate ranges
+        if not (2000 <= year <= 2100) or not (1 <= month <= 12) or not (1 <= day <= 31):
+            raise ValueError("Invalid date ranges")
+        if not (0 <= hour <= 23) or not (0 <= minute <= 59) or not (0 <= second <= 59):
+            raise ValueError("Invalid time ranges")
+
+        # Get weekday (1=Sunday, 7=Saturday)
+        dt = datetime(year, month, day, hour, minute, second)
+        weekday = dt.weekday() + 1  # Adjust for DS3231 (0=Monday to 6=Saturday)
+
+        # BCD values for DS3231
+        rtc_regs = [
+            dec_to_bcd(second),  # Seconds
+            dec_to_bcd(minute),  # Minutes
+            dec_to_bcd(hour),    # Hours (24-hour format)
+            dec_to_bcd(weekday), # Day of week
+            dec_to_bcd(day),     # Date
+            dec_to_bcd(month),   # Month
+            dec_to_bcd(year % 100), # Year (last 2 digits)
+        ]
+
+        # Write to DS3231
+        bus = smbus.SMBus(i2c_bus)
+        for reg, value in enumerate(rtc_regs):
+            bus.write_byte_data(i2c_addr, reg, value)
+        bus.close()
+
+        success_msg = f"RTC manually set to {dt.strftime('%Y-%m-%d %H:%M:%S')}"
+        logging.info(success_msg)
+        return True, success_msg
+
+    except Exception as e:
+        error_msg = f"Failed to manually set RTC: {e}"
+        logging.error(error_msg)
+        if client:
+            send_error_log(client, "set_rtc_manual", e, "critical")
+        return False, error_msg
+
+def sync_rtc_datetime(client=None, i2c_bus=2, i2c_addr=0x68, timestamp=None, timezone=None):
+    """
+    Synchronize DS3231 RTC with given timestamp using I2C.
+    timezone: "WIB", "WITA", "WIT" - if provided, adjust timestamp for timezone
+    Returns (success, message)
+    """
+    if smbus is None:
+        error_msg = "smbus2 not installed. Cannot sync RTC."
+        logging.error(error_msg)
+        if client:
+            send_error_log(client, "sync_rtc_datetime", error_msg, "critical")
+        return False, error_msg
+
+    try:
+        # If no timestamp provided, use current time
+        if timestamp is None:
+            timestamp = time.time()
+
+        # Adjust for timezone if provided
+        if timezone:
+            offset = get_timezone_offset(timezone)
+            timestamp += offset
+
+        dt = datetime.fromtimestamp(timestamp)
+
+        # Register map for DS3231
+        # 0: seconds, 1: minutes, 2: hours, 3: day, 4: date, 5: month, 6: year
+        rtc_regs = [
+            dec_to_bcd(dt.second),  # Seconds
+            dec_to_bcd(dt.minute),  # Minutes
+            dec_to_bcd(dt.hour),    # Hours (24-hour format)
+            dec_to_bcd(dt.weekday() + 1),  # Day of week (1=Sunday, 7=Saturday)
+            dec_to_bcd(dt.day),     # Date
+            dec_to_bcd(dt.month),   # Month
+            dec_to_bcd(dt.year % 100),  # Year (last 2 digits)
+        ]
+
+        # Write to DS3231
+        bus = smbus.SMBus(i2c_bus)
+        for reg, value in enumerate(rtc_regs):
+            bus.write_byte_data(i2c_addr, reg, value)
+        bus.close()
+
+        success_msg = f"RTC synced successfully to {dt.strftime('%Y-%m-%d %H:%M:%S')} {'(' + timezone + ')' if timezone else ''}"
+        logging.info(success_msg)
+        return True, success_msg
+
+    except Exception as e:
+        error_msg = f"Failed to sync RTC: {e}"
+        logging.error(error_msg)
+        if client:
+            send_error_log(client, "sync_rtc_datetime", e, "critical")
+        return False, error_msg
+
+def reset_rtc_config(client=None):
+    """Resets RTC configuration to default."""
+    rtc_config_path = os.path.join(PARENT_FOLDER, "JSON", "Config", "rtc_config.json")
+    if not save_json_config(rtc_config_path, DEFAULT_RTC_CONFIG):
+        send_error_log(client, "reset_rtc_config", "Failed to save default RTC config.", "major")
+    else:
+        logging.info("RTC configuration reset to default.")
+
 # --- System Status Publishing (Corrected for 1-second interval & Robustness) ---
 def publish_system_info(client):
     """
@@ -693,6 +865,7 @@ def on_connect(client, userdata, flags, rc):
             client.subscribe(COMMAND_TOPIC)
             client.subscribe(TOPIC_DOWNLOAD)
             client.subscribe(TOPIC_UPLOAD)
+            client.subscribe(RTC_SYNC_TOPIC)
             # Request logs on connect for frontend synchronization (e.g., to populate error log viewer)
             client.publish("subrack/error/data/request", json.dumps({"command": "get_all"}))
             logging.info(f"Subscribed to: {TOPIC_COMMAND_RESET}, {COMMAND_TOPIC}, {TOPIC_DOWNLOAD}, {TOPIC_UPLOAD}")
@@ -769,6 +942,76 @@ def on_message_command(client, userdata, message):
         send_error_log(client, "on_message_command_unexpected_error", e, "critical")
 
 
+def on_message_rtc_sync(client, userdata, message):
+    """Handles RTC synchronization commands."""
+    try:
+        payload = json.loads(message.payload.decode())
+        command = payload.get("command")
+        source = payload.get("source", "manual")
+        config = payload.get("config", {})
+        i2c_bus = config.get("i2c_bus", 2)
+        i2c_addr = config.get("i2c_address", 68)
+
+        success = False
+        response_message = ""
+
+        if command == "rtc_sync":
+            timestamp = payload.get("timestamp")
+            timezone = payload.get("timezone")
+            logging.info(f"Received RTC sync command from {source}: timestamp={timestamp}, timezone={timezone}, bus={i2c_bus}, addr=0x{i2c_addr:X}")
+
+            success, response_message = sync_rtc_datetime(client, i2c_bus, i2c_addr, timestamp, timezone)
+
+        elif command == "rtc_manual_set":
+            datetime_components = payload.get("datetime_components")
+            timezone = payload.get("timezone")
+            logging.info(f"Received RTC manual set command: components={datetime_components}, timezone={timezone}, bus={i2c_bus}, addr=0x{i2c_addr:X}")
+
+            success, response_message = set_rtc_manual(client, i2c_bus, i2c_addr, datetime_components)
+
+            if success and timezone:
+                # If timezone provided and manual set succeeded, adjust for timezone
+                offset = get_timezone_offset(timezone)
+                timestamp = datetime(
+                    datetime_components['year'],
+                    datetime_components['month'],
+                    datetime_components['day'],
+                    datetime_components['hour'],
+                    datetime_components['minute'],
+                    datetime_components['second']
+                )
+                adjusted_timestamp = timestamp.timestamp() + offset
+                success, response_message = sync_rtc_datetime(client, i2c_bus, i2c_addr, adjusted_timestamp)
+
+        else:
+            logging.warning(f"Unknown RTC command: {command}")
+            response_message = f"Unknown RTC command: {command}"
+
+        response = {
+            "result": "success" if success else "error",
+            "command": command,
+            "source": source,
+            "message": response_message,
+            "config": config,
+            "synced_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+        client.publish(RTC_SYNC_RESPONSE_TOPIC, json.dumps(response))
+
+    except Exception as e:
+        error_msg = f"Error processing RTC sync message: {e}"
+        logging.error(error_msg)
+        if client:
+            send_error_log(client, "on_message_rtc_sync", e, "critical")
+
+        response = {
+            "result": "error",
+            "message": error_msg,
+            "command": command,
+            "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        client.publish(RTC_SYNC_RESPONSE_TOPIC, json.dumps(response))
+
 def on_message_reset(client, userdata, message):
     """
     Enhanced factory reset with auto-detect ethernet and Shoto battery default
@@ -798,6 +1041,7 @@ def on_message_reset(client, userdata, message):
             reset_wifi_config(client)
             reset_modbus_tcp_config(client)
             reset_snmp_config(client)
+            reset_rtc_config(client)
             
             # Step 3: Send detailed response
             response = {
@@ -930,6 +1174,7 @@ def setup_mqtt_client():
     # Add specific message handlers for known topics using message_callback_add
     client.message_callback_add(TOPIC_COMMAND_RESET, on_message_reset)
     client.message_callback_add(COMMAND_TOPIC, on_message_command)
+    client.message_callback_add(RTC_SYNC_TOPIC, on_message_rtc_sync)
     # Lambda functions are used to pass additional arguments (like 'client' or parsed payload)
     client.message_callback_add(TOPIC_DOWNLOAD, lambda c, u, m: handle_file_download(c))
     client.message_callback_add(TOPIC_UPLOAD, lambda c, u, m: handle_file_upload(c, json.loads(m.payload.decode())))

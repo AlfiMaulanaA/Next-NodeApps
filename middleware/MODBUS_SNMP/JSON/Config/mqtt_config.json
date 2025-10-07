@@ -1,7 +1,7 @@
 {
   "enable": true,
-  "broker_address": "localhost",
-  "broker_port": 1883,
+  "broker_address": "192.168.1.101",
+  "broker_port": 9000,
   "username": "",
   "password": "",
   "qos": 1,

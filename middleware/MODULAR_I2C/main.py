@@ -10,6 +10,7 @@ import os
 import time
 import signal
 import json
+from datetime import datetime
 from Tasks.i2c_modular import i2c_modular_polling_task
 from Tasks.i2c_out import i2c_out_polling_task
 import os
@@ -17,6 +18,13 @@ import requests
 
 import paho.mqtt.client as mqtt
 from time import strftime, localtime
+
+# Import I2C libraries for RTC
+try:
+    import smbus2 as smbus
+except ImportError:
+    print("Warning: smbus2 not installed. RTC functionality will not work.")
+    smbus = None
 
 timeout = 5
 

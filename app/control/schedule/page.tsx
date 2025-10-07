@@ -3,8 +3,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import Flatpickr from "react-flatpickr";
-import "flatpickr/dist/flatpickr.css";
 import { v4 as uuidv4 } from "uuid";
 import MqttStatus from "@/components/mqtt-status";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -56,7 +54,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 
 // Type definitions
 interface Control {
@@ -317,17 +315,9 @@ const DeviceSchedulerControl = () => {
                 `Operation result: ${payload.result} - ${payload.message}`
               );
               if (payload.result === "success") {
-                toast({
-                  title: "Success",
-                  description:
-                    payload.message || "Operation completed successfully.",
-                });
+                toast.success(payload.message || "Operation completed successfully.");
               } else if (payload.result === "error") {
-                showAlert(
-                  "Error",
-                  payload.message ||
-                    "There was an error processing the request."
-                );
+                toast.error(payload.message || "There was an error processing the request.");
               }
             } else if (topic === topicResponse) {
               // Handle config response - check if it's an array directly
@@ -526,12 +516,7 @@ const DeviceSchedulerControl = () => {
     publishMessage({ action, data: dataToSend });
 
     setIsModalOpen(false);
-    toast({
-      title: "Success",
-      description: editingDevice
-        ? "Device updated successfully!"
-        : "Device added successfully!",
-    });
+    toast.success(editingDevice ? "Device updated successfully!" : "Device added successfully!");
     restartService();
   };
 
@@ -539,10 +524,7 @@ const DeviceSchedulerControl = () => {
     publishMessage({ action: "delete", data: { id } });
     setDevices((prev) => prev.filter((device) => device.id !== id));
 
-    toast({
-      title: "Success",
-      description: "Device deleted successfully!",
-    });
+    toast.success("Device deleted successfully!");
     restartService();
   };
 
@@ -575,11 +557,7 @@ const DeviceSchedulerControl = () => {
       getConfig();
     }, 1000);
 
-    toast({
-      title: "Updating Configuration",
-      description:
-        "Please wait while the scheduler configuration is updated...",
-    });
+    toast.success("Please wait while the scheduler configuration is updated...");
   };
 
   const handleControlChange = (

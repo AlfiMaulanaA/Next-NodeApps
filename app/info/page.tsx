@@ -14,60 +14,150 @@ import {
 import {
   FileQuestion,
   Network,
-  ServerCog,
-  PlusCircle,
-  BarChart2,
-  AlertTriangle,
+  Server,
+  Settings,
+  HardDrive,
   RotateCw,
   SatelliteDish,
-  GaugeCircle, // Import new icon for status
+  GaugeCircle,
+  BarChart3,
+  Database,
+  Wrench,
+  Code,
+  Calculator,
+  Mic,
+  Clock,
+  ArrowLeftRight,
+  Search,
+  Shield,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useTheme } from "next-themes";
 
-export default function InfoFAQPage() {
-  const techStack = [
-    { name: "Node.js", icon: <SiNodedotjs size={32} className="text-green-600" /> },
-    { name: "Python", icon: <SiPython size={32} className="text-blue-500" /> },
-    { name: "Next.js", icon: <SiNextdotjs size={32} className="text-black dark:text-white" /> },
-    { name: "HTML", icon: <SiHtml5 size={32} className="text-orange-500" /> },
-    { name: "CSS", icon: <SiCss3 size={32} className="text-blue-600" /> },
-    { name: "TypeScript", icon: <SiTypescript size={32} className="text-sky-600" /> },
-    { name: "JavaScript", icon: <SiJavascript size={32} className="text-yellow-400" /> },
-    { name: "Tailwind CSS", icon: <SiTailwindcss size={32} className="text-cyan-500" /> },
-    { name: "MQTT", icon: <SatelliteDish size={32} className="text-red-600" /> },
-    { name: "Networking", icon: <Network size={32} className="text-gray-500" /> },
+export default function InfoPage() {
+  const { theme } = useTheme();
+
+  // Dynamic image based on theme
+  const gatewayImage = theme === 'dark'
+    ? "/images/ilustation-mqtt-gateway-dark.png"
+    : "/images/ilustation-mqtt-gateway-light.png";
+  const features = [
+    {
+      icon: <BarChart3 className="w-6 h-6 text-blue-600" />,
+      category: "Overview",
+      title: "Dashboard",
+      description: "Real-time dashboard displaying system status, device connectivity, and key metrics overview.",
+    },
+    {
+      icon: <Network className="w-6 h-6 text-green-600" />,
+      category: "Network Configuration",
+      title: "IP Configuration",
+      description: "Configure network interfaces, IP addresses, subnet masks, and gateway settings.",
+    },
+    {
+      icon: <SatelliteDish className="w-6 h-6 text-blue-500" />,
+      category: "Network Configuration",
+      title: "MQTT Broker",
+      description: "Configure MQTT broker connection settings, authentication, and publish/subscribe parameters.",
+    },
+    {
+      icon: <Database className="w-6 h-6 text-purple-600" />,
+      category: "Device Management",
+      title: "Modbus Devices",
+      description: "Manage Modbus RTU and TCP devices, configure communication parameters and data mappings.",
+    },
+    {
+      icon: <Server className="w-6 h-6 text-orange-600" />,
+      category: "Device Management",
+      title: "Modular I2C",
+      description: "Control and monitor I2C-based modular devices with real-time status updates.",
+    },
+    {
+      icon: <Shield className="w-6 h-6 text-red-600" />,
+      category: "Device Management",
+      title: "Threshold Settings",
+      description: "Set alarm thresholds, warning levels, and trigger conditions for monitored parameters.",
+    },
+    {
+      icon: <Search className="w-6 h-6 text-cyan-600" />,
+      category: "Payload Management",
+      title: "Payload Discover & Publisher",
+      description: "Explore MQTT topics, publish custom payloads, and monitor message traffic in real-time.",
+    },
+    {
+      icon: <ArrowLeftRight className="w-6 h-6 text-teal-600" />,
+      category: "Payload Management",
+      title: "Payload Remapping",
+      description: "Transform and remap MQTT payloads with custom key mappings and data transformations.",
+    },
+    {
+      icon: <Wrench className="w-6 h-6 text-gray-700" />,
+      category: "Control Center",
+      title: "Manual Control",
+      description: "Direct manual control of devices, relays, and actuators with immediate execution.",
+    },
+    {
+      icon: <Code className="w-6 h-6 text-indigo-600" />,
+      category: "Control Center",
+      title: "Logic Control",
+      description: "Configure conditional logic, trigger conditions, and automated decision-making rules.",
+    },
+    {
+      icon: <Calculator className="w-6 h-6 text-pink-600" />,
+      category: "Control Center",
+      title: "Value Control",
+      description: "Set controlled parameters, reference values, and PID controller configurations.",
+    },
+    {
+      icon: <Mic className="w-6 h-6 text-emerald-600" />,
+      category: "Control Center",
+      title: "Voice Control",
+      description: "Voice-activated commands and audio feedback for hands-free system operation.",
+    },
+    {
+      icon: <Clock className="w-6 h-6 text-violet-600" />,
+      category: "Control Center",
+      title: "Scheduler Control",
+      description: "Time-based automation, scheduled tasks, and recurring event management.",
+    },
+    {
+      icon: <Settings className="w-6 h-6 text-gray-600" />,
+      category: "System Settings",
+      title: "General Settings",
+      description: "System-wide configurations, user preferences, and interface customization options.",
+    },
+    {
+      icon: <HardDrive className="w-6 h-6 text-amber-600" />,
+      category: "System Settings",
+      title: "Device Library",
+      description: "Manage device profiles, firmware versions, and component specifications library.",
+    },
   ];
 
-  const faqs = [
-    {
-      icon: <Network className="w-5 h-5 text-blue-600 mt-1" />,
-      question: "What communication protocols are supported?",
-      answer: "The system supports Modbus RTU, Modbus TCP, SNMP, and MQTT protocols.",
-    },
-    {
-      icon: <PlusCircle className="w-5 h-5 text-green-600 mt-1" />,
-      question: "Can I add custom devices?",
-      answer: "Yes, you can add, update, or delete custom devices using the Device Manager.",
-    },
-    {
-      icon: <BarChart2 className="w-5 h-5 text-yellow-500 mt-1" />,
-      question: "What types of data are monitored?",
-      answer: "The system monitors key data points such as Voltage, Current, Power, Energy, and various device statuses.",
-    },
-    // New FAQ for device status
-    {
-      icon: <GaugeCircle className="w-5 h-5 text-purple-600 mt-1" />,
-      question: "How does device status work?",
-      answer: "A device's status will show as Online if it's actively receiving data from metering equipment and successfully connected to the controller. If there's no connection or no data being received, its status will be Offline.",
-    },
-    {
-      icon: <AlertTriangle className="w-5 h-5 text-red-600 mt-1" />,
-      question: "What should I do if data isn't showing?",
-      answer: "First, check the device connections. Then, verify the MQTT broker status and ensure all port settings are configured correctly.",
-    },
+  const techStack = [
+    { name: "Node.js", icon: <SiNodedotjs size={32} className="text-green-600" />, description: "Backend runtime environment" },
+    { name: "Python", icon: <SiPython size={32} className="text-blue-500" />, description: "Device control and automation" },
+    { name: "Next.js", icon: <SiNextdotjs size={32} className="text-black dark:text-white" />, description: "React framework for web interface" },
+    { name: "TypeScript", icon: <SiTypescript size={32} className="text-sky-600" />, description: "Type-safe JavaScript" },
+    { name: "Tailwind CSS", icon: <SiTailwindcss size={32} className="text-cyan-500" />, description: "Utility-first CSS framework" },
+    { name: "MQTT", icon: <SatelliteDish size={32} className="text-red-600" />, description: "Lightweight messaging protocol" },
+    { name: "Modbus", icon: <Network size={32} className="text-blue-600" />, description: "Industrial communication protocol" },
+    { name: "PostgreSQL", icon: <Database size={32} className="text-blue-700" />, description: "Data persistence and logging" },
+  ];
+
+  const systemSpecs = [
+    { label: "Architecture", value: "Full-stack IoT Gateway" },
+    { label: "Communication", value: "MQTT, Modbus RTU/TCP, SNMP" },
+    { label: "Real-time Monitoring", value: "Live data streams & alerts" },
+    { label: "Automation", value: "Rule-based triggers & actions" },
+    { label: "User Interface", value: "Modern web-based dashboard" },
+    { label: "Data Persistence", value: "SQLite/PostgreSQL database" },
+    { label: "Security", value: "Authentication & secure communications" },
   ];
 
   return (
@@ -78,82 +168,231 @@ export default function InfoFAQPage() {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
           <FileQuestion className="w-5 h-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Information & FAQ</h1>
+          <h1 className="text-lg font-semibold">System Information</h1>
         </div>
         <Button
           variant="outline"
           size="icon"
           onClick={() => window.location.reload()}
           title="Reload page"
-          aria-label="Reload"
         >
           <RotateCw className="w-4 h-4" />
         </Button>
       </header>
 
-      {/* Content */}
-      <main className="px-20 sm:px-16 md:px-24 py-8 space-y-12 transition-all">
-        {/* Info Section */}
-        <section>
-          <div className="flex items-center gap-2 mb-2">
-            <ServerCog className="w-5 h-5 text-primary" />
-            <h2 className="text-3xl font-bold">BMS Monitoring System</h2>
-          </div>
-          <p className="text-muted-foreground max-w-3xl leading-relaxed">
-            This system enables real-time monitoring and control of Battery Management System (BMS) devices.
-            It supports Modbus RTU/TCP, SNMP, and MQTT protocols, visualizing key data and statuses via a web interface.
-          </p>
-        </section>
+      <div className="flex-1 overflow-y-auto">
+        <main className="px-6 py-8 space-y-8">
+          {/* System Overview */}
+          <section>
+            <div className="flex items-center gap-3 mb-4">
+              <Server className="w-6 h-6 text-primary" />
+              <h2 className="text-3xl font-bold">MQTT Gateway Dashboard</h2>
+            </div>
 
-        <Separator />
-
-        {/* FAQ Section */}
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <FileQuestion className="w-5 h-5 text-primary" />
-            <h2 className="text-2xl font-semibold">Frequently Asked Questions</h2>
-          </div>
-          <ul className="space-y-6 text-sm sm:text-base">
-            {faqs.map((faq, index) => (
-              <li
-                key={index}
-                className="flex gap-3 p-4 rounded-xl hover:bg-accent/40 transition duration-300 shadow-sm"
-              >
-                {faq.icon}
-                <div className="transition-all">
-                  <strong className="block mb-1">{faq.question}</strong>
-                  <span className="text-muted-foreground">{faq.answer}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <Separator />
-
-        {/* Tech Stack Section */}
-        <section>
-          <div className="flex items-center gap-2 mb-2">
-            <ServerCog className="w-5 h-5 text-primary" />
-            <h2 className="text-2xl font-semibold">Technology Stack</h2>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-6">
-            {techStack.map((tech) => (
-              <div
-                key={tech.name}
-                className="group p-4 rounded-2xl shadow-md transition-transform duration-300 hover:scale-105 hover:bg-primary/10 cursor-pointer"
-              >
-                <div className="flex flex-col items-center space-y-2">
-                  {tech.icon}
-                  <span className="text-sm font-medium group-hover:text-foreground">
-                    {tech.name}
-                  </span>
+            {/* MQTT Gateway Illustration and Description */}
+            <div className="flex flex-col lg:flex-row items-start gap-8 mb-6">
+              {/* Image Section */}
+              <div className="flex-shrink-0 w-[300px]">
+                <div className="relative">
+                  <img
+                    src={gatewayImage}
+                    alt="MQTT Gateway Illustration"
+                    className="w-full h-auto rounded-lg shadow-lg border border-border"
+                  />
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
-      </main>
+
+              {/* Description Section */}
+              <div className="flex-1 w-full lg:w-1/2">
+                <p className="text-muted-foreground leading-relaxed text-lg">
+  A comprehensive IoT gateway solution for industrial automation and smart infrastructure management.
+  This system provides unified control, monitoring, and data management capabilities for diverse industrial
+  and IoT devices through multiple communication protocols.
+</p>
+
+<p className="text-muted-foreground leading-relaxed text-lg mt-4">
+  The application includes an intuitive dashboard for real-time monitoring, device configuration,
+  and performance analytics. It supports seamless integration with MQTT, Modbus, SNMP, and HTTP APIs,
+  enabling flexible connectivity across heterogeneous systems. Advanced logging, alerting, and reporting
+  features ensure reliable operation, while secure authentication and role-based access control
+  maintain system integrity. This makes it ideal for use in data centers, factories, and smart city
+  infrastructures.
+</p>
+
+              </div>
+            </div>
+
+            {/* System Specifications Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+              {systemSpecs.map((spec, index) => (
+                <div key={index} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                  <span className="font-medium">{spec.label}:</span>
+                  <Badge variant="outline">{spec.value}</Badge>
+                </div>
+              ))}
+            </div>
+
+            
+          </section>
+
+          <Separator />
+
+          {/* Features Overview */}
+          <section>
+            <div className="flex items-center gap-3 mb-6">
+              <GaugeCircle className="w-6 h-6 text-primary" />
+              <h2 className="text-2xl font-semibold">System Features</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {features.map((feature, index) => (
+                <Card key={index} className="h-full hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-3">
+                      {feature.icon}
+                      <div>
+                        <CardTitle className="text-lg">{feature.title}</CardTitle>
+                        <Badge variant="secondary" className="text-xs">
+                          {feature.category}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <CardDescription className="leading-relaxed">
+                      {feature.description}
+                    </CardDescription>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </section>
+
+          <Separator />
+
+          {/* Technology Stack */}
+          <section>
+            <div className="flex items-center gap-3 mb-6">
+              <Code className="w-6 h-6 text-primary" />
+              <h2 className="text-2xl font-semibold">Technology Stack</h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {techStack.map((tech, index) => (
+                <Card key={index} className="p-4 hover:bg-accent/40 transition-colors">
+                  <div className="flex items-center gap-3 mb-2">
+                    {tech.icon}
+                    <h3 className="font-semibold">{tech.name}</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{tech.description}</p>
+                </Card>
+              ))}
+            </div>
+          </section>
+
+          <Separator />
+
+          {/* System Architecture */}
+          <section>
+            <div className="flex items-center gap-3 mb-6">
+              <Network className="w-6 h-6 text-primary" />
+              <h2 className="text-2xl font-semibold">Architecture Overview</h2>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Frontend (Web Interface)</CardTitle>
+                  <CardDescription>Modern, responsive dashboard for system management</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2 text-sm">
+                    <li>• Real-time data visualization</li>
+                    <li>• Intuitive control interfaces</li>
+                    <li>• Multi-device management</li>
+                    <li>• Automated monitoring alerts</li>
+                    <li>• Responsive design for all devices</li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Backend (Edge Processing)</CardTitle>
+                  <CardDescription>Robust gateway with protocol translation</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2 text-sm">
+                    <li>• Multi-protocol communication</li>
+                    <li>• Real-time data processing</li>
+                    <li>• Rule-based automation engine</li>
+                    <li>• Secure MQTT bridging</li>
+                    <li>• Industrial-grade reliability</li>
+                  </ul>
+                </CardContent>
+              </Card>
+            </div>
+
+           
+          </section>
+
+          <Separator />
+
+          {/* Getting Started */}
+          <section>
+            <div className="flex items-center gap-3 mb-6">
+              <Settings className="w-6 h-6 text-primary" />
+              <h2 className="text-2xl font-semibold">Getting Started</h2>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="text-center">
+                  <CardHeader>
+                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span className="text-2xl font-bold text-blue-600">1</span>
+                    </div>
+                    <CardTitle className="text-lg">Network Setup</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      Configure IP addresses, WiFi settings, and MQTT broker connections
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="text-center">
+                  <CardHeader>
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span className="text-2xl font-bold text-green-600">2</span>
+                    </div>
+                    <CardTitle className="text-lg">Device Configuration</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      Add and configure Modbus devices, I2C modules, and communication parameters
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="text-center">
+                  <CardHeader>
+                    <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span className="text-2xl font-bold text-purple-600">3</span>
+                    </div>
+                    <CardTitle className="text-lg">Automation Setup</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      Configure triggers, actions, and automated control logic for your devices
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
     </SidebarInset>
   );
 }

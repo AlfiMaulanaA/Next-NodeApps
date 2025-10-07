@@ -1,7 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import UserManager from "@/lib/user-management";
 
+// Use the same User interface from UserManager
 export interface User {
   id: string;
   name: string;
@@ -9,9 +11,6 @@ export interface User {
   department: string;
   status: "active" | "inactive";
   role: "admin" | "user" | "operator" | "developer";
-  created_at: string;
-  updated_at: string;
-  last_login: string | null;
 }
 
 interface AuthContextType {
@@ -19,15 +18,6 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
-  register: (userData: RegisterData) => Promise<boolean>;
-}
-
-interface RegisterData {
-  name: string;
-  email: string;
-  password: string;
-  department: string;
-  role?: "admin" | "user" | "operator" | "developer";
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -37,11 +27,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in from localStorage
+    // Check if user is logged in from localStorage, but also sync with UserManager
     const storedUser = localStorage.getItem("auth_user");
+    const currentUserManagerUser = UserManager.getCurrentAuthenticatedUser();
+
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const userData = JSON.parse(storedUser);
+        // Verify the user data structure and check if still valid in UserManager
+        if (userData && typeof userData === 'object' && userData.email) {
+          // Check if user still exists and is active in UserManager
+          const managerUser = UserManager.getUserByEmail(userData.email);
+          if (managerUser && managerUser.isActive) {
+            setUser({
+              ...userData,
+              department: managerUser.metadata?.department || 'IT',
+              status: managerUser.isActive ? 'active' : 'inactive',
+            });
+          } else {
+            // User no longer valid, remove from localStorage
+            localStorage.removeItem("auth_user");
+          }
+        } else {
+          localStorage.removeItem("auth_user");
+        }
       } catch (error) {
         console.error("Failed to parse stored user data:", error);
         localStorage.removeItem("auth_user");
@@ -54,194 +63,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
 
-      // Get existing MQTT client from the global MQTT system
-      const { connectMQTTAsync } = await import("@/lib/mqttClient");
-      const client = await connectMQTTAsync();
+      // Use UserManager for authentication
+      const result = await UserManager.authenticateUser(email, password);
 
-      return new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => {
-          console.error("Login timeout");
-          resolve(false);
-        }, 5000);
-
-        // Subscribe to response topic
-        client.subscribe("response_user_management", { qos: 1 }, (err) => {
-          if (err) {
-            console.error("Failed to subscribe to auth response:", err);
-            resolve(false);
-            return;
-          }
-
-          // Send authentication request
-          const authRequest = {
-            command: "authenticate",
-            data: { email, password },
-          };
-
-          client.publish(
-            "command_user_management",
-            JSON.stringify(authRequest),
-            { qos: 1 },
-            (err) => {
-              if (err) {
-                console.error("Failed to publish auth request:", err);
-                resolve(false);
-                clearTimeout(timeout);
-                return;
-              }
-            }
-          );
-        });
-
-        const responseHandler = (topic: string, message: Buffer) => {
-          if (topic === "response_user_management") {
-            try {
-              const response = JSON.parse(message.toString());
-              if (
-                response.command === "authenticate" &&
-                response.success &&
-                response.data
-              ) {
-                const userData = response.data;
-                setUser(userData as User);
-                localStorage.setItem("auth_user", JSON.stringify(userData));
-                console.log("Login successful:", userData.name);
-                resolve(true);
-              } else {
-                console.error(
-                  "Login failed:",
-                  response.error || "Invalid credentials"
-                );
-                resolve(false);
-              }
-            } catch (error) {
-              console.error("Login response error:", error);
-              resolve(false);
-            } finally {
-              clearTimeout(timeout);
-              client.removeListener("message", responseHandler);
-              client.unsubscribe("response_user_management");
-            }
-          }
+      if (result.success && result.user) {
+        // Convert UserManager user format to AuthContext format
+        const authUser: User = {
+          id: result.user.id,
+          name: result.user.name,
+          email: result.user.email,
+          department: result.user.metadata?.department || 'IT',
+          status: result.user.isActive ? 'active' : 'inactive',
+          role: result.user.role as any, // Safe cast since roles are aligned
         };
 
-        client.on("message", responseHandler);
-      });
+        setUser(authUser);
+        localStorage.setItem("auth_user", JSON.stringify(authUser));
+
+        console.log("Login successful:", authUser.name);
+        return true;
+      } else {
+        console.error("Invalid credentials");
+        return false;
+      }
     } catch (error) {
-      console.error("Login setup error:", error);
+      console.error("Login error:", error);
       return false;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const logout = async () => {
-    // Static mode - client-side logout only
+  const logout = () => {
     setUser(null);
     localStorage.removeItem("auth_user");
-  };
-
-  const register = async (userData: RegisterData): Promise<boolean> => {
-    try {
-      setIsLoading(true);
-
-      // Use MQTT integration instead of REST API
-      const { connectMQTTAsync } = await import("@/lib/mqttClient");
-      const client = await connectMQTTAsync();
-
-      return new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => {
-          console.error("Registration timeout");
-          resolve(false);
-        }, 10000);
-
-        // Subscribe to response topic
-        client.subscribe("response_user_management", { qos: 1 }, (err) => {
-          if (err) {
-            console.error("Failed to subscribe to register response:", err);
-            resolve(false);
-            return;
-          }
-
-          // Send registration request via MQTT
-          const registerRequest = {
-            command: "add",
-            data: {
-              name: userData.name,
-              email: userData.email,
-              password: userData.password,
-              department: userData.department,
-              status: "active",
-              role: userData.role || "user",
-            },
-          };
-
-          client.publish(
-            "command_user_management",
-            JSON.stringify(registerRequest),
-            { qos: 1 },
-            (err) => {
-              if (err) {
-                console.error("Failed to publish register request:", err);
-                resolve(false);
-                clearTimeout(timeout);
-                return;
-              }
-            }
-          );
-        });
-
-        const responseHandler = (topic: string, message: Buffer) => {
-          if (topic === "response_user_management") {
-            try {
-              const response = JSON.parse(message.toString());
-              if (response.command === "add") {
-                if (response.success && response.message) {
-                  console.log("Registration successful:", response.message);
-                  // Auto-login after successful registration
-                  const loginAfterRegister = async () => {
-                    try {
-                      const loginSuccess = await login(
-                        userData.email,
-                        userData.password
-                      );
-                      resolve(loginSuccess);
-                    } catch (loginErr) {
-                      console.error(
-                        "Auto-login after register failed:",
-                        loginErr
-                      );
-                      resolve(true); // Registration successful, but login failed
-                    }
-                  };
-                  loginAfterRegister();
-                } else {
-                  console.error(
-                    "Registration failed:",
-                    response.error || response.message
-                  );
-                  resolve(false);
-                }
-              }
-            } catch (error) {
-              console.error("Registration response error:", error);
-              resolve(false);
-            } finally {
-              clearTimeout(timeout);
-              client.removeListener("message", responseHandler);
-              client.unsubscribe("response_user_management");
-            }
-          }
-        };
-
-        client.on("message", responseHandler);
-      });
-    } catch (error) {
-      console.error("Registration setup error:", error);
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
+    // Also logout from UserManager for consistency
+    UserManager.logoutUser();
   };
 
   return (
@@ -251,7 +108,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         login,
         logout,
-        register,
       }}
     >
       {children}

@@ -67,6 +67,8 @@ error_logger = None
 device_states = {}  # Track current device states for trigger evaluation
 trigger_states = {}  # Track trigger states for auto-off functionality
 trigger_timers = {}  # Track delay timers for triggers
+action_timers = {}  # Track delay timers for actions
+latched_actions = {}  # Track latched relay states (device_pin -> state)
 
 # --- Logging Control ---
 device_topic_logging_enabled = False  # Control device topic message logging
@@ -80,7 +82,7 @@ mqtt_config_file = '../MODBUS_SNMP/JSON/Config/mqtt_config.json'
 config_file = './JSON/automationValueConfig.json'
 modbus_devices_file = '../MODBUS_SNMP/JSON/Config/installed_devices.json'
 modular_devices_file = '../MODULAR_I2C/JSON/Config/installed_devices.json'
-whatsapp_config_file = './whatsapp_config.json'
+whatsapp_config_file = './JSON/whatsapp_config.json'
 
 # --- MQTT Topic Definitions ---
 # Simplified Topics (localhost broker)
@@ -476,6 +478,15 @@ def on_message_control(client, userdata, msg):
         # Log device topic messages only if enabled
         if device_topic_logging_enabled:
             log_simple(f"Control Message: {topic} - {payload}")
+
+        # Check if this is an available devices topic
+        if topic in [MODBUS_AVAILABLES_TOPIC, MODULAR_AVAILABLES_TOPIC]:
+            try:
+                available_devices = json.loads(payload)
+                handle_available_devices_update(client, available_devices)
+            except json.JSONDecodeError as e:
+                log_simple(f"Failed to parse available devices message JSON: {e}", "ERROR")
+            return
 
         # Handle device data from subscribed topics
         try:
@@ -890,15 +901,13 @@ def evaluate_trigger_group(group, device_topic, device_data):
         return False
 
 def evaluate_trigger_condition(trigger, device_data):
-    """Evaluate a single trigger condition with delay support for numeric values"""
+    """Evaluate a single trigger condition for numeric values"""
     try:
         trigger_type = trigger.get('trigger_type', 'numeric')
         device_name = trigger.get('device_name', '')
         field_name = trigger.get('field_name', 'value')
         condition_operator = trigger.get('condition_operator', 'equals')
         target_value = trigger.get('target_value', 0)
-        delay_on = trigger.get('delay_on', 0)
-        delay_off = trigger.get('delay_off', 0)
 
         # Validate device_data is a dictionary
         if not isinstance(device_data, dict):
@@ -957,113 +966,110 @@ def evaluate_trigger_condition(trigger, device_data):
         status_icon = "✅" if condition_met else "❌"
         log_simple(f"[CONDITION] {status_icon} {condition_operator.upper()}: {condition_desc} = {condition_met}", "SUCCESS" if condition_met else "INFO")
 
-        # Handle delays
-        trigger_key = f"{device_name}_{field_name}_{condition_operator}"
-
-        if condition_met and delay_on > 0:
-            # Start delay timer for activation
-            if trigger_key not in trigger_timers:
-                trigger_timers[trigger_key] = {
-                    'type': 'delay_on',
-                    'start_time': datetime.now(),
-                    'delay': delay_on,
-                    'triggered': False
-                }
-                log_simple(f"[DELAY] ⏳ Delay ON started for {trigger_key}: {delay_on}s", "INFO")
-                log_simple(f"[RESULT] ⏸️  Trigger ACTIVE but DELAYING activation ({delay_on}s)", "INFO")
-                return False
-            else:
-                # Check if delay has elapsed
-                timer = trigger_timers[trigger_key]
-                if timer['type'] == 'delay_on' and not timer['triggered']:
-                    elapsed = (datetime.now() - timer['start_time']).total_seconds()
-                    remaining = max(0, delay_on - elapsed)
-                    log_simple(f"[DELAY] ⏳ Delay ON progress: {elapsed:.1f}s / {delay_on}s (remaining: {remaining:.1f}s)", "INFO")
-                    if elapsed >= delay_on:
-                        timer['triggered'] = True
-                        log_simple(f"[DELAY] ✅ Delay ON COMPLETED for {trigger_key}!", "SUCCESS")
-                        log_simple(f"[RESULT] 🚀 Trigger ACTIVATED after delay!", "SUCCESS")
-                        return True
-                    else:
-                        log_simple(f"[RESULT] ⏸️  Trigger ACTIVE but still waiting ({remaining:.1f}s)", "INFO")
-                        return False
-                log_simple(f"[RESULT] ✅ Trigger already triggered (delay completed)", "INFO")
-                return timer['triggered']
-
-        elif not condition_met and delay_off > 0:
-            # Start delay timer for deactivation
-            if trigger_key in trigger_timers and trigger_timers[trigger_key]['triggered']:
-                trigger_timers[trigger_key] = {
-                    'type': 'delay_off',
-                    'start_time': datetime.now(),
-                    'delay': delay_off,
-                    'triggered': True
-                }
-                log_simple(f"[DELAY] ⏳ Delay OFF started for {trigger_key}: {delay_off}s", "INFO")
-                log_simple(f"[RESULT] ⏸️  Trigger INACTIVE but DELAYING deactivation ({delay_off}s)", "INFO")
-                return True
-            elif trigger_key in trigger_timers:
-                timer = trigger_timers[trigger_key]
-                if timer['type'] == 'delay_off':
-                    elapsed = (datetime.now() - timer['start_time']).total_seconds()
-                    remaining = max(0, delay_off - elapsed)
-                    log_simple(f"[DELAY] ⏳ Delay OFF progress: {elapsed:.1f}s / {delay_off}s (remaining: {remaining:.1f}s)", "INFO")
-                    if elapsed >= delay_off:
-                        del trigger_timers[trigger_key]
-                        log_simple(f"[DELAY] ✅ Delay OFF COMPLETED for {trigger_key}!", "SUCCESS")
-                        log_simple(f"[RESULT] 🛑 Trigger DEACTIVATED after delay!", "SUCCESS")
-                        return False
-                    else:
-                        log_simple(f"[RESULT] ⏸️  Trigger INACTIVE but still delaying ({remaining:.1f}s)", "INFO")
-                        return True
-            log_simple(f"[RESULT] ❌ Condition not met, no delay active", "INFO")
-            return condition_met
-        else:
-            # No delay, immediate evaluation
-            if trigger_key in trigger_timers:
-                del trigger_timers[trigger_key]
-                log_simple(f"[DELAY] 🧹 Cleared timer for {trigger_key} (no delay needed)", "INFO")
-
-            result_icon = "✅" if condition_met else "❌"
-            log_simple(f"[RESULT] {result_icon} Final trigger result: {'TRUE' if condition_met else 'FALSE'} (immediate)", "SUCCESS" if condition_met else "INFO")
-            return condition_met
-
-        return False
+        # No delay handling here - moved to actions
+        result_icon = "✅" if condition_met else "❌"
+        log_simple(f"[RESULT] {result_icon} Final trigger result: {'TRUE' if condition_met else 'FALSE'}", "SUCCESS" if condition_met else "INFO")
+        return condition_met
 
     except Exception as e:
         log_simple(f"[ERROR] evaluate_trigger_condition: {e}", "ERROR")
         return False
 
 def execute_rule_actions(rule):
-    """Execute actions for a triggered rule"""
+    """Execute actions for a triggered rule with delay support"""
     try:
         actions = rule.get('actions', [])
+        rule_id = rule.get('id', '')
 
-        for action in actions:
+        for i, action in enumerate(actions):
+            action_key = f"{rule_id}_action_{i}"
             action_type = action.get('action_type', '')
 
-            if action_type == 'control_relay':
-                execute_relay_control(action)
-            elif action_type == 'send_message':
-                execute_send_message(action, rule)
+            # Check if action has delays configured
+            delay_on = action.get('delay_on', 0)
+            delay_off = max(action.get('delay_off', 0), delay_on)  # Ensure delay_off >= delay_on
+
+            if delay_on > 0:
+                # Start action delay timer
+                if action_key not in action_timers:
+                    action_timers[action_key] = {
+                        'type': 'delay_on',
+                        'start_time': datetime.now(),
+                        'delay': delay_on,
+                        'action': action,
+                        'action_type': action_type,
+                        'rule': rule
+                    }
+                    log_simple(f"[ACTION DELAY] ⏳ Action {action_type} delayed by {delay_on}s", "INFO")
+                    log_simple(f"[RESULT] ⏸️ Action ACTIVE but DELAYING execution ({delay_on}s)", "INFO")
+                else:
+                    timer = action_timers[action_key]
+                    if timer['type'] == 'delay_on':
+                        elapsed = (datetime.now() - timer['start_time']).total_seconds()
+                        if elapsed >= delay_on:
+                            # Execute the delayed action
+                            if action_type == 'control_relay':
+                                execute_relay_control(action)
+                            elif action_type == 'send_message':
+                                execute_send_message(action, rule)
+
+                            # Move to delay_off state if configured
+                            if delay_off > delay_on:
+                                timer['type'] = 'delay_off'
+                                timer['start_time'] = datetime.now()
+                                timer['delay'] = delay_off - delay_on
+                                log_simple(f"[ACTION DELAY] ✅ Action executed - now delaying OFF by {delay_off - delay_on}s", "SUCCESS")
+                            else:
+                                del action_timers[action_key]
+                                log_simple(f"[ACTION DELAY] ✅ Action {action_type} executed (no OFF delay)", "SUCCESS")
+                        else:
+                            log_simple(f"[RESULT] ⏸️ Action ACTIVE but still waiting ({elapsed:.1f}s / {delay_on}s)", "INFO")
+            elif delay_off > 0:
+                # Immediate execution but with OFF delay
+                if action_type == 'control_relay':
+                    execute_relay_control(action)
+                elif action_type == 'send_message':
+                    execute_send_message(action, rule)
+
+                # Set up OFF delay timer
+                action_timers[action_key] = {
+                    'type': 'delay_off',
+                    'start_time': datetime.now(),
+                    'delay': delay_off,
+                    'action': action,
+                    'action_type': action_type,
+                    'rule': rule
+                }
+                log_simple(f"[ACTION DELAY] ✅ Action executed - delaying OFF by {delay_off}s", "SUCCESS")
+            else:
+                # Immediate execution without delays
+                if action_type == 'control_relay':
+                    execute_relay_control(action)
+                elif action_type == 'send_message':
+                    execute_send_message(action, rule)
 
     except Exception as e:
         log_simple(f"Error executing rule actions: {e}", "ERROR")
         send_error_log("execute_rule_actions", f"Rule action execution error: {e}", ERROR_TYPE_MINOR)
 
 def execute_rule_actions_off(rule):
-    """Execute OFF actions when rule condition stops being met"""
+    """Execute OFF actions when rule condition stops being met, respecting latching behavior"""
     try:
         actions = rule.get('actions', [])
 
         for action in actions:
             action_type = action.get('action_type', '')
+            is_latching = action.get('latching', False)  # Default to False for backward compatibility
 
             if action_type == 'control_relay':
-                # Create OFF action by inverting target_value
-                off_action = action.copy()
-                off_action['target_value'] = not action.get('target_value', False)
-                execute_relay_control(off_action)
+                if is_latching:
+                    # With latching enabled, don't turn OFF the relay when trigger condition stops
+                    log_simple(f"[LATCHING] 🔒 Relay action with latching enabled - keeping relay ON", "INFO")
+                else:
+                    # Normal behavior - turn OFF the relay when trigger condition stops
+                    off_action = action.copy()
+                    off_action['target_value'] = not action.get('target_value', False)
+                    execute_relay_control(off_action)
             elif action_type == 'send_message':
                 # For messages, we might want to send a different message or skip
                 # For now, we'll skip message actions for OFF events
