@@ -54,11 +54,15 @@ def log_simple(message, level="INFO"):
         print(f"[INFO] {message}")
 
 # --- Global variables for configuration and MQTT clients ---
-config = {}
+config = []
 installed_devices = []
 client_control = None # For sending control commands to devices
 client_crud = None    # For handling configuration CRUD operations
 client_error_logger = None # Dedicated client for sending error logs to localhost
+
+# --- Device state tracking ---
+device_states = {}  # Track current device states: {device_pin: {'on': timestamp, 'off': timestamp}}
+last_check_time = None  # Track last time we checked schedules
 
 # --- Connection Status Tracking ---
 crud_broker_connected = False
@@ -416,11 +420,11 @@ def handle_message(client, message):
         publish_response(client, f"Failed to perform action '{action}' due to an internal error.", False)
 
 def get_active_mac_address():
-    """Get MAC address from active network interface (prioritize wlan0, then eth0)"""
+    """Get MAC address from active network interface (prioritize eth0, then wlan0)"""
     import subprocess
 
-    # Priority: wlan0 (WiFi) > eth0 (Ethernet)
-    interfaces = ['wlan0', 'eth0']
+    # Priority: eth0 (Ethernet) > wlan0 (WiFi) for consistency with other automation services
+    interfaces = ['eth0', 'wlan0']
 
     for interface in interfaces:
         try:
@@ -710,13 +714,18 @@ def is_within_active_days(device, current_day):
             send_error_log("is_within_active_days", "Missing start/end day in device config, assuming active all week.", ERROR_TYPE_WARNING, {"device_id": device.get('id', 'unknown')})
             return True
 
+        # Handle case where start_day and end_day are the same (single day operation)
+        if start_day == end_day:
+            return current_day == start_day
+
         start_index = days_of_week.index(start_day)
         end_index = days_of_week.index(end_day)
         current_index = days_of_week.index(current_day)
 
+        # Normal range (e.g., Mon-Fri)
         if start_index <= end_index:
             return start_index <= current_index <= end_index
-        else: # Handles cases like Sat-Mon (wrapping around week)
+        else:  # Wrap-around range (e.g., Sat-Tue)
             return current_index >= start_index or current_index <= end_index
     except ValueError as e:
         send_error_log("is_within_active_days", f"Invalid day name in config or current day format: {e}", ERROR_TYPE_MINOR, {"device_id": device.get('id', 'unknown'), "startDay": device.get('startDay'), "endDay": device.get('endDay'), "currentDay": current_day})
@@ -815,10 +824,42 @@ def run():
         schedule_control(client_control)
         log_simple("Checking and sending immediate control signals...")
         check_and_send_immediate_control(client_control)
+
+        # Log configuration status
+        if config and len(config) > 0:
+            log_simple(f"Configured {len(config)} devices for scheduling", "SUCCESS")
+            for device in config:
+                controls_count = len(device.get('controls', []))
+                log_simple(f"  - {device.get('customName', device.get('name', device.get('id', 'unknown')))}: {controls_count} control(s)", "INFO")
+        else:
+            log_simple("No devices configured for scheduling (empty config)", "WARNING")
+            log_simple("Add devices via UI to enable scheduling functionality", "INFO")
     else:
         log_simple("Skipping scheduled tasks setup - Control MQTT client not available", "WARNING")
 
     log_simple("Scheduler service started successfully", "SUCCESS")
+
+    # Periodic state check - every 60 seconds check all scheduled devices
+    def periodic_schedule_check():
+        """Check all scheduled devices periodically to ensure they are in correct state"""
+        global last_check_time
+
+        current_time = time.time()
+        if last_check_time is None or (current_time - last_check_time) >= 60:  # Check every 60 seconds
+            last_check_time = current_time
+
+            try:
+                if client_control and client_control.is_connected() and config:
+                    log_simple("Running periodic schedule check...", "INFO")
+                    check_and_send_immediate_control(client_control)
+                    log_simple("Periodic schedule check completed", "SUCCESS")
+                elif not config:
+                    log_simple("No configured devices to check", "INFO")
+                else:
+                    log_simple("Control client not connected, skipping periodic check", "WARNING")
+            except Exception as e:
+                log_simple(f"Error during periodic schedule check: {e}", "ERROR")
+                send_error_log("periodic_schedule_check", f"Periodic check failed: {e}", ERROR_TYPE_MINOR)
 
     try:
         while True:
@@ -861,7 +902,7 @@ def run():
                         log_simple("CRUD MQTT client successfully recreated", "SUCCESS")
                 except Exception as e:
                     send_error_log("run (recreate_crud)", f"Failed to recreate CRUD MQTT client: {e}", ERROR_TYPE_WARNING)
-            
+
             # Ensure the error logger stays connected
             if client_error_logger and not client_error_logger.is_connected():
                 logger.warning("Error logger MQTT client detected as disconnected. Attempting to force reconnect.")
@@ -870,6 +911,9 @@ def run():
                 except Exception as e:
                     logger.error(f"Failed to force reconnect Error Logger MQTT client: {e}")
                     # Cannot send log here as logger is failing
+
+            # Periodic schedule state checking
+            periodic_schedule_check()
 
             schedule.run_pending()
             time.sleep(1)

@@ -97,7 +97,7 @@ def load_mqtt_config():
     """Load MQTT config with graceful error handling and retry loop"""
     default_config = {
         "enable": True,
-        "broker_address": "192.168.0.193",
+        "broker_address": "localhost",
         "broker_port": 1883,
         "username": "",
         "password": "",

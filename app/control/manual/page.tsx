@@ -80,6 +80,9 @@ export default function DeviceManagerPage() {
     [topic: string]: boolean;
   }>({});
 
+  // Track current subscriptions to avoid re-running subscription logic
+  const [currentSubscriptions, setCurrentSubscriptions] = useState<Set<string>>(new Set());
+
   const clientRef = useRef<any>(null); // Tetap menggunakan any untuk clientRef jika mqttClient.ts tidak Typed
 
   // useEffect untuk koneksi MQTT dan langganan awal (response_device_i2c, mqtt_config topics)
@@ -154,7 +157,7 @@ export default function DeviceManagerPage() {
           console.log("[MQTT] Received MODULAR broker config:", payload);
           if (payload.status === "success") {
             setMqttBrokerData(prev => ({
-              mac_address: prev?.mac_address || "",
+              mac_address: payload.data.mac_address || prev?.mac_address || "",
               broker_address: payload.data.broker_address,
               broker_port: payload.data.broker_port,
               username: payload.data.username,
@@ -207,46 +210,62 @@ export default function DeviceManagerPage() {
     const client = clientRef.current;
     if (!client) return;
 
-    const currentSubscriptions = new Set(Object.keys(deviceTopicPayloads));
     const desiredSubscriptions = new Set(devices.map((d) => d.profile.topic));
 
-    currentSubscriptions.forEach((topic) => {
-      if (
-        !desiredSubscriptions.has(topic) &&
-        topic !== "response_device_i2c" &&
-        topic !== "mqtt_broker_server"
-      ) {
-        client.unsubscribe(topic);
-        setDeviceTopicPayloads((prev) => {
-          const newPayloads = { ...prev };
-          delete newPayloads[topic];
-          return newPayloads;
-        });
-        // Hapus status live data saat unsubscribe
-        setShowLiveDataState((prev) => {
-          const newState = { ...prev };
-          delete newState[topic];
-          return newState;
-        });
-        console.log(`[MQTT] Unsubscribed from: ${topic}`);
-      }
+    // Unsubscribe dari topic yang tidak lagi diinginkan
+    setCurrentSubscriptions((currentSubs) => {
+      // Buat copy dari current subscriptions untuk modify
+      const newSubs = new Set(currentSubs);
+
+      currentSubs.forEach((topic) => {
+        if (
+          !desiredSubscriptions.has(topic) &&
+          topic !== "response_device_i2c" &&
+          topic !== "mqtt_broker_server"
+        ) {
+          client.unsubscribe(topic);
+          setDeviceTopicPayloads((prev) => {
+            const newPayloads = { ...prev };
+            delete newPayloads[topic];
+            return newPayloads;
+          });
+          // Hapus status live data saat unsubscribe
+          setShowLiveDataState((prev) => {
+            const newState = { ...prev };
+            delete newState[topic];
+            return newState;
+          });
+          newSubs.delete(topic);
+          console.log(`[MQTT] Unsubscribed from: ${topic}`);
+        }
+      });
+
+      return newSubs;
     });
 
+    // Subscribe ke topic baru
     desiredSubscriptions.forEach((topic) => {
-      if (!currentSubscriptions.has(topic)) {
-        client.subscribe(topic, { qos: 0 });
-        console.log(`[MQTT] Subscribed to: ${topic}`);
-      }
+      setCurrentSubscriptions((currentSubs) => {
+        if (!currentSubs.has(topic)) {
+          client.subscribe(topic, { qos: 0 });
+          console.log(`[MQTT] Subscribed to: ${topic}`);
+          return new Set([...currentSubs, topic]);
+        }
+        return currentSubs;
+      });
     });
 
-    // Cleanup function untuk unsubscribe saat komponen unmount atau dependencies berubah
+    // Cleanup function untuk unsubscribe saat komponen unmount
     return () => {
-      desiredSubscriptions.forEach((topic) => {
-        client.unsubscribe(topic);
-        console.log(`[MQTT] Unsubscribed from: ${topic} (cleanup)`);
+      setCurrentSubscriptions((currentSubs) => {
+        currentSubs.forEach((topic) => {
+          client.unsubscribe(topic);
+          console.log(`[MQTT] Unsubscribed from: ${topic} (cleanup)`);
+        });
+        return new Set(); // Clear all subscriptions
       });
     };
-  }, [devices, deviceTopicPayloads]); // Tambahkan deviceTopicPayloads sebagai dependency agar cleanup berfungsi
+  }, [devices]); // Hanya bergantung pada devices, tidak pada deviceTopicPayloads
 
   const { searchQuery, setSearchQuery, filteredData } = useSearchFilter(
     devices,
@@ -553,12 +572,13 @@ export default function DeviceManagerPage() {
                     }
                   }
 
-                  const isControlDisabled = !(
-                    device.profile.part_number === "RELAY" ||
-                    device.profile.part_number === "RELAYMINI" ||
-                    device.protocol_setting.protocol === "I2C" ||
-                    fullDevicePayload?.protocol_type === "I2C MODULAR"
-                  );
+  const isControlDisabled = !(
+    device.profile.part_number === "RELAY" ||
+    device.profile.part_number === "RELAYMINI" ||
+    device.profile.part_number === "GPIO" ||
+    device.protocol_setting.protocol === "I2C" ||
+    fullDevicePayload?.protocol_type === "I2C MODULAR"
+  );
 
                   return (
                     <Card

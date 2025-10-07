@@ -104,9 +104,9 @@ ERROR_LOG_PORT = 1883
 # Removed old error logging - using unified ErrorLogger now
 
 def get_active_mac_address():
-    """Get MAC address from active network interface (prioritize wlan0, then eth0)"""
-    # Priority: wlan0 (WiFi) > eth0 (Ethernet)
-    interfaces = ['wlan0', 'eth0']
+    """Get MAC address from active network interface (prioritize eth0, then wlan0)"""
+    # Priority: eth0 (Ethernet) > wlan0 (WiFi) for consistency with other automation services
+    interfaces = ['eth0', 'wlan0']
 
     # First try: Use ifconfig (most reliable on embedded systems)
     try:

@@ -289,20 +289,35 @@ const UnifiedAutomationControl = () => {
     const loadDeviceProfiles = async () => {
       try {
         setLoadingDevices(true);
-        const response = await fetch("/files/devices.json");
-        if (!response.ok) {
-          throw new Error("Failed to load device profiles");
+        // Load both modbus and modular device profiles
+        const [modbusResponse, modularResponse] = await Promise.all([
+          fetch("/files/modbus/devices.json"),
+          fetch("/files/modular/devices.json")
+        ]);
+
+        if (!modbusResponse.ok) {
+          throw new Error("Failed to load modbus device profiles");
         }
-        const data = await response.json();
-        setDeviceProfiles(data);
+        if (!modularResponse.ok) {
+          throw new Error("Failed to load modular device profiles");
+        }
+
+        const [modbusData, modularData] = await Promise.all([
+          modbusResponse.json(),
+          modularResponse.json()
+        ]);
+
+        // Merge both device profiles
+        const combinedProfiles = { ...modbusData, ...modularData };
+        setDeviceProfiles(combinedProfiles);
         console.log(
           "Device profiles loaded:",
-          Object.keys(data).length,
+          Object.keys(combinedProfiles).length,
           "categories"
         );
       } catch (error) {
         console.error("Error loading device profiles:", error);
-        toast.error("Failed to load device profiles from devices.json");
+        toast.error("Failed to load device profiles");
       } finally {
         setLoadingDevices(false);
       }
@@ -692,10 +707,10 @@ const UnifiedAutomationControl = () => {
 
         // Validation based on trigger type
         if (trigger.trigger_type === "drycontact") {
-          if (typeof trigger.pin_number !== "number" || trigger.pin_number < 1) {
+          if (!trigger.field_name) {
             setAlertDialogContent({
               title: "Validation Error",
-              description: "Dry contact triggers must have a valid pin number.",
+              description: "Boolean triggers must have a field name selected.",
             });
             setAlertDialogOpen(true);
             return;
@@ -1244,7 +1259,7 @@ const UnifiedAutomationControl = () => {
                                           </div>
                                           <div className="text-muted-foreground">
                                             {trigger.trigger_type === "drycontact"
-                                              ? `Pin ${trigger.pin_number}`
+                                              ? `${trigger.field_name || `Pin ${trigger.pin_number || 1}`}`
                                               : trigger.field_name
                                             }{" "}
                                             {formatOperator(
@@ -2003,6 +2018,12 @@ const UnifiedAutomationControl = () => {
                           selectedDevice || null
                         );
 
+                        // For modular devices, also get fields specifically for boolean triggers
+                        const modularDevice = modularDevices.find(
+                          (d) => d.name === trigger.device_name
+                        );
+                        const modularAvailableFields = modularDevice ? getDeviceFields(modularDevice) : [];
+
                         return (
                           <div
                             key={triggerIndex}
@@ -2138,20 +2159,47 @@ const UnifiedAutomationControl = () => {
                                 {/* Dynamic Fields based on trigger type */}
                                 {trigger.trigger_type === "drycontact" ? (
                                   <div>
-                                    <Label className="text-xs">Pin Number *</Label>
-                                    <Input
-                                      type="number"
-                                      min="1"
-                                      max="10"
-                                      value={trigger.pin_number || 1}
-                                      onChange={(e) =>
+                                    <Label className="text-xs">Field Name *</Label>
+                                    <Select
+                                      value={trigger.field_name || ""}
+                                      onValueChange={(value) =>
                                         updateTrigger(groupIndex, triggerIndex, {
                                           ...trigger,
-                                          pin_number: parseInt(e.target.value) || 1,
+                                          field_name: value,
                                         })
                                       }
-                                      placeholder="1"
-                                    />
+                                      disabled={!trigger.device_name || modularAvailableFields.length === 0}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select field from device profile" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {!trigger.device_name ? (
+                                          <SelectItem value="no-device" disabled>
+                                            Select device first
+                                          </SelectItem>
+                                        ) : modularAvailableFields.length === 0 ? (
+                                          <SelectItem value="no-fields" disabled>
+                                            No boolean fields available for {trigger.device_name}
+                                          </SelectItem>
+                                        ) : (
+                                          modularAvailableFields.map((field) => (
+                                            <SelectItem
+                                              key={field.var_name}
+                                              value={field.var_name}
+                                            >
+                                              {field.var_name} (Boolean)
+                                            </SelectItem>
+                                          ))
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                    {/* Show available boolean fields count and tooltip */}
+                                    {trigger.device_name && modularAvailableFields.length > 0 && (
+                                      <div className="mt-1 text-xs text-muted-foreground">
+                                        {modularAvailableFields.length} boolean field{modularAvailableFields.length !== 1 ? 's' : ''} available from {modularDevice?.manufacturer} {modularDevice?.part_number}
+                                      </div>
+                                    )}
                                   </div>
                                 ) : (
                                   <div>

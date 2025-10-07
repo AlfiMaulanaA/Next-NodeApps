@@ -1,1 +1,29 @@
-[]
+[
+  {
+    "id": "sample-device-001",
+    "customName": "Sample Relay Device",
+    "name": "RELAYBOARD",
+    "deviceName": "RELAYBOARD",
+    "mac": "02:81:dd:6e:0f:11",
+    "address": 1,
+    "device_bus": 1,
+    "part_number": "RELAY",
+    "startDay": "Mon",
+    "endDay": "Sun",
+    "autoControl": true,
+    "controls": [
+      {
+        "pin": 1,
+        "customName": "Main Relay",
+        "onTime": "08:00",
+        "offTime": "17:00"
+      },
+      {
+        "pin": 2,
+        "customName": "Backup Relay",
+        "onTime": "09:00",
+        "offTime": "18:00"
+      }
+    ]
+  }
+]

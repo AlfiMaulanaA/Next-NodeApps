@@ -1,1 +1,58 @@
-[]
+[
+  {
+    "id": "bf18dc85-9d95-4772-a01b-cce68d7c04f7",
+    "name": "Remap Relay and Dry Contact",
+    "description": "",
+    "enabled": true,
+    "created_at": "2025-10-07T08:28:35.152Z",
+    "updated_at": "2025-10-07 15:28:35",
+    "source_devices": [
+      {
+        "device_id": "6749d7f0-7d6e-4aec-bd6e-c4679c3cddd6",
+        "device_name": "Shoto_Battery_1",
+        "mqtt_topic": "IOT/Shoto/1",
+        "key_mappings": [
+          {
+            "original_key": "SOC",
+            "custom_key": "StateOfCharge"
+          }
+        ]
+      },
+      {
+        "device_id": "ad70f01f-7090-4553-a8cd-395c3ead2290",
+        "device_name": "RelayMini1",
+        "mqtt_topic": "Limbah/Modular/relay_mini/1",
+        "key_mappings": [
+          {
+            "original_key": "relayMiniOutput1",
+            "custom_key": "RelayStatus1"
+          },
+          {
+            "original_key": "relayMiniOutput2",
+            "custom_key": "RelayStatus2"
+          }
+        ]
+      },
+      {
+        "device_id": "4dfbe5b4-741b-4320-88d2-fa904af15e27",
+        "device_name": "Drycontact1",
+        "mqtt_topic": "Limbah/Modular/drycontact/1",
+        "key_mappings": [
+          {
+            "original_key": "drycontactInput1",
+            "custom_key": "DCstatus1"
+          }
+        ]
+      }
+    ],
+    "mqtt_publish_config": {
+      "broker_url": "mqtt://localhost:1883",
+      "client_id": "remapper_client_b9bd3726",
+      "topic": "Remap/RelayDC",
+      "qos": 1,
+      "retain": false,
+      "lwt": true,
+      "publish_interval_seccond": 10
+    }
+  }
+]

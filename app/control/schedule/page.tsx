@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 import MqttStatus from "@/components/mqtt-status";
+import RealtimeClockWithRefresh from "@/components/realtime-clock";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 // Import komponen UI yang diperlukan
@@ -166,14 +167,7 @@ const DeviceSchedulerControl = () => {
   };
   const [deviceForm, setDeviceForm] = useState<Device>(initialDeviceForm);
 
-  const timePickerConfig = {
-    enableTime: true,
-    noCalendar: true,
-    dateFormat: "H:i",
-    time_24hr: true,
-    minuteIncrement: 1,
-    allowInput: true,
-  };
+
 
   const topicCommand = "command_control_scheduler";
   const topicResponse = "response_control_scheduler";
@@ -613,6 +607,7 @@ const DeviceSchedulerControl = () => {
           <h1 className="text-2xl font-bold">Device Scheduler Control</h1>
         </div>
         <div className="flex gap-2">
+          <RealtimeClockWithRefresh />
           <MqttStatus />
           <Button variant="outline" onClick={refreshData}>
             <RotateCw className="h-4 w-4 mr-2" />
@@ -623,46 +618,47 @@ const DeviceSchedulerControl = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Summary Cards - Modern Design */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <ClockFading className="h-5 w-5" />
-              <CardTitle>Device Scheduler Overview</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 rounded-xl border">
-                <Calendar className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                  {totalDevices}
-                </div>
-                <div className="text-sm text-blue-600 dark:text-blue-400">
-                  Scheduled Devices
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 rounded-xl border">
-                <Settings className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-                  {activeDevices}
-                </div>
-                <div className="text-sm text-green-600 dark:text-green-400">
-                  Active Schedules
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 rounded-xl border">
-                <Users className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                  {totalControls}
-                </div>
-                <div className="text-sm text-purple-600 dark:text-purple-400">
-                  Control Points
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Summary Cards - Clean Design with Icons */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Scheduled Devices</CardTitle>
+              <Calendar className="h-5 w-5 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalDevices}</div>
+              <p className="text-xs text-muted-foreground">
+                Total configured devices
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Schedules</CardTitle>
+              <Settings className="h-5 w-5 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{activeDevices}</div>
+              <p className="text-xs text-muted-foreground">
+                Devices with active timing
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Control Points</CardTitle>
+              <Users className="h-5 w-5 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalControls}</div>
+              <p className="text-xs text-muted-foreground">
+                Individual time controls
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Control Settings */}
         <div className="flex justify-between items-center p-4 bg-muted/20 rounded-lg border">
@@ -949,7 +945,7 @@ const DeviceSchedulerControl = () => {
                         Remove
                       </Button>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                       <div>
                         <Label>Custom Name</Label>
                         <Input
@@ -978,33 +974,67 @@ const DeviceSchedulerControl = () => {
                           }
                           placeholder="Pin number"
                           required
+                          min="1"
+                          max="16"
                         />
                       </div>
                       <div>
-                        <Label>Start Time (24-hour format)</Label>
-                        <Input
-                          type="time"
+                        <Label>Start Time</Label>
+                        <Select
                           value={control.onTime}
-                          onChange={(e) =>
-                            handleControlChange(index, "onTime", e.target.value)
+                          onValueChange={(value) =>
+                            handleControlChange(index, "onTime", value)
                           }
-                          placeholder="HH:MM"
-                        />
+                        >
+                          <SelectTrigger className="font-mono">
+                            <SelectValue placeholder="HH:MM" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, hour) =>
+                              Array.from({ length: 4 }, (_, minute) => {
+                                const h = hour.toString().padStart(2, "0");
+                                const m = (minute * 15).toString().padStart(2, "0");
+                                return (
+                                  <SelectItem key={`${h}:${m}`} value={`${h}:${m}`}>
+                                    {`${h}:${m}`}
+                                  </SelectItem>
+                                );
+                              })
+                            ).flat()}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          24-hour format (HH:MM)
+                        </p>
                       </div>
-                      <div className="md:col-span-3">
-                        <Label>End Time (24-hour format)</Label>
-                        <Input
-                          type="time"
+                      <div>
+                        <Label>End Time</Label>
+                        <Select
                           value={control.offTime}
-                          onChange={(e) =>
-                            handleControlChange(
-                              index,
-                              "offTime",
-                              e.target.value
-                            )
+                          onValueChange={(value) =>
+                            handleControlChange(index, "offTime", value)
                           }
-                          placeholder="HH:MM"
-                        />
+                        >
+                          <SelectTrigger className="font-mono">
+                            <SelectValue placeholder="HH:MM" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, hour) =>
+                              Array.from({ length: 4 }, (_, minute) => {
+                                const h = hour.toString().padStart(2, "0");
+                                const m = (minute * 15).toString().padStart(2, "0");
+                                return (
+                                  <SelectItem key={`${h}:${m}`} value={`${h}:${m}`}>
+                                    {`${h}:${m}`}
+                                  </SelectItem>
+                                );
+                              })
+                            ).flat()}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          24-hour format (HH:MM)
+                        </p>
                       </div>
                     </div>
                   </div>

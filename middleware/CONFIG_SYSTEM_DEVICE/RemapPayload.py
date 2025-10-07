@@ -3,8 +3,14 @@ import os
 import time
 import logging
 import threading
-import paho.mqtt.client as mqtt
 from datetime import datetime
+
+# Try to import paho.mqtt.client
+try:
+    import paho.mqtt.client as mqtt
+except ImportError:
+    print("WARNING: paho-mqtt library not installed. Please install with: pip3 install paho-mqtt")
+    mqtt = None
 
 # Try to import ErrorLogger
 try:
@@ -94,10 +100,48 @@ def log_simple(message, level="INFO"):
 
 # --- Configuration Management ---
 def load_mqtt_config():
-    """Load MQTT config with graceful error handling and retry loop"""
+    """Load MQTT config from remapping config instead of MODULAR_I2C config"""
+    global config
+
+    # First load remapping config to get publish settings
+    load_remapping_config(silent=True)
+
+    if config and len(config) > 0:
+        # Use the MQTT publish config from the first enabled remapping config
+        for remap_config in config:
+            if remap_config.get('enabled', False):
+                pub_config = remap_config.get('mqtt_publish_config', {})
+                broker_url = pub_config.get('broker_url', 'mqtt://localhost:1883')
+
+                # Parse broker_url (format: mqtt://host:port)
+                try:
+                    if broker_url.startswith('mqtt://'):
+                        broker_part = broker_url[7:]  # Remove 'mqtt://'
+                        if ':' in broker_part:
+                            host, port = broker_part.split(':', 1)
+                            port = int(port)
+                        else:
+                            host = broker_part
+                            port = 1883
+
+                        return {
+                            "enable": True,
+                            "broker_address": host,
+                            "broker_port": port,
+                            "username": "",
+                            "password": "",
+                            "qos": pub_config.get('qos', 1),
+                            "retain": pub_config.get('retain', False),
+                            "mac_address": "00:00:00:00:00:00"
+                        }
+                except Exception as e:
+                    log_simple(f"Error parsing broker URL {broker_url}: {e}", "WARNING")
+
+    # Fallback if no remapping config found
+    log_simple("No remapping config found, using fallback MQTT config", "WARNING")
     default_config = {
         "enable": True,
-        "broker_address": "192.168.0.193",
+        "broker_address": "localhost",
         "broker_port": 1883,
         "username": "",
         "password": "",
@@ -106,6 +150,7 @@ def load_mqtt_config():
         "mac_address": "00:00:00:00:00:00"
     }
 
+    # Try to load from the original mqtt_config.json as fallback
     while True:
         try:
             with open(mqtt_config_file, 'r') as file:
@@ -116,26 +161,14 @@ def load_mqtt_config():
                     continue
                 return json.loads(content)
         except FileNotFoundError:
-            log_simple(f"MQTT config file not found. Creating default config and retrying in 5 seconds...", "WARNING")
-            try:
-                # Create directory if not exists
-                import os
-                os.makedirs(os.path.dirname(mqtt_config_file), exist_ok=True)
-                # Create default config file
-                with open(mqtt_config_file, 'w') as file:
-                    json.dump(default_config, file, indent=4)
-                log_simple(f"Created default MQTT config file: {mqtt_config_file}", "INFO")
-            except Exception as create_error:
-                log_simple(f"Failed to create config file: {create_error}. Retrying in 5 seconds...", "WARNING")
-                time.sleep(5)
-                continue
+            log_simple(f"MQTT config file not found. Using default config.", "WARNING")
+            return default_config
         except json.JSONDecodeError as e:
             log_simple(f"Error decoding MQTT config file: {e}. Using default configuration.", "WARNING")
             return default_config
         except Exception as e:
-            log_simple(f"Unexpected error loading MQTT config: {e}. Retrying in 5 seconds...", "WARNING")
-            time.sleep(5)
-            continue
+            log_simple(f"Unexpected error loading MQTT config: {e}. Using default.", "WARNING")
+            return default_config
 
 def load_remapping_config(silent=False):
     """Load remapping configuration"""
@@ -530,13 +563,10 @@ def publish_remapping_config():
         send_error_log("publish_remapping_config", f"Config publish error: {e}", ERROR_TYPE_MINOR)
 
 def publish_periodic_device_data():
-    """Publish remapped device data periodically per config, not per device"""
-    global config, client_remap
+    """Publish combined device data periodically using latest cached data"""
+    global config
 
     try:
-        if not client_remap or not client_remap.is_connected():
-            return  # Skip if client not connected
-
         current_time = datetime.now()
 
         # For each enabled config
@@ -559,44 +589,94 @@ def publish_periodic_device_data():
             if current_timestamp - publish_periodic_device_data.last_publish_time[config_id] >= publish_interval:
                 publish_periodic_device_data.last_publish_time[config_id] = current_timestamp
 
-                # Create final payload structure for the whole config in device order
+                # Create combined payload using latest cached data
                 final_payload = {}
-                final_payload['name'] = remap_config.get('name', 'UNKNOWN')
 
-                # Process devices in the exact order they appear in configuration
+                cached_data = cached_device_data.get(config_id, {})
+                latest_timestamp = None
+
+                # Collect latest data from all devices in config
                 for device in remap_config.get('source_devices', []):
+                    device_topic = device.get('mqtt_topic')
                     key_mappings = device.get('key_mappings', [])
-                    group_key = device.get('group')
 
-                    if key_mappings:
-                        # Process all key mappings for this device
-                        device_data = {}
+                    if device_topic in cached_data:
+                        device_cached = cached_data[device_topic]
+                        device_data = device_cached.get('data', {})
+                        device_timestamp = device_cached.get('timestamp')
+
+                        # Update latest timestamp
+                        if device_timestamp and (latest_timestamp is None or device_timestamp > latest_timestamp):
+                            latest_timestamp = device_timestamp
+
+                        # Map the keys according to configuration (use actual data if available, otherwise None)
                         for mapping in key_mappings:
                             original_key = mapping.get('original_key')
                             custom_key = mapping.get('custom_key')
                             if custom_key:
-                                # For periodic data, set to null if no real data
-                                device_data[custom_key] = None
+                                if custom_key in device_data:
+                                    final_payload[custom_key] = device_data[custom_key]
+                                else:
+                                    final_payload[custom_key] = None
+                    else:
+                        # No cached data for this device - set to None
+                        for mapping in key_mappings:
+                            custom_key = mapping.get('custom_key')
+                            if custom_key:
+                                final_payload[custom_key] = None
 
-                        if group_key:
-                            # Add grouped data, but only if this group doesn't exist yet (avoid overwriting)
-                            if group_key not in final_payload:
-                                final_payload[group_key] = {}
-                            final_payload[group_key].update(device_data)
-                        else:
-                            # Ungrouped device data - add each key directly to root payload
-                            final_payload.update(device_data)
+                # Use latest timestamp from cached data or current time
+                final_payload['Timestamp'] = latest_timestamp or current_time.isoformat()
 
-                # Add timestamp at the end
-                final_payload['Timestamp'] = current_time.isoformat()
-
-                # Publish to configured topic
+                # Publish using config-specific MQTT settings
                 pub_topic = pub_config.get('topic', 'REMAP/DEFAULT')
                 qos = pub_config.get('qos', 1)
                 retain = pub_config.get('retain', False)
 
-                client_remap.publish(pub_topic, json.dumps(final_payload), qos=qos, retain=retain)
-                log_simple(f"Periodic null data published to {pub_topic} [config: {config_id}]: {json.dumps(final_payload)}", "INFO")
+                # Parse broker URL from config and publish using config-specific settings
+                broker_url = pub_config.get('broker_url', 'mqtt://localhost:1883')
+                try:
+                    if broker_url.startswith('mqtt://'):
+                        broker_part = broker_url[7:]  # Remove 'mqtt://'
+                        if ':' in broker_part:
+                            host, port = broker_part.split(':', 1)
+                            port = int(port)
+                        else:
+                            host = broker_part
+                            port = 1883
+
+                        # Create a separate client for this specific config's broker
+                        client_id = pub_config.get('client_id', f'remap-{config_id}')
+                        periodic_client = connect_mqtt(
+                            f'{client_id}-periodic-{int(time.time())}',
+                            host, port,
+                            on_connect_callback=None,
+                            on_disconnect_callback=None,
+                            on_message_callback=None
+                        )
+
+                        if periodic_client:
+                            periodic_client.loop_start()
+                            # Wait for connection
+                            time.sleep(0.5)
+
+                            if periodic_client.is_connected():
+                                # Use qos, retain, and topic from config-specific mqtt_publish_config
+                                config_qos = pub_config.get('qos', 1)
+                                config_retain = pub_config.get('retain', False)
+                                config_topic = pub_config.get('topic', 'REMAP/DEFAULT')
+
+                                periodic_client.publish(config_topic, json.dumps(final_payload), qos=config_qos, retain=config_retain)
+                                log_simple(f"Config-specific periodic publish to {host}:{port}/{config_topic} (qos={config_qos}, retain={config_retain}): {json.dumps(final_payload)}", "INFO")
+                                periodic_client.loop_stop()
+                                periodic_client.disconnect()
+                            else:
+                                log_simple(f"Failed to connect to config broker {host}:{port}", "ERROR")
+                        else:
+                            log_simple(f"Could not create MQTT client for config {config_id}", "ERROR")
+
+                except Exception as broker_error:
+                    log_simple(f"Error parsing broker URL {broker_url}: {broker_error}", "ERROR")
 
     except Exception as e:
         log_simple(f"Error in periodic device data publishing: {e}", "ERROR")
@@ -646,6 +726,82 @@ def on_message_remap(client, userdata, msg):
     except Exception as e:
         log_simple(f"Error handling remap message: {e}", "ERROR")
         send_error_log(f"Remap message handling error: {e}", ERROR_TYPE_MINOR)
+
+def publish_combined_real_time_data(remap_config, client):
+    """Publish combined real-time data from all devices in config"""
+    try:
+        if not remap_config.get('enabled', False) or not client or not client.is_connected():
+            return
+
+        config_id = remap_config.get('id', 'unknown')
+
+        # Check if we have cached data for all devices in this config
+        required_devices = [device.get('mqtt_topic') for device in remap_config.get('source_devices', [])]
+        cached_data = cached_device_data.get(config_id, {})
+
+        # Only publish if we have data for ALL devices in the config
+        if not all(topic in cached_data for topic in required_devices):
+            return
+
+        # Create combined payload (without 'name' field as requested)
+        combined_payload = {}
+
+        latest_timestamp = None
+
+        # Collect data from all devices in config
+        for device in remap_config.get('source_devices', []):
+            device_topic = device.get('mqtt_topic')
+            key_mappings = device.get('key_mappings', [])
+
+            if device_topic in cached_data:
+                device_cached = cached_data[device_topic]
+                device_data = device_cached.get('data', {})
+                device_timestamp = device_cached.get('timestamp')
+
+                # Update latest timestamp
+                if device_timestamp and (latest_timestamp is None or device_timestamp > latest_timestamp):
+                    latest_timestamp = device_timestamp
+
+                # Map the keys according to configuration
+                for mapping in key_mappings:
+                    original_key = mapping.get('original_key')
+                    custom_key = mapping.get('custom_key')
+                    if custom_key and custom_key in device_data:
+                        combined_payload[custom_key] = device_data[custom_key]
+
+        # Use the latest timestamp
+        combined_payload['Timestamp'] = latest_timestamp or datetime.now().isoformat()
+
+        # Publish to configured topic
+        pub_config = remap_config.get('mqtt_publish_config', {})
+        pub_topic = pub_config.get('topic', 'REMAP/DEFAULT')
+        qos = pub_config.get('qos', 1)
+        retain = pub_config.get('retain', False)
+
+        if client and client.is_connected():
+            client.publish(pub_topic, json.dumps(combined_payload), qos=qos, retain=retain)
+            log_simple(f"Combined real-time data published to {pub_topic}: {json.dumps(combined_payload)}", "INFO")
+
+    except Exception as e:
+        log_simple(f"Error in combined real-time publishing: {e}", "ERROR")
+
+def publish_real_time_data(remap_config, device, remapped_data, timestamp, client):
+    """Update cache and publish combined data if all devices have data (real-time publishing)"""
+    try:
+        if not remap_config.get('enabled', False) or not client or not client.is_connected():
+            return
+
+        config_id = remap_config.get('id', 'unknown')
+        device_topic = device.get('mqtt_topic')
+
+        # Update cache with new data
+        add_to_device_cache(config_id, device_topic, remapped_data, timestamp)
+
+        # Try to publish combined data if we have data for all devices
+        publish_combined_real_time_data(remap_config, client)
+
+    except Exception as e:
+        log_simple(f"Error in real-time publishing: {e}", "ERROR")
 
 def handle_device_topic_data(client, topic, payload):
     """Handle incoming device data from subscribed topics and remap/publish with real-time publishing"""
@@ -700,7 +856,7 @@ def handle_device_topic_data(client, topic, payload):
                             # Also buffer for periodic publishing if needed
                             add_to_device_cache(config_id, topic, remapped_data, timestamp)
 
-                            log_simple(f"Device {topic} data published in real-time: {json.dumps(remapped_data)}", "INFO")
+                            # Removed device logging as requested
 
                         break  # Assume one config per topic
 
@@ -708,11 +864,11 @@ def handle_device_topic_data(client, topic, payload):
             log_simple(f"Failed to parse device message JSON: {e}", "ERROR")
         except Exception as e:
             log_simple(f"Error processing device message: {e}", "ERROR")
-            send_error_log(f"Device message processing error: {e}", ERROR_TYPE_MINOR)
+            send_error_log("handle_device_topic_data", f"Device message processing error: {e}", ERROR_TYPE_MINOR)
 
     except Exception as e:
         log_simple(f"Error handling device topic data: {e}", "ERROR")
-        send_error_log(f"Device topic data handling error: {e}", ERROR_TYPE_MINOR)
+        send_error_log("handle_device_topic_data", f"Device topic data handling error: {e}", ERROR_TYPE_MINOR)
 
 # --- CRUD Operations ---
 def handle_get_request(client):
@@ -938,6 +1094,10 @@ def delete_remapping_config(config_id):
 def connect_mqtt(client_id, broker, port, username="", password="", on_connect_callback=None, on_disconnect_callback=None, on_message_callback=None):
     """Create and connect MQTT client"""
     try:
+        if not mqtt:
+            log_simple("MQTT client cannot be created - paho-mqtt library not available", "ERROR")
+            return None
+
         client = mqtt.Client(client_id)
         if username and password:
             client.username_pw_set(username, password)
@@ -969,8 +1129,36 @@ def run():
     mqtt_config = load_mqtt_config()
     load_remapping_config()
 
-    broker = mqtt_config.get('broker_address', 'localhost')
-    port = int(mqtt_config.get('broker_port', 1883))
+    # Use the broker configuration from the first enabled remapping config
+    first_enabled_config = None
+    for remap_config in config:
+        if remap_config.get('enabled', False):
+            first_enabled_config = remap_config
+            break
+
+    if first_enabled_config:
+        pub_config = first_enabled_config.get('mqtt_publish_config', {})
+        broker_url = pub_config.get('broker_url', 'mqtt://localhost:1883')
+
+        # Parse broker URL for main connection
+        try:
+            if broker_url.startswith('mqtt://'):
+                broker_part = broker_url[7:]  # Remove 'mqtt://'
+                if ':' in broker_part:
+                    broker, port_part = broker_part.split(':', 1)
+                    port = int(port_part)
+                else:
+                    broker = broker_part
+                    port = 1883
+        except Exception as e:
+            log_simple(f"Error parsing broker URL {broker_url}, using localhost:1883: {e}", "WARNING")
+            broker = 'localhost'
+            port = 1883
+    else:
+        # Fallback to config or default if no enabled configs
+        broker = mqtt_config.get('broker_address', 'localhost')
+        port = int(mqtt_config.get('broker_port', 1883))
+
     username = mqtt_config.get('username', '')
     password = mqtt_config.get('password', '')
 
@@ -980,7 +1168,7 @@ def run():
     client_error_logger = error_logger.client if error_logger else None
 
     # Connect to remap MQTT broker
-    log_simple("Connecting to Remap MQTT broker...")
+    log_simple(f"Connecting to Remap MQTT broker at {broker}:{port}...")
     client_remap = connect_mqtt(
         f'remapping-payload-{datetime.now().strftime("%Y%m%d_%H%M%S")}',
         broker, port, username, password,

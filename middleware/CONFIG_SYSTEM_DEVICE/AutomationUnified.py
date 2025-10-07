@@ -103,8 +103,8 @@ ERROR_TYPE_MINOR = "MINOR"
 ERROR_TYPE_WARNING = "WARNING"
 
 def get_active_mac_address():
-    """Get MAC address from active network interface (prioritize wlan0, then eth0)"""
-    interfaces = ['wlan0', 'eth0']
+    """Get MAC address from active network interface (prioritize eth0, then wlan0)"""
+    interfaces = ['eth0', 'wlan0']
 
     # First try: Use ifconfig (most reliable on embedded systems)
     try:
@@ -787,8 +787,6 @@ def evaluate_unified_rule(rule, device_topic, device_data):
         if not trigger_groups:
             return
 
-        log_simple(f"[DEBUG] Evaluating unified rule '{rule_name}' for topic '{device_topic}'", "INFO")
-
         # Check if this rule has any triggers for the current device topic
         has_matching_triggers = False
         for group in trigger_groups:
@@ -867,11 +865,16 @@ def evaluate_boolean_trigger(trigger, device_data):
     """Evaluate boolean trigger condition (dry contact) - delays moved to actions"""
     try:
         trigger_type = trigger.get('trigger_type', 'drycontact')
+        field_name = trigger.get('field_name')  # Use field_name from UI first
         pin_number = trigger.get('pin_number', 1)
         condition_operator = trigger.get('condition_operator', 'is')
         target_value = trigger.get('target_value', False)
 
-        field_name = f'drycontactInput{pin_number}'
+        # Use field_name from UI if provided, otherwise fallback to legacy pin_number method
+        if not field_name:
+            field_name = f'drycontactInput{pin_number}'
+            log_simple(f"[TRIGGER] Using legacy field_name '{field_name}' from pin_number {pin_number}", "WARNING")
+
         current_value = device_data.get(field_name, False)
 
         if isinstance(current_value, (int, float)):
@@ -883,6 +886,7 @@ def evaluate_boolean_trigger(trigger, device_data):
                        (current_value and target_value) if condition_operator == 'and' else \
                        (current_value or target_value) if condition_operator == 'or' else False
 
+        # Only log errors, not normal operation to reduce verbosity
         # Delays are now handled at the action level, not trigger level
         return condition_met
 
