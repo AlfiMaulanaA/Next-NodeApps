@@ -4,15 +4,247 @@ import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import re
+import paho.mqtt.client as mqtt
 
 class BrokerTemplateManager:
     """Manages MQTT broker templates for static payload system"""
 
-    def __init__(self, templates_file: str = "./JSON/brokerTemplates.json"):
+    def __init__(self, templates_file: str = "./JSON/brokerTemplates.json", mqtt_broker: str = "localhost", mqtt_port: int = 1883):
         self.templates_file = templates_file
         self.templates: Dict[str, Any] = {}
         self.logger = logging.getLogger("BrokerTemplateManager")
+
+        # MQTT Configuration
+        self.mqtt_broker = mqtt_broker
+        self.mqtt_port = mqtt_port
+        self.mqtt_client = None
+        self.mqtt_topics = {
+            'create': 'broker-templates/create',
+            'update': 'broker-templates/update',
+            'delete': 'broker-templates/delete',
+            'response': 'broker-templates/response',
+            'error': 'broker-templates/error'
+        }
+
         self.load_templates()
+        self._setup_mqtt()
+
+    def _setup_mqtt(self) -> None:
+        """Setup MQTT client for broker templates"""
+        try:
+            self.mqtt_client = mqtt.Client(client_id=f"broker-template-manager-{os.getpid()}", clean_session=True)
+            self.mqtt_client.on_connect = self._on_mqtt_connect
+            self.mqtt_client.on_message = self._on_mqtt_message
+            self.mqtt_client.on_disconnect = self._on_mqtt_disconnect
+
+            # Connect to MQTT broker
+            self.mqtt_client.connect(self.mqtt_broker, self.mqtt_port, 60)
+            self.mqtt_client.loop_start()
+
+            self.logger.info(f"MQTT client initialized for broker templates (broker: {self.mqtt_broker}:{self.mqtt_port})")
+        except Exception as e:
+            self.logger.error(f"Failed to setup MQTT client: {e}")
+            self.mqtt_client = None
+
+    def _on_mqtt_connect(self, client, userdata, flags, rc):
+        """MQTT connect callback"""
+        if rc == 0:
+            self.logger.info("Connected to MQTT broker")
+            # Subscribe to command topics
+            command_topics = [
+                self.mqtt_topics['create'],
+                self.mqtt_topics['update'],
+                self.mqtt_topics['delete'],
+                'broker-templates/requests'  # Add requests topic for get_all operations
+            ]
+            for topic in command_topics:
+                client.subscribe(topic, qos=1)
+                self.logger.info(f"Subscribed to MQTT topic: {topic}")
+        else:
+            self.logger.error(f"Failed to connect to MQTT broker, return code: {rc}")
+
+    def _on_mqtt_disconnect(self, client, userdata, rc):
+        """MQTT disconnect callback"""
+        self.logger.warning(f"Disconnected from MQTT broker, return code: {rc}")
+
+    def _on_mqtt_message(self, client, userdata, msg):
+        """Handle incoming MQTT messages"""
+        try:
+            payload = json.loads(msg.payload.decode('utf-8'))
+            self.logger.info(f"Received MQTT message on topic {msg.topic}: {payload}")
+
+            topic_parts = msg.topic.split('/')
+            action = topic_parts[-1] if len(topic_parts) > 0 else None
+
+            if action == 'create':
+                self._handle_mqtt_create(payload)
+            elif action == 'update':
+                self._handle_mqtt_update(payload)
+            elif action == 'delete':
+                self._handle_mqtt_delete(payload)
+            elif action == 'requests' and payload.get('action') == 'get_all':
+                self._handle_mqtt_get_all(payload)
+
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse MQTT message: {e}")
+            self._publish_mqtt_error("Invalid JSON payload", "parse_error")
+        except Exception as e:
+            self.logger.error(f"Error processing MQTT message: {e}")
+            self._publish_mqtt_error(str(e), "processing_error")
+
+    def _handle_mqtt_create(self, payload: Dict[str, Any]) -> None:
+        """Handle MQTT create template command"""
+        try:
+            template_data = payload.get('template')
+            if not template_data:
+                self._publish_mqtt_error("Missing template data", "create")
+                return
+
+            success = self.create_template(template_data)
+            if success:
+                template_id = template_data.get('template_id')
+                response = {
+                    'action': 'created',
+                    'template_id': template_id,
+                    'template': self.get_template(template_id),
+                    'timestamp': datetime.now().isoformat()
+                }
+                self._publish_mqtt_response(response)
+                self.logger.info(f"Template created via MQTT: {template_id}")
+            else:
+                self._publish_mqtt_error("Failed to create template", "create")
+
+        except Exception as e:
+            self.logger.error(f"Error in MQTT create handler: {e}")
+            self._publish_mqtt_error(str(e), "create")
+
+    def _handle_mqtt_update(self, payload: Dict[str, Any]) -> None:
+        """Handle MQTT update template command"""
+        try:
+            template_id = payload.get('template_id')
+            template_data = payload.get('template')
+
+            if not template_id or not template_data:
+                self._publish_mqtt_error("Missing template_id or template data", "update")
+                return
+
+            success = self.update_template(template_id, template_data)
+            if success:
+                response = {
+                    'action': 'updated',
+                    'template_id': template_id,
+                    'template': self.get_template(template_id),
+                    'timestamp': datetime.now().isoformat()
+                }
+                self._publish_mqtt_response(response)
+                self.logger.info(f"Template updated via MQTT: {template_id}")
+            else:
+                self._publish_mqtt_error(f"Failed to update template {template_id}", "update")
+
+        except Exception as e:
+            self.logger.error(f"Error in MQTT update handler: {e}")
+            self._publish_mqtt_error(str(e), "update")
+
+    def _handle_mqtt_delete(self, payload: Dict[str, Any]) -> None:
+        """Handle MQTT delete template command"""
+        try:
+            template_id = payload.get('template_id')
+            if not template_id:
+                self._publish_mqtt_error("Missing template_id", "delete")
+                return
+
+            # Store template data before deletion for response
+            template_before_delete = self.get_template(template_id)
+
+            success = self.delete_template(template_id)
+            if success:
+                response = {
+                    'action': 'deleted',
+                    'template_id': template_id,
+                    'deleted_template': template_before_delete,
+                    'timestamp': datetime.now().isoformat()
+                }
+                self._publish_mqtt_response(response)
+                self.logger.info(f"Template deleted via MQTT: {template_id}")
+            else:
+                self._publish_mqtt_error(f"Failed to delete template {template_id}", "delete")
+
+        except Exception as e:
+            self.logger.error(f"Error in MQTT delete handler: {e}")
+            self._publish_mqtt_error(str(e), "delete")
+
+    def _handle_mqtt_get_all(self, payload: Dict[str, Any]) -> None:
+        """Handle MQTT get_all templates request"""
+        try:
+            request_id = payload.get('request_id', 'unknown')
+            self.logger.info(f"Handling get_all request: {request_id}")
+
+            # Get all templates
+            templates = self.get_all_templates()
+
+            # Publish response with templates data
+            response = {
+                'action': 'get_all_response',
+                'request_id': request_id,
+                'templates': templates,
+                'total_count': len(templates),
+                'timestamp': datetime.now().isoformat()
+            }
+
+            # Publish to response topic
+            if self.mqtt_client:
+                self.mqtt_client.publish('broker-templates/response', json.dumps(response), qos=1, retain=False)
+                self.logger.info(f"Published get_all response with {len(templates)} templates")
+
+        except Exception as e:
+            self.logger.error(f"Error in MQTT get_all handler: {e}")
+            self._publish_mqtt_error(str(e), "get_all")
+
+    def _publish_mqtt_response(self, response: Dict[str, Any]) -> None:
+        """Publish response to MQTT"""
+        if self.mqtt_client:
+            try:
+                self.mqtt_client.publish(self.mqtt_topics['response'], json.dumps(response), qos=1, retain=False)
+                self.logger.debug(f"Published MQTT response: {response}")
+            except Exception as e:
+                self.logger.error(f"Failed to publish MQTT response: {e}")
+
+    def _publish_mqtt_error(self, error_message: str, operation: str) -> None:
+        """Publish error to MQTT"""
+        if self.mqtt_client:
+            try:
+                error_payload = {
+                    'action': 'error',
+                    'operation': operation,
+                    'error': error_message,
+                    'timestamp': datetime.now().isoformat()
+                }
+                self.mqtt_client.publish(self.mqtt_topics['error'], json.dumps(error_payload), qos=1, retain=False)
+                self.logger.error(f"Published MQTT error for {operation}: {error_message}")
+            except Exception as e:
+                self.logger.error(f"Failed to publish MQTT error: {e}")
+
+    def publish_template_event(self, action: str, template_id: str, template_data: Dict[str, Any] = None) -> None:
+        """Publish template event to MQTT (used by API endpoints)"""
+        if self.mqtt_client:
+            try:
+                payload = {
+                    'action': action,
+                    'template_id': template_id,
+                    'timestamp': datetime.now().isoformat()
+                }
+
+                if template_data:
+                    payload['template'] = template_data
+
+                topic = self.mqtt_topics.get(action)
+                if topic:
+                    self.mqtt_client.publish(topic, json.dumps(payload), qos=1, retain=False)
+                    self.logger.info(f"Published template {action} event for {template_id}")
+                else:
+                    self.logger.error(f"Unknown action for MQTT publish: {action}")
+            except Exception as e:
+                self.logger.error(f"Failed to publish template event: {e}")
 
     def load_templates(self) -> None:
         """Load broker templates from JSON file"""
@@ -106,14 +338,44 @@ class BrokerTemplateManager:
 
             # Update template
             self.templates[template_id].update(template_data)
-            self.templates[template_id]['metadata'] = existing_metadata
+
+            # Preserve existing metadata while allowing updates from template_data
+            if 'metadata' in template_data:
+                # Merge metadata: keep existing values, update with new ones
+                merged_metadata = existing_metadata.copy()
+                merged_metadata.update(template_data['metadata'])
+                self.templates[template_id]['metadata'] = merged_metadata
+            else:
+                # No metadata in update, keep existing
+                self.templates[template_id]['metadata'] = existing_metadata
+
+            # Ensure metadata has required fields
+            if 'version' not in self.templates[template_id]['metadata']:
+                self.templates[template_id]['metadata']['version'] = '1.0'
+
             self.templates[template_id]['metadata']['updated_at'] = datetime.now().isoformat()
 
-            # Increment version
-            current_version = self.templates[template_id]['metadata'].get('version', '1.0')
-            version_parts = current_version.split('.')
-            major, minor = map(int, version_parts[0].split('.'))
-            self.templates[template_id]['metadata']['version'] = f"{major}.{minor + 1}"
+            # Increment version - very simple approach
+            current_version = self.templates[template_id].get('metadata', {}).get('version', '1.0')
+            if isinstance(current_version, str) and '.' in current_version:
+                parts = current_version.split('.')
+                if len(parts) >= 2:
+                    major = parts[0]
+                    minor = parts[1]
+                    new_version = f"{major}.{int(minor) + 1}"
+                    self.templates[template_id]['metadata']['version'] = new_version
+                else:
+                    # Single number with dot, e.g. "1."
+                    major = parts[0]
+                    new_version = f"{major}.1"
+                    self.templates[template_id]['metadata']['version'] = new_version
+            else:
+                # No dot or not a string
+                try:
+                    num_version = int(float(current_version))
+                    self.templates[template_id]['metadata']['version'] = str(num_version + 1)
+                except (ValueError, TypeError):
+                    self.templates[template_id]['metadata']['version'] = "1.1"
 
             self.save_templates()
             self.logger.info(f"Updated template: {template_id}")

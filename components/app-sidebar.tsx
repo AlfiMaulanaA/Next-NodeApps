@@ -2,7 +2,7 @@
 
 import { useTotalErrorCount } from "@/hooks/useTotalErrorCount";
 import { useState } from "react";
-import UserProfile from "@/components/auth/UserProfile";
+import UserProfile from "@/components/UserProfile";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   AlertDialog,

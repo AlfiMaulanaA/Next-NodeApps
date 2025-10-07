@@ -65,7 +65,7 @@ interface User {
   last_login: string | null;
 }
 
-import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import ProtectedRoute from "@/components/ProtectedRoute";
 
 const UserManagementPageComponent = () => {
   const [users, setUsers] = useState<User[]>([]);

@@ -50,7 +50,6 @@ import {
 } from "@/components/ui/pagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MQTTConnectionBadge from "@/components/mqtt-status";
-import { connectMQTT, disconnectMQTT, getMQTTClient, connectMQTTAsync } from "@/lib/mqttClient";
 import TemplateSelector from "@/components/TemplateSelector";
 import BrokerTemplatesEmbedded from "@/components/BrokerTemplatesEmbedded";
 import {
@@ -66,6 +65,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import mqtt from "mqtt";
 
 interface PayloadField {
   key: string;
@@ -528,7 +528,54 @@ export default function StaticPayloadPage() {
     }
     return 0;
   });
-  const [notificationShown, setNotificationShown] = useState(false);
+  const [notificationShown, setNotificationShown] = useState(() => {
+    // Initialize from localStorage to persist across page refreshes
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('mqtt-notification-shown');
+      return stored === 'true';
+    }
+    return false;
+  });
+  const [lastToastTime, setLastToastTime] = useState(() => {
+    // Initialize from localStorage to persist across page refreshes
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('payload-toast-time');
+      return stored ? parseInt(stored) : 0;
+    }
+    return 0;
+  });
+
+  // Helper function to show toast with spam prevention
+  const showToastOnce = (message: string, type: 'success' | 'error' | 'info' = 'success', cooldownMs: number = 5000) => {
+    const now = Date.now();
+
+    // Check if enough time has passed since last toast
+    if (now - lastToastTime < cooldownMs) {
+      console.log(`[TOAST] Suppressed duplicate toast: ${message} (cooldown: ${cooldownMs}ms)`);
+      return;
+    }
+
+    // Update state and localStorage
+    setLastToastTime(now);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('payload-toast-time', now.toString());
+    }
+
+    // Show the toast
+    switch (type) {
+      case 'success':
+        toast.success(message);
+        break;
+      case 'error':
+        toast.error(message);
+        break;
+      case 'info':
+        toast.info(message);
+        break;
+    }
+
+    console.log(`[TOAST] Showing toast: ${message}`);
+  };
 
   const [currentFormMeta, setCurrentFormMeta] = useState({
     topic: "",
@@ -544,6 +591,9 @@ export default function StaticPayloadPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [searchOpen, setSearchOpen] = useState(false);
 
+  // MQTT client state
+  const [mqttClient, setMqttClient] = useState<mqtt.MqttClient | null>(null);
+
   // Real-time clock for timestamps
   useEffect(() => {
     const timer = setInterval(() => {
@@ -553,44 +603,79 @@ export default function StaticPayloadPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // Initialize MQTT connection
   useEffect(() => {
     console.log("🔧 [DEBUG] StaticPayloadPage: Component mounted, initializing MQTT connection");
 
-    const initializeConnection = async () => {
+    const initializeConnection = () => {
       try {
-        // Ensure MQTT client is connected first
-        console.log("🔄 [DEBUG] StaticPayloadPage: Ensuring MQTT connection...");
-        const client = await connectMQTTAsync();
+        console.log("🔄 [DEBUG] StaticPayloadPage: Connecting to MQTT broker...");
 
-        console.log("✅ [DEBUG] StaticPayloadPage: MQTT client connected successfully");
-        setStatus("connected");
-        setupMQTTHandlers(client);
+        // Create MQTT client with WebSocket connection
+        const client = mqtt.connect('ws://localhost:9000/mqtt', {
+          clean: true,
+          connectTimeout: 5000,
+          reconnectPeriod: 3000,
+          keepalive: 60,
+          clientId: `frontend-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`,
+        });
 
-        // Immediately request data after connection is established
-        console.log("📡 [DEBUG] StaticPayloadPage: Requesting initial data...");
-        setTimeout(() => {
-          handleGet();
-        }, 500);
+        client.on('connect', () => {
+          console.log("✅ [DEBUG] StaticPayloadPage: MQTT client connected successfully");
+          setStatus("connected");
+          setMqttClient(client);
+          setupMQTTHandlers(client);
+
+          // Immediately request data after connection is established
+          console.log("📡 [DEBUG] StaticPayloadPage: Requesting initial data...");
+          setTimeout(() => {
+            handleGet();
+          }, 500);
+        });
+
+        client.on('error', (error: any) => {
+          console.error("❌ [DEBUG] StaticPayloadPage: MQTT connection error:", error);
+          setStatus("error");
+        });
+
+        client.on('close', () => {
+          console.log("🔌 [DEBUG] StaticPayloadPage: MQTT connection closed");
+          setStatus("disconnected");
+          setMqttClient(null);
+        });
+
+        client.on('reconnect', () => {
+          console.log("🔄 [DEBUG] StaticPayloadPage: MQTT reconnecting...");
+          setStatus("disconnected");
+        });
 
       } catch (error) {
-        console.error("❌ [DEBUG] StaticPayloadPage: Failed to connect MQTT:", error);
+        console.error("❌ [DEBUG] StaticPayloadPage: Failed to initialize MQTT:", error);
         setStatus("error");
-
-        // Retry connection after delay
-        setTimeout(() => {
-          console.log("🔄 [DEBUG] StaticPayloadPage: Retrying connection...");
-          initializeConnection();
-        }, 3000);
       }
     };
 
     initializeConnection();
+
+    // Cleanup on unmount
+    return () => {
+      if (mqttClient) {
+        mqttClient.end(true);
+      }
+    };
   }, []);
 
   const setupMQTTHandlers = (client: any) => {
     const handleMessage = (topic: string, buf: Buffer) => {
       console.log(`📨 [DEBUG] MQTT Client: Received message on topic ${topic}`);
       console.log(`📨 [DEBUG] MQTT Client: Raw message buffer length: ${buf.length}`);
+
+      // Handle empty messages (used for clearing retained messages)
+      if (buf.length === 0) {
+        console.log(`📨 [DEBUG] MQTT Client: Received empty message on topic ${topic} (likely retained message cleanup)`);
+        // Empty messages are normal for clearing retained messages, no need to process
+        return;
+      }
 
       try {
         const msgStr = buf.toString();
@@ -616,12 +701,13 @@ export default function StaticPayloadPage() {
               // Prevent spam notifications - only show once per session and respect cooldown
               const now = Date.now();
               if (!notificationShown && now - lastNotificationTime > 3000) {
-                toast.success(`Received ${payloads.length} payload items from template system.`);
+                showToastOnce(`Received ${payloads.length} payload items from template system.`, 'success', 8000);
                 setLastNotificationTime(now);
                 setNotificationShown(true);
                 // Persist to localStorage
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('mqtt-notification-time', now.toString());
+                  localStorage.setItem('mqtt-notification-shown', 'true');
                 }
               }
 
@@ -653,12 +739,13 @@ export default function StaticPayloadPage() {
             // Prevent spam notifications - only show once per session and respect cooldown
             const now = Date.now();
             if (!notificationShown && now - lastNotificationTime > 3000) {
-              toast.success(`Received ${msg.length} payload items.`);
+              showToastOnce(`Received ${msg.length} payload items.`, 'success', 8000);
               setLastNotificationTime(now);
               setNotificationShown(true);
               // Persist to localStorage
               if (typeof window !== 'undefined') {
                 localStorage.setItem('mqtt-notification-time', now.toString());
+                localStorage.setItem('mqtt-notification-shown', 'true');
               }
             }
 
@@ -691,7 +778,7 @@ export default function StaticPayloadPage() {
           console.log(`🔄 [DEBUG] MQTT Client: Processing ${topic} response`);
           setResponseMessage(msg.message);
           if (msg.status === "success") {
-            toast.success(msg.message || "Operation successful!");
+            showToastOnce(msg.message || "Operation successful!", 'success', 3000);
             // Immediate refresh for better UX
             if (client?.connected) {
               console.log("🔄 [DEBUG] MQTT Client: Auto-refreshing data after operation");
@@ -703,7 +790,7 @@ export default function StaticPayloadPage() {
               console.warn("⚠️ [DEBUG] MQTT Client: Cannot auto-refresh - client not connected");
             }
           } else {
-            toast.error(msg.message || "Operation failed!");
+            showToastOnce(msg.message || "Operation failed!", 'error', 3000);
           }
         } else {
           // Handle real-time data messages from actual topics
@@ -767,30 +854,24 @@ export default function StaticPayloadPage() {
   const send = async (command: string, payload: any, responseTopic: string) => {
     try {
       // Ensure MQTT client is connected
-      let client = getMQTTClient();
-      if (!client?.connected) {
-        console.log("🔄 [CRUD] MQTT not connected, attempting to reconnect...");
-        try {
-          client = await connectMQTTAsync();
-          console.log("✅ [CRUD] MQTT reconnected successfully");
-        } catch (reconnectError) {
-          console.error("❌ [CRUD] Failed to reconnect MQTT:", reconnectError);
-          toast.error("MQTT not connected. Please wait for connection or refresh.");
-          return false;
-        }
+      if (!mqttClient?.connected) {
+        console.log("🔄 [CRUD] MQTT not connected, waiting for connection...");
+        showToastOnce("MQTT not connected. Please wait for connection.", 'error', 3000);
+        return false;
       }
 
       setIsLoading(true);
       console.log(`📤 [CRUD] Sending ${command} command:`, payload);
 
-      client.publish(
+      mqttClient.publish(
         "command/data/payload",
         JSON.stringify({ command, ...payload }),
-        (err) => {
+        { qos: 1 },
+        (err: any) => {
           setIsLoading(false);
           if (err) {
             console.error(`❌ [CRUD] Failed to send ${command}:`, err);
-            toast.error(`Failed to ${command}: ${err.message}`);
+            showToastOnce(`Failed to ${command}: ${err.message}`, 'error', 3000);
           } else {
             console.log(`✅ [CRUD] ${command} command sent successfully`);
             // Don't show success toast here, wait for response
@@ -801,7 +882,7 @@ export default function StaticPayloadPage() {
     } catch (error) {
       setIsLoading(false);
       console.error(`❌ [CRUD] Error sending ${command}:`, error);
-      toast.error("Failed to send command. Please try again.");
+      showToastOnce("Failed to send command. Please try again.", 'error', 3000);
       return false;
     }
   };
@@ -861,6 +942,7 @@ export default function StaticPayloadPage() {
     console.log(`🔄 [UPDATE] Updating topic from: ${originalTopic} to: ${meta.topic}`);
     console.log(`🔄 [UPDATE] Meta data:`, meta);
     console.log(`🔄 [UPDATE] Parsed fields:`, parsedFields);
+    console.log(`🔄 [UPDATE] Selected template ID:`, selectedTemplateId);
 
     // Send update command to backend with both original and new topic
     const success = await send(
@@ -872,7 +954,8 @@ export default function StaticPayloadPage() {
         interval: meta.interval,
         qos: meta.qos,
         lwt: meta.lwt,
-        retain: meta.retain
+        retain: meta.retain,
+        ...(selectedTemplateId && { template_id: selectedTemplateId }) // Include template_id if selected
       },
       "response/data/update"
     );
@@ -881,8 +964,11 @@ export default function StaticPayloadPage() {
       // Close modal immediately for better UX
       setUpdateOpen(false);
 
+      // Reset template selection after successful update
+      setSelectedTemplateId("");
+
       // Show immediate feedback
-      toast.success("Update request sent! Data will refresh automatically.");
+      showToastOnce("Update request sent! Data will refresh automatically.", 'success', 3000);
 
       // Force refresh after backend processing time
       console.log("🔄 [UPDATE] Scheduling data refresh after backend processing");
@@ -910,7 +996,7 @@ export default function StaticPayloadPage() {
         setDeleteIndex(null);
 
         // Show immediate feedback
-        toast.success("Delete request sent! Data will refresh automatically.");
+        showToastOnce("Delete request sent! Data will refresh automatically.", 'success', 3000);
 
         // Force refresh after backend processing time
         console.log("🔄 [DELETE] Scheduling data refresh after backend processing");
@@ -961,6 +1047,8 @@ export default function StaticPayloadPage() {
         value: typeof v === "object" ? JSON.stringify(v) : String(v),
       }))
     );
+    // Set the existing template_id for editing
+    setSelectedTemplateId(it.template_id || "");
     setUpdateOpen(true);
   };
 

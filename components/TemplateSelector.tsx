@@ -79,26 +79,153 @@ export default function TemplateSelector({
       setLoading(true);
       setError(null);
 
-      // Load templates from API
-      const response = await fetch('/api/broker-templates');
-      if (!response.ok) {
-        throw new Error('Failed to load templates');
-      }
-      const data = await response.json();
-      const staticTemplates = data.templates || [];
+      // Clear any existing templates first
+      setTemplates([]);
 
-      setTemplates(staticTemplates);
+      console.log('TemplateSelector: Starting template load...');
 
-      // Auto-select first template if none selected
-      if (!selectedTemplateId && staticTemplates.length > 0) {
-        onTemplateChange(staticTemplates[0].template_id);
-      }
+      // Wait for MQTT to be ready, then try to connect
+      setTimeout(async () => {
+        try {
+          console.log('TemplateSelector: Attempting MQTT connection...');
+          const { connectMQTTAsync } = await import('@/lib/mqttClient');
+          const client = await connectMQTTAsync();
+
+          console.log('TemplateSelector: MQTT client obtained, checking connection...');
+
+          // Double check if client is connected
+          if (!client || !client.connected) {
+            console.error('TemplateSelector: MQTT client not connected');
+            throw new Error('MQTT client not connected');
+          }
+
+          console.log('TemplateSelector: MQTT client connected, subscribing to topics...');
+
+          // Subscribe to response topic
+          client.subscribe('broker-templates/response', { qos: 1 }, (err) => {
+            if (err) {
+              console.error('TemplateSelector: Failed to subscribe to response topic:', err);
+            } else {
+              console.log('TemplateSelector: Subscribed to broker-templates/response');
+            }
+          });
+
+          const requestMessage = {
+            action: 'get_all',
+            request_id: `req_${Date.now()}`,
+            timestamp: new Date().toISOString()
+          };
+
+          console.log('TemplateSelector: Publishing get_all request...');
+          client.publish('broker-templates/requests', JSON.stringify(requestMessage), { qos: 1 });
+
+          // Listen for response with timeout
+          let responseReceived = false;
+
+          const handleResponse = (topic: string, message: Buffer) => {
+            try {
+              console.log(`TemplateSelector: Received message on ${topic}`);
+              const payload = JSON.parse(message.toString());
+              console.log('TemplateSelector: Parsed payload:', payload);
+
+              if (payload.action === 'get_all_response' && payload.templates) {
+                console.log(`TemplateSelector: Received ${payload.templates.length} templates`);
+                responseReceived = true;
+                setTemplates(payload.templates);
+                setLoading(false);
+
+                // Cache templates in localStorage for future use
+                localStorage.setItem('broker-templates-cache', JSON.stringify(payload.templates));
+
+                // Auto-select first template if none selected
+                if (!selectedTemplateId && payload.templates.length > 0) {
+                  onTemplateChange(payload.templates[0].template_id);
+                }
+
+                // Cleanup listener
+                client.off('message', handleResponse);
+                client.unsubscribe('broker-templates/response', (err) => {
+                  if (err) console.error('TemplateSelector: Failed to unsubscribe:', err);
+                });
+              }
+            } catch (error) {
+              console.error('TemplateSelector: Error processing MQTT response:', error);
+            }
+          };
+
+          client.on('message', handleResponse);
+
+          // Timeout - if no response, show error
+          setTimeout(() => {
+            if (!responseReceived) {
+              console.error('TemplateSelector: Response timeout');
+              client.off('message', handleResponse);
+              client.unsubscribe('broker-templates/response', (err) => {
+                if (err) console.error('TemplateSelector: Failed to unsubscribe on timeout:', err);
+              });
+              setError("MQTT connection timeout. Please check if BrokerTemplateManager is running.");
+              setLoading(false);
+            }
+          }, 10000); // Increased timeout to 10 seconds
+
+        } catch (mqttError) {
+          console.error('TemplateSelector: MQTT connection failed:', mqttError);
+          setError("Cannot connect to MQTT broker. Please ensure BrokerTemplateManager is running.");
+          setLoading(false);
+        }
+      }, 1000); // Wait 1 second for MQTT to initialize
+
     } catch (err) {
-      setError("Failed to load broker templates");
-      console.error("Template loading error:", err);
-    } finally {
+      console.error("TemplateSelector: Template loading error:", err);
+      setError("Failed to initialize template loading");
       setLoading(false);
     }
+  };
+
+  // Default templates as ultimate fallback
+  const getDefaultTemplates = (): BrokerTemplate[] => {
+    return [
+      {
+        template_id: "default_local",
+        name: "Local MQTT Broker",
+        description: "Default local MQTT broker configuration",
+        category: "development",
+        config: {
+          protocol: "mqtt",
+          host: "localhost",
+          port: 1883,
+          ssl: false,
+          qos: 0,
+          retain: false,
+          keepalive: 60,
+        },
+        metadata: {
+          created_by: "system",
+          version: "1.0",
+          last_updated: new Date().toISOString(),
+        },
+      },
+      {
+        template_id: "default_websocket",
+        name: "WebSocket MQTT Broker",
+        description: "Default WebSocket MQTT broker configuration",
+        category: "development",
+        config: {
+          protocol: "ws",
+          host: "localhost",
+          port: 9000,
+          ssl: false,
+          qos: 0,
+          retain: false,
+          keepalive: 60,
+        },
+        metadata: {
+          created_by: "system",
+          version: "1.0",
+          last_updated: new Date().toISOString(),
+        },
+      },
+    ];
   };
 
   const selectedTemplate = templates.find(t => t.template_id === selectedTemplateId);

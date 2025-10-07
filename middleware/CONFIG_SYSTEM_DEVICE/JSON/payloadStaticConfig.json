@@ -131,32 +131,6 @@
   ],
   "payloads": [
     {
-      "id": "sensor_temp_001",
-      "topic": "home/sensor/temperature",
-      "data": {
-        "sensor_id": "TEMP_001",
-        "location": "Living Room",
-        "temperature": 25,
-        "humidity": 60,
-        "battery_level": 85
-      },
-      "interval": 31,
-      "qos": 1,
-      "lwt": true,
-      "retain": false,
-      "template_id": "local_dev_v1",
-      "broker_config": {
-        "template_id": "local_dev_v1",
-        "overrides": {
-          "qos": 1,
-          "interval": 30
-        }
-      },
-      "created_at": "2025-09-29T16:27:50.000000",
-      "updated_at": "2025-09-30T16:29:21.984257",
-      "version": 4
-    },
-    {
       "id": "sensor_humidity_001",
       "topic": "home/sensor/humidity",
       "data": {
@@ -317,46 +291,6 @@
       },
       "created_at": "2025-10-06T08:51:36.744971",
       "updated_at": "2025-10-06T08:51:36.744971",
-      "version": 1
-    },
-    {
-      "id": "aa6c1a30c63e45ad",
-      "topic": "test/topik/2",
-      "data": {
-        "name_id": "testbroker",
-        "dev_mode": true
-      },
-      "interval": 5,
-      "qos": 0,
-      "lwt": true,
-      "retain": false,
-      "template_id": "custom_broker_v1",
-      "broker_config": {
-        "template_id": "custom_broker_v1",
-        "overrides": {}
-      },
-      "created_at": "2025-10-06T10:09:36.355071",
-      "updated_at": "2025-10-06T10:10:46.670733",
-      "version": 2
-    },
-    {
-      "id": "bb7e3c8b8ad54561",
-      "topic": "newbroker",
-      "data": {
-        "dxfgd": "dfg",
-        "dfgdf": 7
-      },
-      "interval": 5,
-      "qos": 0,
-      "lwt": false,
-      "retain": false,
-      "template_id": "custom_broker_v2",
-      "broker_config": {
-        "template_id": "custom_broker_v2",
-        "overrides": {}
-      },
-      "created_at": "2025-10-06T10:15:32.518807",
-      "updated_at": "2025-10-06T10:15:32.518807",
       "version": 1
     }
   ]

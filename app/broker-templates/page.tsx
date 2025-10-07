@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ import {
   Copy
 } from "lucide-react";
 import { toast } from "sonner";
+import { connectMQTTAsync } from "@/lib/mqttClient";
 
 interface BrokerTemplate {
   template_id: string;
@@ -109,6 +110,8 @@ export default function BrokerTemplatesPage() {
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<BrokerTemplate | null>(null);
   const [deleteTemplateId, setDeleteTemplateId] = useState<string>("");
+  const [mqttClient, setMqttClient] = useState<any>(null);
+  const [mqttConnected, setMqttConnected] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState<Partial<BrokerTemplate>>({
@@ -141,24 +144,231 @@ export default function BrokerTemplatesPage() {
     loadTemplates();
   }, []);
 
+  // MQTT Connection and Message Handling
+  useEffect(() => {
+    let mounted = true;
+
+    const initializeMQTT = async () => {
+      try {
+        console.log('BrokerTemplatesPage: Initializing MQTT connection...');
+        const client = await connectMQTTAsync();
+
+        if (!mounted) return;
+
+        setMqttClient(client);
+        setMqttConnected(true);
+
+        // Subscribe to broker templates topics
+        const topics = [
+          'broker-templates/create',
+          'broker-templates/update',
+          'broker-templates/delete',
+          'broker-templates/error'
+        ];
+
+        topics.forEach(topic => {
+          client.subscribe(topic, { qos: 1 }, (err) => {
+            if (err) {
+              console.error(`Failed to subscribe to ${topic}:`, err);
+            } else {
+              console.log(`Subscribed to ${topic}`);
+            }
+          });
+        });
+
+        // Handle incoming MQTT messages
+        const handleMessage = (topic: string, message: Buffer) => {
+          try {
+            const payload = JSON.parse(message.toString());
+            console.log(`BrokerTemplatesPage: Received MQTT message on ${topic}:`, payload);
+
+            switch (topic) {
+              case 'broker-templates/create':
+                if (payload.action === 'create' && payload.template) {
+                  setTemplates(prev => {
+                    // Check if template already exists
+                    const existingIndex = prev.findIndex(t => t.template_id === payload.template.template_id);
+                    if (existingIndex >= 0) {
+                      // Update existing template
+                      const updated = [...prev];
+                      updated[existingIndex] = payload.template;
+                      return updated;
+                    } else {
+                      // Add new template
+                      return [...prev, payload.template];
+                    }
+                  });
+                  toast.success(`Template "${payload.template.name}" created via MQTT`);
+                }
+                break;
+
+              case 'broker-templates/update':
+                if (payload.action === 'update' && payload.template) {
+                  setTemplates(prev => prev.map(t =>
+                    t.template_id === payload.template.template_id ? payload.template : t
+                  ));
+                  toast.success(`Template "${payload.template.name}" updated via MQTT`);
+                }
+                break;
+
+              case 'broker-templates/delete':
+                if (payload.action === 'delete' && payload.template_id) {
+                  setTemplates(prev => prev.filter(t => t.template_id !== payload.template_id));
+                  toast.success(`Template deleted via MQTT`);
+                }
+                break;
+
+              case 'broker-templates/error':
+                if (payload.action === 'error') {
+                  console.error('Broker templates MQTT error:', payload);
+                  toast.error(`MQTT Error: ${payload.error || 'Unknown error'}`);
+                }
+                break;
+
+              case 'broker-templates/response':
+                if (payload.action === 'get_all_response' && payload.templates) {
+                  console.log(`BrokerTemplatesPage: Received get_all response with ${payload.total_count} templates`);
+                  setTemplates(payload.templates);
+                  setLoading(false);
+                  toast.success(`Loaded ${payload.total_count} templates via MQTT`);
+                }
+                break;
+            }
+          } catch (error) {
+            console.error('Error processing MQTT message:', error);
+          }
+        };
+
+        client.on('message', handleMessage);
+
+        // Store cleanup function
+        return () => {
+          console.log('BrokerTemplatesPage: Cleaning up MQTT listeners...');
+          client.off('message', handleMessage);
+          topics.forEach(topic => {
+            client.unsubscribe(topic, (err) => {
+              if (err) console.error(`Failed to unsubscribe from ${topic}:`, err);
+            });
+          });
+        };
+
+      } catch (error) {
+        console.error('BrokerTemplatesPage: Failed to initialize MQTT:', error);
+        if (mounted) {
+          setMqttConnected(false);
+          toast.error('Failed to connect to MQTT broker');
+        }
+      }
+    };
+
+    initializeMQTT();
+
+    // Cleanup on unmount
+    return () => {
+      mounted = false;
+      if (mqttClient) {
+        console.log('BrokerTemplatesPage: Disconnecting MQTT on unmount...');
+        // Note: We don't disconnect the global MQTT client here
+        // as it might be used by other components
+      }
+    };
+  }, []);
+
   const loadTemplates = async () => {
     try {
       setLoading(true);
 
-      // In a real app, this would be an API call
-      // For now, we'll load from the JSON file via a simulated API
-      const response = await fetch('/api/broker-templates');
-      if (!response.ok) {
-        throw new Error('Failed to load templates');
-      }
-      const data = await response.json();
-      setTemplates(data.templates || []);
+      console.log('BrokerTemplatesPage: Starting template load...');
+
+      // Wait for MQTT to be ready, then check connection
+      setTimeout(async () => {
+        try {
+          console.log('BrokerTemplatesPage: Attempting MQTT connection...');
+          const { connectMQTTAsync } = await import('@/lib/mqttClient');
+          const client = await connectMQTTAsync();
+
+          console.log('BrokerTemplatesPage: MQTT client obtained, checking connection...');
+
+          // Double check if client is connected
+          if (!client || !client.connected) {
+            console.error('BrokerTemplatesPage: MQTT client not connected');
+            throw new Error('MQTT client not connected');
+          }
+
+          console.log('BrokerTemplatesPage: MQTT client connected, subscribing to topics...');
+
+          // Subscribe to response topic
+          client.subscribe('broker-templates/response', { qos: 1 }, (err) => {
+            if (err) {
+              console.error('BrokerTemplatesPage: Failed to subscribe to response topic:', err);
+            } else {
+              console.log('BrokerTemplatesPage: Subscribed to broker-templates/response');
+            }
+          });
+
+          const requestMessage = {
+            action: 'get_all',
+            request_id: `req_${Date.now()}`,
+            timestamp: new Date().toISOString()
+          };
+
+          console.log('BrokerTemplatesPage: Publishing get_all request...');
+          client.publish('broker-templates/requests', JSON.stringify(requestMessage), { qos: 1 });
+
+          // Listen for response with timeout
+          let responseReceived = false;
+
+          const handleResponse = (topic: string, message: Buffer) => {
+            try {
+              console.log(`BrokerTemplatesPage: Received message on ${topic}`);
+              const payload = JSON.parse(message.toString());
+              console.log('BrokerTemplatesPage: Parsed payload:', payload);
+
+              if (payload.action === 'get_all_response' && payload.templates) {
+                console.log(`BrokerTemplatesPage: Received ${payload.templates.length} templates`);
+                responseReceived = true;
+                setTemplates(payload.templates);
+                setLoading(false);
+                toast.success(`Loaded ${payload.templates.length} templates via MQTT`);
+
+                // Cleanup listener
+                client.off('message', handleResponse);
+                client.unsubscribe('broker-templates/response', (err) => {
+                  if (err) console.error('BrokerTemplatesPage: Failed to unsubscribe:', err);
+                });
+              }
+            } catch (error) {
+              console.error('BrokerTemplatesPage: Error processing MQTT response:', error);
+            }
+          };
+
+          client.on('message', handleResponse);
+
+          // Timeout - if no response, show error
+          setTimeout(() => {
+            if (!responseReceived) {
+              console.error('BrokerTemplatesPage: Response timeout');
+              client.off('message', handleResponse);
+              client.unsubscribe('broker-templates/response', (err) => {
+                if (err) console.error('BrokerTemplatesPage: Failed to unsubscribe on timeout:', err);
+              });
+              toast.error('MQTT connection timeout. Please check if BrokerTemplateManager is running.');
+              setTemplates([]);
+              setLoading(false);
+            }
+          }, 10000); // Increased timeout to 10 seconds
+
+        } catch (mqttError) {
+          console.error('BrokerTemplatesPage: MQTT connection failed:', mqttError);
+          toast.error('Cannot connect to MQTT broker. Please ensure BrokerTemplateManager is running.');
+          setTemplates([]);
+          setLoading(false);
+        }
+      }, 1000); // Wait 1 second for MQTT to initialize
     } catch (error) {
-      console.error('Error loading templates:', error);
-      toast.error('Failed to load broker templates');
-      // Fallback to empty array
+      console.error('BrokerTemplatesPage: Error initializing template load:', error);
+      toast.error('Failed to initialize template loading');
       setTemplates([]);
-    } finally {
       setLoading(false);
     }
   };
@@ -231,40 +441,43 @@ export default function BrokerTemplatesPage() {
         return;
       }
 
+      if (!mqttClient || !mqttConnected) {
+        toast.error("MQTT not connected. Cannot save template.");
+        return;
+      }
+
       setSaving(true);
 
       const isEdit = editDialogOpen;
-      const url = isEdit ? `/api/broker-templates/${formData.template_id}` : '/api/broker-templates';
-      const method = isEdit ? 'PUT' : 'POST';
+      const action = isEdit ? 'update' : 'create';
+      const topic = `broker-templates/${action}`;
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const message = {
+        action: action,
+        template_id: isEdit ? formData.template_id : undefined,
+        template: {
           ...formData,
           metadata: {
             ...formData.metadata,
             last_updated: new Date().toISOString(),
             ...(isEdit ? {} : { created_at: new Date().toISOString() }),
           },
-        }),
-      });
+        },
+        request_id: `req_${Date.now()}`,
+        timestamp: new Date().toISOString()
+      };
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to save template');
-      }
+      console.log(`BrokerTemplatesPage: Publishing ${action} message to ${topic}`);
+      mqttClient.publish(topic, JSON.stringify(message), { qos: 1 });
 
-      toast.success(`Template ${isEdit ? 'updated' : 'created'} successfully`);
+      toast.success(`Template ${isEdit ? 'update' : 'create'} request sent via MQTT`);
       setCreateDialogOpen(false);
       setEditDialogOpen(false);
       resetForm();
-      await loadTemplates();
+
     } catch (error: any) {
-      console.error('Error saving template:', error);
-      toast.error(error.message || 'Failed to save template');
+      console.error('Error sending MQTT message:', error);
+      toast.error(error.message || 'Failed to send MQTT message');
     } finally {
       setSaving(false);
     }
@@ -272,23 +485,30 @@ export default function BrokerTemplatesPage() {
 
   const handleDelete = async () => {
     try {
-      setSaving(true);
-
-      const response = await fetch(`/api/broker-templates/${deleteTemplateId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete template');
+      if (!mqttClient || !mqttConnected) {
+        toast.error("MQTT not connected. Cannot delete template.");
+        return;
       }
 
-      toast.success('Template deleted successfully');
+      setSaving(true);
+
+      const message = {
+        action: 'delete',
+        template_id: deleteTemplateId,
+        request_id: `req_${Date.now()}`,
+        timestamp: new Date().toISOString()
+      };
+
+      console.log(`BrokerTemplatesPage: Publishing delete message for ${deleteTemplateId}`);
+      mqttClient.publish('broker-templates/delete', JSON.stringify(message), { qos: 1 });
+
+      toast.success('Template delete request sent via MQTT');
       setDeleteDialogOpen(false);
       setDeleteTemplateId("");
-      await loadTemplates();
+
     } catch (error: any) {
-      console.error('Error deleting template:', error);
-      toast.error(error.message || 'Failed to delete template');
+      console.error('Error sending MQTT delete message:', error);
+      toast.error(error.message || 'Failed to send MQTT delete message');
     } finally {
       setSaving(false);
     }
@@ -319,6 +539,62 @@ export default function BrokerTemplatesPage() {
         [field]: value,
       },
     }));
+  };
+
+  // Default templates as ultimate fallback
+  const getDefaultTemplates = (): BrokerTemplate[] => {
+    return [
+      {
+        template_id: "default_local",
+        name: "Local MQTT Broker",
+        description: "Default local MQTT broker configuration",
+        category: "development",
+        config: {
+          protocol: "mqtt",
+          host: "localhost",
+          port: 1883,
+          ssl: false,
+          username: "",
+          password: "",
+          qos: 0,
+          retain: false,
+          keepalive: 60,
+          connection_timeout: 5,
+          reconnect_period: 3,
+        },
+        fallback_brokers: [],
+        metadata: {
+          created_by: "system",
+          version: "1.0",
+          last_updated: new Date().toISOString(),
+        },
+      },
+      {
+        template_id: "default_websocket",
+        name: "WebSocket MQTT Broker",
+        description: "Default WebSocket MQTT broker configuration",
+        category: "development",
+        config: {
+          protocol: "ws",
+          host: "localhost",
+          port: 9000,
+          ssl: false,
+          username: "",
+          password: "",
+          qos: 0,
+          retain: false,
+          keepalive: 60,
+          connection_timeout: 5,
+          reconnect_period: 3,
+        },
+        fallback_brokers: [],
+        metadata: {
+          created_by: "system",
+          version: "1.0",
+          last_updated: new Date().toISOString(),
+        },
+      },
+    ];
   };
 
   if (loading) {
