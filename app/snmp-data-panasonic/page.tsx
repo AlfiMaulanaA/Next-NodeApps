@@ -158,8 +158,25 @@ export default function PanasonicBatteryPage() {
       await navigator.clipboard.writeText(oid);
       showToast.success('OID Copied', `${oid} has been copied to clipboard`);
     } catch (err) {
-      showToast.error('Copy Failed', 'Unable to copy OID to clipboard');
-      console.error('Failed to copy:', err);
+      // Fallback untuk browsers yang tidak mendukung clipboard atau HTTP
+      try {
+        // Fallback untuk IE dan mobile browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = oid;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+
+        showToast.success('OID Copied', `${oid} has been copied to clipboard (fallback method)`);
+      } catch (fallbackErr) {
+        showToast.error('Copy Failed', 'Unable to copy OID to clipboard. Please copy manually.');
+        console.error('Failed to copy:', err, fallbackErr);
+      }
     }
   };
 

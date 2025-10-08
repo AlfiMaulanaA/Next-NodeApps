@@ -30,6 +30,11 @@ import {
   ArrowLeftRight,
   Search,
   Shield,
+  Wifi,
+  Monitor,
+  Activity,
+  FileText,
+  Info,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -39,6 +44,152 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useTheme } from "next-themes";
 
+// Static menu configuration (copied from app-sidebar.tsx)
+const menuData = {
+  groups: [
+    {
+      title: "Overview",
+      items: [
+        {
+          title: "Dashboard",
+          url: "/",
+          icon: BarChart3,
+          isUse: true,
+        },
+      ],
+    },
+    {
+      title: "Network Configuration",
+      items: [
+        {
+          title: "IP Address Settings",
+          url: "/network/ip-address",
+          icon: Network,
+          isUse: true,
+        },
+        {
+          title: "WiFi Settings",
+          url: "/network/wifi",
+          icon: Wifi,
+          isUse: true,
+        },
+        {
+          title: "SNMP Protocol",
+          url: "/network/protocol/snmp",
+          icon: Monitor,
+          isUse: true,
+        },
+      ],
+    },
+    {
+      title: "Device Management",
+      items: [
+        {
+          title: "Modbus Device Manager",
+          url: "/devices/modbus",
+          icon: HardDrive,
+          isUse: true,
+        },
+        {
+          title: "SNMP MIB Data",
+          url: "/snmp-data-panasonic",
+          icon: Activity,
+          isUse: true,
+        },
+      ],
+    },
+    {
+      title: "System Settings",
+      items: [
+        {
+          title: "General Settings",
+          url: "/settings/setting",
+          icon: Settings,
+          isUse: true,
+        },
+        {
+          title: "Error Logs",
+          url: "/settings/error-log",
+          icon: FileText,
+          isUse: true,
+        },
+        {
+          title: "Information",
+          url: "/info",
+          icon: Info,
+          isUse: true,
+        },
+      ],
+    },
+  ],
+};
+
+// Function to map menu items to features
+const mapMenuToFeatures = () => {
+  const featureMap: Record<string, any> = {
+    "Dashboard": {
+      icon: <BarChart3 className="w-6 h-6 text-blue-600" />,
+      category: "Overview",
+      description: "Real-time dashboard displaying system status, device connectivity, and key metrics overview.",
+    },
+    "IP Address Settings": {
+      icon: <Network className="w-6 h-6 text-green-600" />,
+      category: "Network Configuration",
+      description: "Configure network interfaces, IP addresses, subnet masks, and gateway settings.",
+    },
+    "WiFi Settings": {
+      icon: <Wifi className="w-6 h-6 text-blue-500" />,
+      category: "Network Configuration",
+      description: "Configure wireless network settings, access points, and connection parameters.",
+    },
+    "SNMP Protocol": {
+      icon: <Monitor className="w-6 h-6 text-purple-600" />,
+      category: "Network Configuration",
+      description: "Configure SNMP communication protocol settings and monitoring parameters.",
+    },
+    "Modbus Device Manager": {
+      icon: <HardDrive className="w-6 h-6 text-orange-600" />,
+      category: "Device Management",
+      description: "Manage Modbus RTU and TCP devices, configure communication parameters and data mappings.",
+    },
+    "SNMP MIB Data": {
+      icon: <Activity className="w-6 h-6 text-cyan-600" />,
+      category: "Device Management",
+      description: "Access and manage SNMP MIB data, monitoring information bases for network devices.",
+    },
+    "General Settings": {
+      icon: <Settings className="w-6 h-6 text-gray-600" />,
+      category: "System Settings",
+      description: "System-wide configurations, user preferences, and interface customization options.",
+    },
+    "Error Logs": {
+      icon: <FileText className="w-6 h-6 text-red-600" />,
+      category: "System Settings",
+      description: "View system error logs, diagnostic information, and troubleshooting data.",
+    },
+    "Information": {
+      icon: <Info className="w-6 h-6 text-indigo-600" />,
+      category: "System Settings",
+      description: "System information, version details, and feature documentation.",
+    },
+  };
+
+  const features: any[] = [];
+
+  menuData.groups.forEach(group => {
+    group.items.forEach(item => {
+      if (item.isUse === true && featureMap[item.title]) {
+        features.push({
+          title: item.title,
+          ...featureMap[item.title]
+        });
+      }
+    });
+  });
+
+  return features;
+};
+
 export default function InfoPage() {
   const { theme } = useTheme();
 
@@ -46,98 +197,9 @@ export default function InfoPage() {
   const gatewayImage = theme === 'dark'
     ? "/images/ilustation-mqtt-gateway-dark.png"
     : "/images/ilustation-mqtt-gateway-light.png";
-  const features = [
-    {
-      icon: <BarChart3 className="w-6 h-6 text-blue-600" />,
-      category: "Overview",
-      title: "Dashboard",
-      description: "Real-time dashboard displaying system status, device connectivity, and key metrics overview.",
-    },
-    {
-      icon: <Network className="w-6 h-6 text-green-600" />,
-      category: "Network Configuration",
-      title: "IP Configuration",
-      description: "Configure network interfaces, IP addresses, subnet masks, and gateway settings.",
-    },
-    {
-      icon: <SatelliteDish className="w-6 h-6 text-blue-500" />,
-      category: "Network Configuration",
-      title: "MQTT Broker",
-      description: "Configure MQTT broker connection settings, authentication, and publish/subscribe parameters.",
-    },
-    {
-      icon: <Database className="w-6 h-6 text-purple-600" />,
-      category: "Device Management",
-      title: "Modbus Devices",
-      description: "Manage Modbus RTU and TCP devices, configure communication parameters and data mappings.",
-    },
-    {
-      icon: <Server className="w-6 h-6 text-orange-600" />,
-      category: "Device Management",
-      title: "Modular I2C",
-      description: "Control and monitor I2C-based modular devices with real-time status updates.",
-    },
-    {
-      icon: <Shield className="w-6 h-6 text-red-600" />,
-      category: "Device Management",
-      title: "Threshold Settings",
-      description: "Set alarm thresholds, warning levels, and trigger conditions for monitored parameters.",
-    },
-    {
-      icon: <Search className="w-6 h-6 text-cyan-600" />,
-      category: "Payload Management",
-      title: "Payload Discover & Publisher",
-      description: "Explore MQTT topics, publish custom payloads, and monitor message traffic in real-time.",
-    },
-    {
-      icon: <ArrowLeftRight className="w-6 h-6 text-teal-600" />,
-      category: "Payload Management",
-      title: "Payload Remapping",
-      description: "Transform and remap MQTT payloads with custom key mappings and data transformations.",
-    },
-    {
-      icon: <Wrench className="w-6 h-6 text-gray-700" />,
-      category: "Control Center",
-      title: "Manual Control",
-      description: "Direct manual control of devices, relays, and actuators with immediate execution.",
-    },
-    {
-      icon: <Code className="w-6 h-6 text-indigo-600" />,
-      category: "Control Center",
-      title: "Logic Control",
-      description: "Configure conditional logic, trigger conditions, and automated decision-making rules.",
-    },
-    {
-      icon: <Calculator className="w-6 h-6 text-pink-600" />,
-      category: "Control Center",
-      title: "Value Control",
-      description: "Set controlled parameters, reference values, and PID controller configurations.",
-    },
-    {
-      icon: <Mic className="w-6 h-6 text-emerald-600" />,
-      category: "Control Center",
-      title: "Voice Control",
-      description: "Voice-activated commands and audio feedback for hands-free system operation.",
-    },
-    {
-      icon: <Clock className="w-6 h-6 text-violet-600" />,
-      category: "Control Center",
-      title: "Scheduler Control",
-      description: "Time-based automation, scheduled tasks, and recurring event management.",
-    },
-    {
-      icon: <Settings className="w-6 h-6 text-gray-600" />,
-      category: "System Settings",
-      title: "General Settings",
-      description: "System-wide configurations, user preferences, and interface customization options.",
-    },
-    {
-      icon: <HardDrive className="w-6 h-6 text-amber-600" />,
-      category: "System Settings",
-      title: "Device Library",
-      description: "Manage device profiles, firmware versions, and component specifications library.",
-    },
-  ];
+
+  // Get features dynamically based on enabled menu items
+  const features = mapMenuToFeatures();
 
   const techStack = [
     { name: "Node.js", icon: <SiNodedotjs size={32} className="text-green-600" />, description: "Backend runtime environment" },

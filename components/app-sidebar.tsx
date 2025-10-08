@@ -133,6 +133,12 @@ const menuData = {
           icon: Activity,
           isUse: true,
         },
+        {
+          title: "SNMP Data Get/Walk",
+          url: "/snmp-data-get",
+          icon: Wifi,
+          isUse: true,
+        },
         // {
         //   title: "SNMP MIB Data",
         //   url: "/snmp-data-shoto",

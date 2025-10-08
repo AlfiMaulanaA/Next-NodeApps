@@ -90,6 +90,7 @@ export default function SNMPSettingPage() {
   const [isLoading, setIsLoading] = useState(true); // Loading state for initial fetch
   const [isSaving, setIsSaving] = useState(false); // New state for save operation
   const [isSyncing, setIsSyncing] = useState(false); // Loading state for IP sync operation
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false); // Flag for loading timeout
   const clientRef = useRef<MqttClient | null>(null);
 
   // --- Utility Functions ---
@@ -208,6 +209,7 @@ export default function SNMPSettingPage() {
     }
 
     setIsLoading(true);
+    setLoadingTimedOut(false); // Reset timeout flag when retrying
     // Add a small delay to ensure MQTT is ready to publish after connection
     setTimeout(() => {
       client.publish(SNMP_SETTING_TOPIC_COMMAND, JSON.stringify({ command: "read" }), {}, (err) => {
@@ -240,6 +242,21 @@ export default function SNMPSettingPage() {
       }
     });
   }, []);
+
+  // --- useEffect for loading timeout ---
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    if (isLoading) {
+      timeoutId = setTimeout(() => {
+        setIsLoading(false);
+        setLoadingTimedOut(true);
+        toast.warning("Loading SNMP settings timed out. Showing default values. You can retry or proceed with configuration.");
+      }, 10000); // 10 seconds timeout
+    }
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isLoading]);
 
   // --- useEffect for MQTT Connection and Message Handling ---
   useEffect(() => {
@@ -308,6 +325,7 @@ export default function SNMPSettingPage() {
             timeDelaySnmpTrap: String(payload.timeDelaySnmpTrap || "30"), // Explicitly convert to string
           };
           setFormData(updatedFormData);
+          setLoadingTimedOut(false); // Reset timeout flag on successful load
           toast.success("SNMP settings loaded! 🎉");
           setIsLoading(false); // Stop loading after data is received
         } else if (topic === SNMP_STATUS_TOPIC) {
@@ -516,6 +534,15 @@ export default function SNMPSettingPage() {
                 <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-3" />
                 <span className="text-lg text-blue-500">Loading SNMP Settings...</span>
                 <p className="text-sm text-muted-foreground mt-2">Please ensure MQTT is connected and backend is running.</p>
+              </div>
+            )}
+
+            {/* Timeout Warning */}
+            {!isLoading && loadingTimedOut && (
+              <div className="col-span-full mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ SNMP settings failed to load within 10 seconds. Showing default values. You can proceed with configuration or click "Get Config" to retry loading current settings.
+                </p>
               </div>
             )}
 
