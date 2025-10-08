@@ -185,6 +185,27 @@ const VoiceControlPage = () => {
   // Confirmation Dialog
   const { confirmationProps, showConfirmation } = useConfirmationDialog();
 
+  // Modal Functions
+  const openModal = (item?: VoiceControl) => {
+    if (item) {
+      setIsEditing(true);
+      setSelectedControl(item.id);
+      setVoiceControl({ ...item });
+    } else {
+      setIsEditing(false);
+      setSelectedControl(null);
+      setVoiceControl({ ...initialVoiceControl, id: uuidv4() });
+    }
+    setIsModalOpen(true);
+  };
+
+  const closeModal = useCallback(() => {
+    setIsModalOpen(false);
+    setIsEditing(false);
+    setSelectedControl(null);
+    setVoiceControl({ ...initialVoiceControl });
+  }, []);
+
   // Initialize MQTT Connection
   useEffect(() => {
     const initMQTT = async () => {
@@ -267,7 +288,7 @@ const VoiceControlPage = () => {
   // Refresh Function - Use get action for simplified topics
   const refreshVoiceControlData = useCallback(() => {
     publishMessage({ action: "get" }, topicVoiceControlCommand);
-    showToast.info("Refreshing data...", "Requesting latest data from MQTT broker.");
+    // Removed toast to avoid spam on automatic refreshes
   }, [publishMessage, topicVoiceControlCommand]);
 
   // Message Handlers
@@ -323,15 +344,26 @@ const VoiceControlPage = () => {
         console.log("MQTT: Response diterima:", payload);
 
         if (payload.status === "success") {
-          showToast.success("Success", payload.message);
+          // Only show toast for user-initiated operations, not automatic refreshes
+          const isUserAction = payload.message && (
+            payload.message.includes("created") ||
+            payload.message.includes("updated") ||
+            payload.message.includes("deleted")
+          );
+
+          if (isUserAction) {
+            showToast.success("Success", payload.message);
+          }
 
           // Auto close dialog on success
           closeModal();
 
-          // Refresh data setelah operasi berhasil
-          setTimeout(() => {
-            refreshVoiceControlData();
-          }, 500);
+          // Refresh data setelah operasi berhasil - but only if this was a user action
+          if (isUserAction) {
+            setTimeout(() => {
+              refreshVoiceControlData();
+            }, 500);
+          }
         } else {
           showToast.error("Error", payload.message || "An error occurred");
         }
@@ -369,29 +401,8 @@ const VoiceControlPage = () => {
     topicModularAvailables,
     topicVoiceControlCommand,
     topicVoiceControlResponse,
-    refreshVoiceControlData,
+    closeModal,
   ]);
-
-  // Modal Functions
-  const openModal = (item?: VoiceControl) => {
-    if (item) {
-      setIsEditing(true);
-      setSelectedControl(item.id);
-      setVoiceControl({ ...item });
-    } else {
-      setIsEditing(false);
-      setSelectedControl(null);
-      setVoiceControl({ ...initialVoiceControl, id: uuidv4() });
-    }
-    setIsModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setIsEditing(false);
-    setSelectedControl(null);
-    setVoiceControl({ ...initialVoiceControl });
-  };
 
   // Save Function
   const saveVoiceControl = (e: React.FormEvent) => {

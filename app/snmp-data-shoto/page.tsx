@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Download, FileSpreadsheet, FileText, Database, Copy } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { PageSkeleton } from "@/components/loading/PageSkeleton";
-import { MIBDownloader } from "@/components/MIBDownloader";
+import { ShotoMIBDownloader } from "@/components/ShotoMIBDownloader";
 import { showToast } from "@/lib/toast-utils";
 
 interface MIBDataItem {
@@ -105,7 +105,7 @@ export default function ModbusDataPage() {
       try {
         setLoading(true);
 
-        const response = await fetch('/files/mib.json');
+        const response = await fetch('/files/mib-shoto.json');
         if (!response.ok) {
           throw new Error('Failed to fetch MIB data');
         }
@@ -364,7 +364,7 @@ export default function ModbusDataPage() {
         </Card>
 
         {/* MIB Downloader Section */}
-        <MIBDownloader />
+        <ShotoMIBDownloader />
 
         <Card className="bg-card border border-border">
           <CardHeader className="border-b border-border">

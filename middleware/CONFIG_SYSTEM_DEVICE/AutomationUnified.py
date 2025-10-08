@@ -103,8 +103,8 @@ ERROR_TYPE_MINOR = "MINOR"
 ERROR_TYPE_WARNING = "WARNING"
 
 def get_active_mac_address():
-    """Get MAC address from active network interface (prioritize eth0, then wlan0)"""
-    interfaces = ['eth0', 'wlan0']
+    """Get MAC address from active network interface (prioritize eno2, then wlo1)"""
+    interfaces = ['eno2', 'wlo1']
 
     # First try: Use ifconfig (most reliable on embedded systems)
     try:

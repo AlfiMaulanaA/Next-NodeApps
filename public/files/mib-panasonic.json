@@ -1,0 +1,1300 @@
+{
+  "snmpConfiguration": [
+    {
+      "objectName": "snmpIPAddress",
+      "oid": "1.3.6.1.4.1.10000.11.5.10.0",
+      "access": "Read Write",
+      "description": "SNMP agent IP address configuration",
+      "default": "192.168.0.100"
+    },
+    {
+      "objectName": "snmpNetmask",
+      "oid": "1.3.6.1.4.1.10000.11.5.20.0",
+      "access": "Read Write",
+      "description": "SNMP agent network mask",
+      "default": "255.255.255.0"
+    },
+    {
+      "objectName": "snmpGateway",
+      "oid": "1.3.6.1.4.1.10000.11.5.30.0",
+      "access": "Read Write",
+      "description": "SNMP agent gateway address",
+      "default": "192.168.0.1"
+    },
+    {
+      "objectName": "snmpVersion",
+      "oid": "1.3.6.1.4.1.10000.11.5.40.0",
+      "access": "Read Write",
+      "description": "SNMP protocol version (1, 2c, 3)",
+      "default": "V2c"
+    },
+    {
+      "objectName": "snmpCommunity",
+      "oid": "1.3.6.1.4.1.10000.11.5.50.0",
+      "access": "Read Write",
+      "description": "SNMP community string for V1/V2c",
+      "default": "public"
+    },
+    {
+      "objectName": "snmpPort",
+      "oid": "1.3.6.1.4.1.10000.11.5.60.0",
+      "access": "Read Write",
+      "description": "SNMP agent listening port",
+      "default": "161"
+    },
+    {
+      "objectName": "systemOID",
+      "oid": "1.3.6.1.4.1.10000.11.5.70.0",
+      "access": "Read Write",
+      "description": "Unique system OID",
+      "default": ".1.3.6.1.4.1.10000.10"
+    },
+    {
+      "objectName": "snmpSecurityName",
+      "oid": "1.3.6.1.4.1.10000.11.5.80.0",
+      "access": "Read Write",
+      "description": "SNMPv3 authentication type (MD5, SHA, SHA256)",
+      "default": "MD5"
+    },
+    {
+      "objectName": "snmpAuthKey",
+      "oid": "1.3.6.1.4.1.10000.11.5.90.0",
+      "access": "Read Write",
+      "description": "SNMPv3 authentication key/password",
+      "default": ""
+    },
+    {
+      "objectName": "snmpPrivKey",
+      "oid": "1.3.6.1.4.1.10000.11.5.100.0",
+      "access": "Read Write",
+      "description": "SNMPv3 privacy/encryption type (DES, AES128, AES256)",
+      "default": "DES"
+    },
+    {
+      "objectName": "snmpSecurityLevel",
+      "oid": "1.3.6.1.4.1.10000.11.5.110.0",
+      "access": "Read Write",
+      "description": "SNMPv3 privacy/encryption key",
+      "default": ""
+    },
+    {
+      "objectName": "deviceName",
+      "oid": "1.3.6.1.4.1.10000.11.5.120.0",
+      "access": "Read Write",
+      "description": "Device name identifier",
+      "default": "Panasonic-DCB105ZK-BMS"
+    },
+    {
+      "objectName": "siteName",
+      "oid": "1.3.6.1.4.1.10000.11.5.130.0",
+      "access": "Read Write",
+      "description": "Installation site name",
+      "default": "Site-001"
+    }
+  ],
+  "batteryStatus": [
+    {
+      "category": "Status Registers",
+      "objectName": "panasonicStatus",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.1.0",
+      "access": "Read Only",
+      "unit": "Bitmask",
+      "description": "BMS Status bitmask - 16-bit operational state register",
+      "notes": "Bitmask register containing operational flags"
+    },
+    {
+      "category": "Status Registers",
+      "objectName": "panasonicWarning",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.2.0",
+      "access": "Read Only",
+      "unit": "Bitmask",
+      "description": "BMS Warning bitmask - 16-bit non-critical alert register",
+      "notes": "Bitmask register containing warning flags"
+    },
+    {
+      "category": "Status Registers",
+      "objectName": "panasonicAlarm",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.3.0",
+      "access": "Read Only",
+      "unit": "Bitmask",
+      "description": "BMS Alarm bitmask - 16-bit critical protection register",
+      "notes": "Bitmask register containing alarm flags"
+    },
+    {
+      "category": "Status Registers",
+      "objectName": "panasonicError",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.4.0",
+      "access": "Read Only",
+      "unit": "Bitmask",
+      "description": "BMS Error bitmask - 16-bit system malfunction register",
+      "notes": "Bitmask register containing error flags"
+    }
+  ],
+  "batteryData": [
+    {
+      "category": "Operation Modes",
+      "objectName": "panasonicChargeOperationMode",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.5.0",
+      "access": "Read Only",
+      "unit": "Text",
+      "description": "Charge operation mode: PROTECTION, DISABLE, ENABLE",
+      "notes": "Current charge operation mode"
+    },
+    {
+      "category": "Operation Modes",
+      "objectName": "panasonicDischargeOperationMode",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.6.0",
+      "access": "Read Only",
+      "unit": "Text",
+      "description": "Discharge operation mode: PROTECTION, DISABLE, ENABLE",
+      "notes": "Current discharge operation mode"
+    },
+    {
+      "category": "Firmware & Config",
+      "objectName": "panasonicFwUpdateStatus",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.61.0",
+      "access": "Read Only",
+      "unit": "Status",
+      "description": "Firmware update status",
+      "notes": "Status of firmware update operations"
+    },
+    {
+      "category": "Firmware & Config",
+      "objectName": "panasonicProgramVersion",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.62.0",
+      "access": "Read Only",
+      "unit": "Version",
+      "description": "BMS firmware program version",
+      "notes": "Current firmware version number"
+    },
+    {
+      "category": "Firmware & Config",
+      "objectName": "panasonicDataVersion",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.63.0",
+      "access": "Read Only",
+      "unit": "Version",
+      "description": "BMS data structure version",
+      "notes": "Data protocol version"
+    },
+    {
+      "category": "Device Information",
+      "objectName": "panasonicManufactureName",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.135.0",
+      "access": "Read Only",
+      "unit": "Text",
+      "description": "Battery manufacturer name",
+      "notes": "Original equipment manufacturer name"
+    },
+    {
+      "category": "Device Information",
+      "objectName": "panasonicDeviceName",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.136.0",
+      "access": "Read Only",
+      "unit": "Text",
+      "description": "Battery device model name",
+      "notes": "Model name identifier"
+    },
+    {
+      "category": "Device Information",
+      "objectName": "panasonicManufactureDate",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.137.0",
+      "access": "Read Only",
+      "unit": "Date Code",
+      "description": "Manufacture date code",
+      "notes": "Manufacturing date identifier"
+    },
+    {
+      "category": "Device Information",
+      "objectName": "panasonicSerialNumber",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.138.0",
+      "access": "Read Only",
+      "unit": "Serial",
+      "description": "Battery serial number",
+      "notes": "Unique serial number"
+    },
+    {
+      "category": "Device Information",
+      "objectName": "panasonicBarcode",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.139.0",
+      "access": "Read Only",
+      "unit": "Text",
+      "description": "Battery barcode identifier",
+      "notes": "Barcode identification"
+    }
+  ],
+  "chargingParameters": [
+    {
+      "category": "Charging Parameters",
+      "objectName": "panasonicChargingVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.64.0",
+      "access": "Read Only",
+      "unit": "centi-volts",
+      "description": "Charging voltage setpoint (scaled: divide by 100 for volts)",
+      "notes": "Charging voltage limit"
+    },
+    {
+      "category": "Charging Parameters",
+      "objectName": "panasonicChargingVoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.65.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Charging voltage in volts (real float value)",
+      "notes": "Real float voltage value in volts"
+    },
+    {
+      "category": "Charging Parameters",
+      "objectName": "panasonicChargingCurrent",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.66.0",
+      "access": "Read Only",
+      "unit": "centi-amperes",
+      "description": "Charging current limit (scaled: divide by 100 for amperes)",
+      "notes": "Charging current limit"
+    },
+    {
+      "category": "Charging Parameters",
+      "objectName": "panasonicChargingCurrentReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.67.0",
+      "access": "Read Only",
+      "unit": "A",
+      "description": "Charging current in amperes (real float value)",
+      "notes": "Real float current value in amperes"
+    },
+    {
+      "category": "Charging Parameters",
+      "objectName": "panasonicDischargeCurrentLimit",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.68.0",
+      "access": "Read Only",
+      "unit": "centi-amperes",
+      "description": "Discharge current limit (scaled: divide by 100 for amperes)",
+      "notes": "Discharge current limit"
+    },
+    {
+      "category": "Charging Parameters",
+      "objectName": "panasonicDischargeCurrentLimitReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.69.0",
+      "access": "Read Only",
+      "unit": "A",
+      "description": "Discharge current limit in amperes (real float value)",
+      "notes": "Real float discharge current limit"
+    },
+    {
+      "category": "Charging Parameters",
+      "objectName": "panasonicEndOfDischargeVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.70.0",
+      "access": "Read Only",
+      "unit": "centi-volts",
+      "description": "End of discharge voltage cutoff (scaled: divide by 100 for volts)",
+      "notes": "End of discharge voltage cutoff"
+    },
+    {
+      "category": "Charging Parameters",
+      "objectName": "panasonicEndOfDischargeVoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.71.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "End of discharge voltage in volts (real float value)",
+      "notes": "Real float end of discharge voltage"
+    }
+  ],
+  "capacityData": [
+    {
+      "category": "Capacity Parameters",
+      "objectName": "panasonicDesignCapacity",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.72.0",
+      "access": "Read Only",
+      "unit": "milli-ampere-hours",
+      "description": "Design capacity DC (scaled: divide by 1000 for Ah)",
+      "notes": "Design capacity"
+    },
+    {
+      "category": "Capacity Parameters",
+      "objectName": "panasonicDesignCapacityReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.73.0",
+      "access": "Read Only",
+      "unit": "Ah",
+      "description": "Design capacity in Ah (real float value)",
+      "notes": "Real float design capacity"
+    },
+    {
+      "category": "Capacity Parameters",
+      "objectName": "panasonicFullChargeCapacity",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.74.0",
+      "access": "Read Only",
+      "unit": "milli-ampere-hours",
+      "description": "Full charge capacity FCC (scaled: divide by 1000 for Ah)",
+      "notes": "Full charge capacity"
+    },
+    {
+      "category": "Capacity Parameters",
+      "objectName": "panasonicFullChargeCapacityReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.75.0",
+      "access": "Read Only",
+      "unit": "Ah",
+      "description": "Full charge capacity in Ah (real float value)",
+      "notes": "Real float full charge capacity"
+    },
+    {
+      "category": "Capacity Parameters",
+      "objectName": "panasonicRemainingCapacity",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.76.0",
+      "access": "Read Only",
+      "unit": "milli-ampere-hours",
+      "description": "Remaining capacity RC (scaled: divide by 1000 for Ah)",
+      "notes": "Remaining capacity"
+    },
+    {
+      "category": "Capacity Parameters",
+      "objectName": "panasonicRemainingCapacityReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.77.0",
+      "access": "Read Only",
+      "unit": "Ah",
+      "description": "Remaining capacity in Ah (real float value)",
+      "notes": "Real float remaining capacity"
+    }
+  ],
+  "stateData": [
+    {
+      "category": "State Parameters",
+      "objectName": "panasonicSOC",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.78.0",
+      "access": "Read Only",
+      "unit": "deci-percent",
+      "description": "State of Charge (scaled: divide by 10 for percentage)",
+      "notes": "State of Charge (SOC)"
+    },
+    {
+      "category": "State Parameters",
+      "objectName": "panasonicSOCReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.79.0",
+      "access": "Read Only",
+      "unit": "%",
+      "description": "State of Charge in % (real float value)",
+      "notes": "Real float SOC percentage"
+    },
+    {
+      "category": "State Parameters",
+      "objectName": "panasonicSOH",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.80.0",
+      "access": "Read Only",
+      "unit": "deci-percent",
+      "description": "State of Health (scaled: divide by 10 for percentage)",
+      "notes": "State of Health (SOH)"
+    },
+    {
+      "category": "State Parameters",
+      "objectName": "panasonicSOHReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.81.0",
+      "access": "Read Only",
+      "unit": "%",
+      "description": "State of Health in % (real float value)",
+      "notes": "Real float SOH percentage"
+    },
+    {
+      "category": "State Parameters",
+      "objectName": "panasonicCycleCount",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.82.0",
+      "access": "Read Only",
+      "unit": "Cycles",
+      "description": "Battery charge/discharge cycle count",
+      "notes": "Number of charge/discharge cycles"
+    }
+  ],
+  "voltageData": [
+    {
+      "category": "Voltage Parameters",
+      "objectName": "panasonicPackVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.83.0",
+      "access": "Read Only",
+      "unit": "centi-volts",
+      "description": "Battery pack voltage (scaled: divide by 100 for volts)",
+      "notes": "Pack voltage"
+    },
+    {
+      "category": "Voltage Parameters",
+      "objectName": "panasonicPackVoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.84.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Battery pack voltage in volts (real float value)",
+      "notes": "Real float pack voltage"
+    },
+    {
+      "category": "Voltage Parameters",
+      "objectName": "panasonicMaxCellVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.85.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Maximum cell voltage (scaled: divide by 1000 for volts)",
+      "notes": "Maximum cell voltage"
+    },
+    {
+      "category": "Voltage Parameters",
+      "objectName": "panasonicMaxCellVoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.86.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Maximum cell voltage in volts (real float value)",
+      "notes": "Real float maximum cell voltage"
+    },
+    {
+      "category": "Voltage Parameters",
+      "objectName": "panasonicMinCellVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.87.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Minimum cell voltage (scaled: divide by 1000 for volts)",
+      "notes": "Minimum cell voltage"
+    },
+    {
+      "category": "Voltage Parameters",
+      "objectName": "panasonicMinCellVoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.88.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Minimum cell voltage in volts (real float value)",
+      "notes": "Real float minimum cell voltage"
+    }
+  ],
+  "currentData": [
+    {
+      "category": "Current Parameters",
+      "objectName": "panasonicCurrent",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.89.0",
+      "access": "Read Only",
+      "unit": "centi-amperes",
+      "description": "Pack current (scaled: divide by 100 for amperes, positive=charge, negative=discharge)",
+      "notes": "Pack current (positive = charging, negative = discharging)"
+    },
+    {
+      "category": "Current Parameters",
+      "objectName": "panasonicCurrentReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.90.0",
+      "access": "Read Only",
+      "unit": "A",
+      "description": "Pack current in amperes (real float value)",
+      "notes": "Real float pack current in amperes"
+    }
+  ],
+  "temperatureData": [
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicMaxCellTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.91.0",
+      "access": "Read Only",
+      "unit": "deci-celsius",
+      "description": "Maximum cell temperature (scaled: divide by 10 for Celsius)",
+      "notes": "Maximum cell temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicMaxCellTemperatureReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.92.0",
+      "access": "Read Only",
+      "unit": "°C",
+      "description": "Maximum cell temperature in Celsius (real float value)",
+      "notes": "Real float maximum cell temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicMinCellTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.93.0",
+      "access": "Read Only",
+      "unit": "deci-celsius",
+      "description": "Minimum cell temperature (scaled: divide by 10 for Celsius)",
+      "notes": "Minimum cell temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicMinCellTemperatureReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.94.0",
+      "access": "Read Only",
+      "unit": "°C",
+      "description": "Minimum cell temperature in Celsius (real float value)",
+      "notes": "Real float minimum cell temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicMaxFetTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.95.0",
+      "access": "Read Only",
+      "unit": "deci-celsius",
+      "description": "Maximum FET temperature (scaled: divide by 10 for Celsius)",
+      "notes": "Maximum FET temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicMaxFetTemperatureReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.96.0",
+      "access": "Read Only",
+      "unit": "°C",
+      "description": "Maximum FET temperature in Celsius (real float value)",
+      "notes": "Real float maximum FET temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicMaxPcbTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.97.0",
+      "access": "Read Only",
+      "unit": "deci-celsius",
+      "description": "Maximum PCB temperature (scaled: divide by 10 for Celsius)",
+      "notes": "Maximum PCB temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicMaxPcbTemperatureReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.98.0",
+      "access": "Read Only",
+      "unit": "°C",
+      "description": "Maximum PCB temperature in Celsius (real float value)",
+      "notes": "Real float maximum PCB temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicBatteryCellTemp0",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.99.0",
+      "access": "Read Only",
+      "unit": "deci-celsius",
+      "description": "Battery cell temperature sensor 0 (scaled: divide by 10 for Celsius)",
+      "notes": "Cell temperature sensor 0"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicBatteryCellTemp0Real",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.100.0",
+      "access": "Read Only",
+      "unit": "°C",
+      "description": "Battery cell temperature sensor 0 in Celsius (real float value)",
+      "notes": "Real float cell temperature sensor 0"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicBatteryCellTemp1",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.101.0",
+      "access": "Read Only",
+      "unit": "deci-celsius",
+      "description": "Battery cell temperature sensor 1 (scaled: divide by 10 for Celsius)",
+      "notes": "Cell temperature sensor 1"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicBatteryCellTemp1Real",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.102.0",
+      "access": "Read Only",
+      "unit": "°C",
+      "description": "Battery cell temperature sensor 1 in Celsius (real float value)",
+      "notes": "Real float cell temperature sensor 1"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicBatteryCellTemp2",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.103.0",
+      "access": "Read Only",
+      "unit": "deci-celsius",
+      "description": "Battery cell temperature sensor 2 (scaled: divide by 10 for Celsius)",
+      "notes": "Cell temperature sensor 2"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicBatteryCellTemp2Real",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.104.0",
+      "access": "Read Only",
+      "unit": "°C",
+      "description": "Battery cell temperature sensor 2 in Celsius (real float value)",
+      "notes": "Real float cell temperature sensor 2"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicFetTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.105.0",
+      "access": "Read Only",
+      "unit": "deci-celsius",
+      "description": "FET temperature (scaled: divide by 10 for Celsius)",
+      "notes": "FET temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicFetTemperatureReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.106.0",
+      "access": "Read Only",
+      "unit": "°C",
+      "description": "FET temperature in Celsius (real float value)",
+      "notes": "Real float FET temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicPcbTemperature",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.107.0",
+      "access": "Read Only",
+      "unit": "deci-celsius",
+      "description": "PCB temperature (scaled: divide by 10 for Celsius)",
+      "notes": "PCB temperature"
+    },
+    {
+      "category": "Temperature Summary",
+      "objectName": "panasonicPcbTemperatureReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.108.0",
+      "access": "Read Only",
+      "unit": "°C",
+      "description": "PCB temperature in Celsius (real float value)",
+      "notes": "Real float PCB temperature"
+    }
+  ],
+  "individualCells": [
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell1Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.109.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 1 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 1"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell1VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.110.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 1 voltage in volts (real float value)",
+      "notes": "Cell 1 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell2Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.111.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 2 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 2"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell2VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.112.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 2 voltage in volts (real float value)",
+      "notes": "Cell 2 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell3Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.113.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 3 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 3"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell3VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.114.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 3 voltage in volts (real float value)",
+      "notes": "Cell 3 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell4Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.115.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 4 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 4"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell4VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.116.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 4 voltage in volts (real float value)",
+      "notes": "Cell 4 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell5Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.117.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 5 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 5"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell5VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.118.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 5 voltage in volts (real float value)",
+      "notes": "Cell 5 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell6Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.119.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 6 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 6"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell6VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.120.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 6 voltage in volts (real float value)",
+      "notes": "Cell 6 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell7Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.121.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 7 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 7"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell7VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.122.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 7 voltage in volts (real float value)",
+      "notes": "Cell 7 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell8Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.123.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 8 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 8"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell8VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.124.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 8 voltage in volts (real float value)",
+      "notes": "Cell 8 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell9Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.125.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 9 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 9"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell9VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.126.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 9 voltage in volts (real float value)",
+      "notes": "Cell 9 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell10Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.127.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 10 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 10"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell10VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.128.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 10 voltage in volts (real float value)",
+      "notes": "Cell 10 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell11Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.129.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 11 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 11"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell11VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.130.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 11 voltage in volts (real float value)",
+      "notes": "Cell 11 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell12Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.131.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 12 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 12"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell12VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.132.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 12 voltage in volts (real float value)",
+      "notes": "Cell 12 voltage - real value"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell13Voltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.133.0",
+      "access": "Read Only",
+      "unit": "milli-volts",
+      "description": "Cell 13 voltage (scaled: divide by 1000 for volts)",
+      "notes": "Individual cell voltage - Cell 13"
+    },
+    {
+      "category": "Individual Cell Voltages",
+      "objectName": "panasonicCell13VoltageReal",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.134.0",
+      "access": "Read Only",
+      "unit": "V",
+      "description": "Cell 13 voltage in volts (real float value)",
+      "notes": "Cell 13 voltage - real value"
+    }
+  ],
+  "statusFlags": [
+    {
+      "category": "Status Flags - Individual",
+      "objectName": "panasonicStatusCharging",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.7.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Status flag: Charging active (0=inactive, 1=active)",
+      "notes": "Individual status flag - Charging active"
+    },
+    {
+      "category": "Status Flags - Individual",
+      "objectName": "panasonicStatusIdFixed",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.8.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Status flag: ID fixed (0=not fixed, 1=fixed)",
+      "notes": "Individual status flag - ID fixed"
+    },
+    {
+      "category": "Status Flags - Individual",
+      "objectName": "panasonicStatusBatteryInstalled",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.9.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Status flag: Battery installed (0=not installed, 1=installed)",
+      "notes": "Individual status flag - Battery installed"
+    },
+    {
+      "category": "Status Flags - Individual",
+      "objectName": "panasonicStatusFullyCharged",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.10.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Status flag: Fully charged (0=not full, 1=full)",
+      "notes": "Individual status flag - Fully charged"
+    },
+    {
+      "category": "Status Flags - Individual",
+      "objectName": "panasonicStatusFullyDischarged",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.11.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Status flag: Fully discharged (0=not empty, 1=empty)",
+      "notes": "Individual status flag - Fully discharged"
+    },
+    {
+      "category": "Status Flags - Individual",
+      "objectName": "panasonicStatusChargeWarning",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.12.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Status flag: Charge warning (0=inactive, 1=active)",
+      "notes": "Individual status flag - Charge warning"
+    },
+    {
+      "category": "Status Flags - Individual",
+      "objectName": "panasonicStatusDischargeWarning",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.13.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Status flag: Discharge warning (0=inactive, 1=active)",
+      "notes": "Individual status flag - Discharge warning"
+    },
+    {
+      "category": "Status Flags - Individual",
+      "objectName": "panasonicStatusTerminateChargeAlarm",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.14.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Status flag: Terminate charge alarm (0=inactive, 1=active)",
+      "notes": "Individual status flag - Terminate charge alarm"
+    },
+    {
+      "category": "Status Flags - Individual",
+      "objectName": "panasonicStatusTerminateDischargeAlarm",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.15.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Status flag: Terminate discharge alarm (0=inactive, 1=active)",
+      "notes": "Individual status flag - Terminate discharge alarm"
+    },
+    {
+      "category": "Status Flags - Individual",
+      "objectName": "panasonicStatusPermanentFailure",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.16.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Status flag: Permanent failure detected (0=OK, 1=failure)",
+      "notes": "Individual status flag - Permanent failure"
+    }
+  ],
+  "warningFlags": [
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningOverCellVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.17.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: Cell overvoltage (0=OK, 1=warning)",
+      "notes": "Individual warning flag - Cell overvoltage"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningRemainingCapacityAlarm",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.18.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: Remaining capacity alarm (0=OK, 1=warning)",
+      "notes": "Individual warning flag - Remaining capacity"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningUnderVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.19.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: Undervoltage (0=OK, 1=warning)",
+      "notes": "Individual warning flag - Undervoltage"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningCellImbalance",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.20.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: Cell imbalance (0=OK, 1=warning)",
+      "notes": "Individual warning flag - Cell imbalance"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningOverChargeCurrent",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.21.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: Overcharge current (0=OK, 1=warning)",
+      "notes": "Individual warning flag - Overcharge current"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningOverDischargeCurrent",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.22.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: Overdischarge current (0=OK, 1=warning)",
+      "notes": "Individual warning flag - Overdischarge current"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningOverCellTempCharge",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.23.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: Cell overtemperature during charge (0=OK, 1=warning)",
+      "notes": "Individual warning flag - Over temperature charge"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningUnderCellTempCharge",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.24.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: Cell undertemperature during charge (0=OK, 1=warning)",
+      "notes": "Individual warning flag - Under temperature charge"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningOverCellTempDischarge",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.25.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: Cell overtemperature during discharge (0=OK, 1=warning)",
+      "notes": "Individual warning flag - Over temperature discharge"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningUnderCellTempDischarge",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.26.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: Cell undertemperature during discharge (0=OK, 1=warning)",
+      "notes": "Individual warning flag - Under temperature discharge"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningFetOverheat",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.27.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: FET overheat (0=OK, 1=warning)",
+      "notes": "Individual warning flag - FET overheat"
+    },
+    {
+      "category": "Warning Flags - Individual",
+      "objectName": "panasonicWarningPcbOverheat",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.28.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Warning: PCB overheat (0=OK, 1=warning)",
+      "notes": "Individual warning flag - PCB overheat"
+    }
+  ],
+  "alarmFlags": [
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmOverCellVoltageProtection",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.29.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Cell overvoltage protection active (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Cell overvoltage protection"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmOverTotalVoltageProtection",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.30.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Total overvoltage protection active (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Total overvoltage protection"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmUnderVoltageProtection",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.31.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Undervoltage protection active (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Undervoltage protection"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmDischargeCutoffProtection",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.32.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Discharge cutoff protection active (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Discharge cutoff protection"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmOverChargeCurrentSw",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.33.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Overcharge current SW protection (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Overcharge current SW"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmOverDischargeCurrentSw",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.34.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Overdischarge current SW protection (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Overdischarge current SW"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmOverDischargeCurrentHw",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.35.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Overdischarge current HW protection (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Overdischarge current HW"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmOverCellTempCharge",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.36.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Cell overtemp protection during charge (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Over temp charge"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmUnderCellTempCharge",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.37.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Cell undertemp protection during charge (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Under temp charge"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmOverCellTempDischarge",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.38.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Cell overtemp protection during discharge (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Over temp discharge"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmUnderCellTempDischarge",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.39.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: Cell undertemp protection during discharge (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - Under temp discharge"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmFetOverheatProtection",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.40.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: FET overheat protection active (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - FET overheat protection"
+    },
+    {
+      "category": "Alarm Flags - Individual",
+      "objectName": "panasonicAlarmPcbOverheatProtection",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.41.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Alarm: PCB overheat protection active (0=OK, 1=alarm)",
+      "notes": "Individual alarm flag - PCB overheat protection"
+    }
+  ],
+  "errorFlags": [
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorOverVoltageSw",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.42.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: Software overvoltage error (0=OK, 1=error)",
+      "notes": "Individual error flag - Software overvoltage"
+    },
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorOverVoltageHw",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.43.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: Hardware overvoltage error (0=OK, 1=error)",
+      "notes": "Individual error flag - Hardware overvoltage"
+    },
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorLowVoltage",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.44.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: Low voltage error (0=OK, 1=error)",
+      "notes": "Individual error flag - Low voltage"
+    },
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorCellImbalance",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.45.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: Cell imbalance error (0=OK, 1=error)",
+      "notes": "Individual error flag - Cell imbalance"
+    },
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorChargeFet",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.46.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: Charge FET error (0=OK, 1=error)",
+      "notes": "Individual error flag - Charge FET error"
+    },
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorDischargeFet",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.47.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: Discharge FET error (0=OK, 1=error)",
+      "notes": "Individual error flag - Discharge FET error"
+    },
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorCurrentFuse",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.48.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: Current fuse error (0=OK, 1=error)",
+      "notes": "Individual error flag - Current fuse error"
+    },
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorScp",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.49.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: Short circuit protection triggered (0=OK, 1=error)",
+      "notes": "Individual error flag - Short circuit protection"
+    },
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorCellOverheat",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.50.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: Cell overheat error (0=OK, 1=error)",
+      "notes": "Individual error flag - Cell overheat"
+    },
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorThermistor",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.51.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: Thermistor error (0=OK, 1=error)",
+      "notes": "Individual error flag - Thermistor error"
+    },
+    {
+      "category": "Error Flags - Individual",
+      "objectName": "panasonicErrorAfeCommunication",
+      "oid": "1.3.6.1.4.1.10000.11.12.1.52.0",
+      "access": "Read Only",
+      "unit": "Flag",
+      "description": "Error: AFE communication error (0=OK, 1=error)",
+      "notes": "Individual error flag - AFE communication"
+    }
+  ]
+}

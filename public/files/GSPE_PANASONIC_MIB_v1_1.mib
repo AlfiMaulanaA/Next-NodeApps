@@ -1,0 +1,1352 @@
+PANASONIC-BATTERY-DCB105ZK-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE, NOTIFICATION-TYPE,
+    Integer32, Unsigned32, Counter32, Gauge32, TimeTicks
+        FROM SNMPv2-SMI
+    DisplayString, TruthValue
+        FROM SNMPv2-TC
+    MODULE-COMPLIANCE, OBJECT-GROUP, NOTIFICATION-GROUP
+        FROM SNMPv2-CONF;
+
+PT-GSPE MODULE-IDENTITY
+    LAST-UPDATED "202510010000Z"
+    ORGANIZATION "BMS Battery Management System"
+    CONTACT-INFO
+        "Contact: BMS Support Team
+         Email: support@bms.local
+         Description: Panasonic DCB105ZK Battery Management System SNMP MIB"
+    DESCRIPTION
+        "This MIB module defines objects for monitoring and managing
+         Panasonic DCB105ZK lithium-ion battery packs through MODBUS RTU
+         protocol via SNMP interface. Supports 13S configuration with
+         comprehensive BMS protection monitoring.
+
+         Version 2.1 - Multi-equipment support with dynamic OID structure
+         - Structure: 12.<equipment_id>.<parameter_id>
+         - Equipment 1: Battery Charger
+         - Equipment 2: Panasonic DCB105ZK Battery (139 parameters)
+         - All status, warning, alarm, and error flags as individual OIDs
+         - Dual value format: scaled integers + real floating point
+         - Operation mode strings and text descriptions
+         - Enhanced trap definitions for individual flag monitoring"
+    REVISION "202510010000Z"
+    DESCRIPTION "Version 2.1 - Multi-equipment OID structure"
+    REVISION "202509290000Z"
+    DESCRIPTION "Initial version for Panasonic DCB105ZK battery system"
+    ::= { enterprises 10000 }
+
+-- Enterprise and organizational structure
+PanasonicBattery   OBJECT IDENTIFIER ::= { PT-GSPE 12 }
+Config             OBJECT IDENTIFIER ::= { PanasonicBattery 5 }
+Equipment          OBJECT IDENTIFIER ::= { PanasonicBattery 12 }
+ThresholdTraps     OBJECT IDENTIFIER ::= { PanasonicBattery 13 }
+BitmaskTraps       OBJECT IDENTIFIER ::= { PanasonicBattery 14 }
+HealthTraps        OBJECT IDENTIFIER ::= { PanasonicBattery 15 }
+ErrorTraps         OBJECT IDENTIFIER ::= { PanasonicBattery 16 }
+AlarmTraps         OBJECT IDENTIFIER ::= { PanasonicBattery 17 }
+WarningTraps       OBJECT IDENTIFIER ::= { PanasonicBattery 18 }
+StatusTraps        OBJECT IDENTIFIER ::= { PanasonicBattery 19 }
+
+-- ========================================
+-- Configuration Objects (5.x.0)
+-- ========================================
+ConfigGroup  OBJECT IDENTIFIER ::= { Config 1 }
+
+snmpIPAddress OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(7..15))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP agent IP address configuration"
+    ::= { Config 10 }
+
+snmpNetmask OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(7..15))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP agent network mask"
+    ::= { Config 20 }
+
+snmpGateway OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(7..15))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP agent gateway address"
+    ::= { Config 30 }
+
+snmpVersion OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..3))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP protocol version (1, 2c, 3)"
+    ::= { Config 40 }
+
+snmpCommunity OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP community string"
+    ::= { Config 50 }
+
+snmpPort OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..5))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMP agent listening port"
+    ::= { Config 60 }
+
+systemOID OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "System object identifier"
+    ::= { Config 70 }
+
+snmpSecurityName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMPv3 authentication type (MD5, SHA, SHA256)"
+    ::= { Config 80 }
+
+snmpAuthKey OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(8..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMPv3 authentication key/password"
+    ::= { Config 90 }
+
+snmpPrivKey OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMPv3 privacy/encryption type (DES, AES128, AES256)"
+    ::= { Config 100 }
+
+snmpSecurityLevel OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(8..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "SNMPv3 privacy/encryption key"
+    ::= { Config 110 }
+
+deviceName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "Device name identifier"
+    ::= { Config 120 }
+
+siteName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..64))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION "Installation site name"
+    ::= { Config 130 }
+
+-- ========================================
+-- Equipment Objects - Multi-Equipment Support
+-- Structure: 12.<equipment_id>.<parameter_id>
+-- ========================================
+
+-- Equipment 2: Panasonic DCB105ZK Battery (12.2.x)
+batteryPanasonic  OBJECT IDENTIFIER ::= { Equipment 1 }
+
+-- ========================================
+-- Panasonic DCB105ZK Battery Parameters
+-- OID Structure: .1.3.6.1.4.1.10000.11.12.1.X
+-- ========================================
+
+-- ========== Bitmask Registers (12.2.1-4) ==========
+panasonicStatus OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "BMS Status bitmask - 16-bit operational state register"
+    ::= { batteryPanasonic 1 }
+
+panasonicWarning OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "BMS Warning bitmask - 16-bit non-critical alert register"
+    ::= { batteryPanasonic 2 }
+
+panasonicAlarm OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "BMS Alarm bitmask - 16-bit critical protection register"
+    ::= { batteryPanasonic 3 }
+
+panasonicError OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "BMS Error bitmask - 16-bit system malfunction register"
+    ::= { batteryPanasonic 4 }
+
+-- ========== Operation Modes (12.2.5-6) ==========
+panasonicChargeOperationMode OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Charge operation mode: PROTECTION, DISABLE, ENABLE"
+    ::= { batteryPanasonic 5 }
+
+panasonicDischargeOperationMode OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Discharge operation mode: PROTECTION, DISABLE, ENABLE"
+    ::= { batteryPanasonic 6 }
+
+-- ========== Status Flags - Individual (12.2.7-16) ==========
+panasonicStatusCharging OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status flag: Charging active (0=inactive, 1=active)"
+    ::= { batteryPanasonic 7 }
+
+panasonicStatusIdFixed OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status flag: ID fixed (0=not fixed, 1=fixed)"
+    ::= { batteryPanasonic 8 }
+
+panasonicStatusBatteryInstalled OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status flag: Battery installed (0=not installed, 1=installed)"
+    ::= { batteryPanasonic 9 }
+
+panasonicStatusFullyCharged OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status flag: Fully charged (0=not full, 1=full)"
+    ::= { batteryPanasonic 10 }
+
+panasonicStatusFullyDischarged OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status flag: Fully discharged (0=not empty, 1=empty)"
+    ::= { batteryPanasonic 11 }
+
+panasonicStatusChargeWarning OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status flag: Charge warning (0=inactive, 1=active)"
+    ::= { batteryPanasonic 12 }
+
+panasonicStatusDischargeWarning OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status flag: Discharge warning (0=inactive, 1=active)"
+    ::= { batteryPanasonic 13 }
+
+panasonicStatusTerminateChargeAlarm OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status flag: Terminate charge alarm (0=inactive, 1=active)"
+    ::= { batteryPanasonic 14 }
+
+panasonicStatusTerminateDischargeAlarm OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status flag: Terminate discharge alarm (0=inactive, 1=active)"
+    ::= { batteryPanasonic 15 }
+
+panasonicStatusPermanentFailure OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status flag: Permanent failure detected (0=OK, 1=failure)"
+    ::= { batteryPanasonic 16 }
+
+-- ========== Warning Flags - Individual (12.2.17-28) ==========
+panasonicWarningOverCellVoltage OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: Cell overvoltage (0=OK, 1=warning)"
+    ::= { batteryPanasonic 17 }
+
+panasonicWarningRemainingCapacityAlarm OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: Remaining capacity alarm (0=OK, 1=warning)"
+    ::= { batteryPanasonic 18 }
+
+panasonicWarningUnderVoltage OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: Undervoltage (0=OK, 1=warning)"
+    ::= { batteryPanasonic 19 }
+
+panasonicWarningCellImbalance OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: Cell imbalance (0=OK, 1=warning)"
+    ::= { batteryPanasonic 20 }
+
+panasonicWarningOverChargeCurrent OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: Overcharge current (0=OK, 1=warning)"
+    ::= { batteryPanasonic 21 }
+
+panasonicWarningOverDischargeCurrent OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: Overdischarge current (0=OK, 1=warning)"
+    ::= { batteryPanasonic 22 }
+
+panasonicWarningOverCellTempCharge OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: Cell overtemperature during charge (0=OK, 1=warning)"
+    ::= { batteryPanasonic 23 }
+
+panasonicWarningUnderCellTempCharge OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: Cell undertemperature during charge (0=OK, 1=warning)"
+    ::= { batteryPanasonic 24 }
+
+panasonicWarningOverCellTempDischarge OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: Cell overtemperature during discharge (0=OK, 1=warning)"
+    ::= { batteryPanasonic 25 }
+
+panasonicWarningUnderCellTempDischarge OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: Cell undertemperature during discharge (0=OK, 1=warning)"
+    ::= { batteryPanasonic 26 }
+
+panasonicWarningFetOverheat OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: FET overheat (0=OK, 1=warning)"
+    ::= { batteryPanasonic 27 }
+
+panasonicWarningPcbOverheat OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning: PCB overheat (0=OK, 1=warning)"
+    ::= { batteryPanasonic 28 }
+
+-- ========== Alarm Flags - Individual (12.2.29-41) ==========
+panasonicAlarmOverCellVoltageProtection OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Cell overvoltage protection active (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 29 }
+
+panasonicAlarmOverTotalVoltageProtection OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Total overvoltage protection active (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 30 }
+
+panasonicAlarmUnderVoltageProtection OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Undervoltage protection active (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 31 }
+
+panasonicAlarmDischargeCutoffProtection OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Discharge cutoff protection active (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 32 }
+
+panasonicAlarmOverChargeCurrentSw OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Overcharge current SW protection (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 33 }
+
+panasonicAlarmOverDischargeCurrentSw OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Overdischarge current SW protection (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 34 }
+
+panasonicAlarmOverDischargeCurrentHw OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Overdischarge current HW protection (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 35 }
+
+panasonicAlarmOverCellTempCharge OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Cell overtemp protection during charge (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 36 }
+
+panasonicAlarmUnderCellTempCharge OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Cell undertemp protection during charge (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 37 }
+
+panasonicAlarmOverCellTempDischarge OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Cell overtemp protection during discharge (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 38 }
+
+panasonicAlarmUnderCellTempDischarge OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: Cell undertemp protection during discharge (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 39 }
+
+panasonicAlarmFetOverheatProtection OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: FET overheat protection active (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 40 }
+
+panasonicAlarmPcbOverheatProtection OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm: PCB overheat protection active (0=OK, 1=alarm)"
+    ::= { batteryPanasonic 41 }
+
+-- ========== Error Flags - Individual (12.2.42-56) ==========
+panasonicErrorOverVoltageSw OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Software overvoltage error (0=OK, 1=error)"
+    ::= { batteryPanasonic 42 }
+
+panasonicErrorOverVoltageHw OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Hardware overvoltage error (0=OK, 1=error)"
+    ::= { batteryPanasonic 43 }
+
+panasonicErrorLowVoltage OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Low voltage error (0=OK, 1=error)"
+    ::= { batteryPanasonic 44 }
+
+panasonicErrorCellImbalance OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Cell imbalance error (0=OK, 1=error)"
+    ::= { batteryPanasonic 45 }
+
+panasonicErrorChargeFet OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Charge FET error (0=OK, 1=error)"
+    ::= { batteryPanasonic 46 }
+
+panasonicErrorDischargeFet OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Discharge FET error (0=OK, 1=error)"
+    ::= { batteryPanasonic 47 }
+
+panasonicErrorCurrentFuse OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Current fuse error (0=OK, 1=error)"
+    ::= { batteryPanasonic 48 }
+
+panasonicErrorScp OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Short circuit protection triggered (0=OK, 1=error)"
+    ::= { batteryPanasonic 49 }
+
+panasonicErrorCellOverheat OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Cell overheat error (0=OK, 1=error)"
+    ::= { batteryPanasonic 50 }
+
+panasonicErrorThermistor OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Thermistor error (0=OK, 1=error)"
+    ::= { batteryPanasonic 51 }
+
+panasonicErrorAfeCommunication OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: AFE communication error (0=OK, 1=error)"
+    ::= { batteryPanasonic 52 }
+
+panasonicErrorCalibrationData OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Calibration data error (0=OK, 1=error)"
+    ::= { batteryPanasonic 53 }
+
+panasonicErrorFirmwareChecksum OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Firmware checksum error (0=OK, 1=error)"
+    ::= { batteryPanasonic 54 }
+
+panasonicErrorPcbSystem OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: PCB system error (0=OK, 1=error)"
+    ::= { batteryPanasonic 55 }
+
+panasonicErrorCellPermanentFailure OBJECT-TYPE
+    SYNTAX      Integer32 (0..1)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error: Cell permanent failure (0=OK, 1=error)"
+    ::= { batteryPanasonic 56 }
+
+-- ========== Text Descriptions (12.2.57-60) ==========
+panasonicStatusText OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..255))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Status register text description"
+    ::= { batteryPanasonic 57 }
+
+panasonicWarningText OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..255))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Warning register text description"
+    ::= { batteryPanasonic 58 }
+
+panasonicAlarmText OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..255))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Alarm register text description"
+    ::= { batteryPanasonic 59 }
+
+panasonicErrorText OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..255))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Error register text description"
+    ::= { batteryPanasonic 60 }
+
+-- ========== Firmware & Config (12.2.61-63) ==========
+panasonicFwUpdateStatus OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Firmware update status"
+    ::= { batteryPanasonic 61 }
+
+panasonicProgramVersion OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "BMS firmware program version"
+    ::= { batteryPanasonic 62 }
+
+panasonicDataVersion OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "BMS data structure version"
+    ::= { batteryPanasonic 63 }
+
+-- ========== Charging Parameters - Scaled (12.2.64-71) ==========
+panasonicChargingVoltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Charging voltage setpoint (scaled: divide by 100 for volts)"
+    ::= { batteryPanasonic 64 }
+
+panasonicChargingVoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Charging voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 65 }
+
+panasonicChargingCurrent OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-amperes"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Charging current limit (scaled: divide by 100 for amperes)"
+    ::= { batteryPanasonic 66 }
+
+panasonicChargingCurrentReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Charging current in amperes (real float value as string)"
+    ::= { batteryPanasonic 67 }
+
+panasonicDischargeCurrentLimit OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-amperes"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Discharge current limit (scaled: divide by 100 for amperes)"
+    ::= { batteryPanasonic 68 }
+
+panasonicDischargeCurrentLimitReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Discharge current limit in amperes (real float value as string)"
+    ::= { batteryPanasonic 69 }
+
+panasonicEndOfDischargeVoltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "End of discharge voltage cutoff (scaled: divide by 100 for volts)"
+    ::= { batteryPanasonic 70 }
+
+panasonicEndOfDischargeVoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "End of discharge voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 71 }
+
+-- ========== Capacity - Scaled (12.2.72-77) ==========
+panasonicDesignCapacity OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-ampere-hours"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Design capacity DC (scaled: divide by 1000 for Ah)"
+    ::= { batteryPanasonic 72 }
+
+panasonicDesignCapacityReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Design capacity in Ah (real float value as string)"
+    ::= { batteryPanasonic 73 }
+
+panasonicFullChargeCapacity OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-ampere-hours"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Full charge capacity FCC (scaled: divide by 1000 for Ah)"
+    ::= { batteryPanasonic 74 }
+
+panasonicFullChargeCapacityReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Full charge capacity in Ah (real float value as string)"
+    ::= { batteryPanasonic 75 }
+
+panasonicRemainingCapacity OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-ampere-hours"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Remaining capacity RC (scaled: divide by 1000 for Ah)"
+    ::= { batteryPanasonic 76 }
+
+panasonicRemainingCapacityReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Remaining capacity in Ah (real float value as string)"
+    ::= { batteryPanasonic 77 }
+
+-- ========== SOC/SOH - Scaled (12.2.78-81) ==========
+panasonicSOC OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-percent"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "State of Charge (scaled: divide by 10 for percentage)"
+    ::= { batteryPanasonic 78 }
+
+panasonicSOCReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "State of Charge in % (real float value as string)"
+    ::= { batteryPanasonic 79 }
+
+panasonicSOH OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-percent"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "State of Health (scaled: divide by 10 for percentage)"
+    ::= { batteryPanasonic 80 }
+
+panasonicSOHReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "State of Health in % (real float value as string)"
+    ::= { batteryPanasonic 81 }
+
+-- ========== Cycle Count (12.2.82) ==========
+panasonicCycleCount OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery charge/discharge cycle count"
+    ::= { batteryPanasonic 82 }
+
+-- ========== Voltage - Scaled (12.2.83-88) ==========
+panasonicPackVoltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery pack voltage (scaled: divide by 100 for volts)"
+    ::= { batteryPanasonic 83 }
+
+panasonicPackVoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery pack voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 84 }
+
+panasonicMaxCellVoltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Maximum cell voltage(scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 85 }
+
+panasonicMaxCellVoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Maximum cell voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 86 }
+
+panasonicMinCellVoltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Minimum cell voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 87 }
+
+panasonicMinCellVoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Minimum cell voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 88 }
+
+-- ========== Current - Scaled (12.2.89-90) ==========
+panasonicCurrent OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "centi-amperes"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Pack current (scaled: divide by 100 for amperes, positive=charge, negative=discharge)"
+    ::= { batteryPanasonic 89 }
+
+panasonicCurrentReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Pack current in amperes (real float value as string)"
+    ::= { batteryPanasonic 90 }
+
+-- ========== Temperature Summary - Scaled (12.2.91-108) ==========
+panasonicMaxCellTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Maximum cell temperature (scaled: divide by 10 for Celsius)"
+    ::= { batteryPanasonic 91 }
+
+panasonicMaxCellTemperatureReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Maximum cell temperature in Celsius (real float value as string)"
+    ::= { batteryPanasonic 92 }
+
+panasonicMinCellTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Minimum cell temperature (scaled: divide by 10 for Celsius)"
+    ::= { batteryPanasonic 93 }
+
+panasonicMinCellTemperatureReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Minimum cell temperature in Celsius (real float value as string)"
+    ::= { batteryPanasonic 94 }
+
+panasonicMaxFetTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Maximum FET temperature (scaled: divide by 10 for Celsius)"
+    ::= { batteryPanasonic 95 }
+
+panasonicMaxFetTemperatureReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Maximum FET temperature in Celsius (real float value as string)"
+    ::= { batteryPanasonic 96 }
+
+panasonicMaxPcbTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Maximum PCB temperature (scaled: divide by 10 for Celsius)"
+    ::= { batteryPanasonic 97 }
+
+panasonicMaxPcbTemperatureReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Maximum PCB temperature in Celsius (real float value as string)"
+    ::= { batteryPanasonic 98 }
+
+panasonicBatteryCellTemp0 OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery cell temperature sensor 0 (scaled: divide by 10 for Celsius)"
+    ::= { batteryPanasonic 99 }
+
+panasonicBatteryCellTemp0Real OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery cell temperature sensor 0 in Celsius (real float value as string)"
+    ::= { batteryPanasonic 100 }
+
+panasonicBatteryCellTemp1 OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery cell temperature sensor 1 (scaled: divide by 10 for Celsius)"
+    ::= { batteryPanasonic 101 }
+
+panasonicBatteryCellTemp1Real OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery cell temperature sensor 1 in Celsius (real float value as string)"
+    ::= { batteryPanasonic 102 }
+
+panasonicBatteryCellTemp2 OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery cell temperature sensor 2 (scaled: divide by 10 for Celsius)"
+    ::= { batteryPanasonic 103 }
+
+panasonicBatteryCellTemp2Real OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery cell temperature sensor 2 in Celsius (real float value as string)"
+    ::= { batteryPanasonic 104 }
+
+panasonicFetTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "FET temperature (scaled: divide by 10 for Celsius)"
+    ::= { batteryPanasonic 105 }
+
+panasonicFetTemperatureReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "FET temperature in Celsius (real float value as string)"
+    ::= { batteryPanasonic 106 }
+
+panasonicPcbTemperature OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "deci-celsius"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "PCB temperature (scaled: divide by 10 for Celsius)"
+    ::= { batteryPanasonic 107 }
+
+panasonicPcbTemperatureReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "PCB temperature in Celsius (real float value as string)"
+    ::= { batteryPanasonic 108 }
+
+-- ========== Individual Cell Voltages 13S - Scaled (12.2.109-134) ==========
+panasonicCell1Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 1 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 109 }
+
+panasonicCell1VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 1 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 110 }
+
+panasonicCell2Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 2 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 111 }
+
+panasonicCell2VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 2 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 112 }
+
+panasonicCell3Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 3 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 113 }
+
+panasonicCell3VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 3 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 114 }
+
+panasonicCell4Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 4 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 115 }
+
+panasonicCell4VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 4 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 116 }
+
+panasonicCell5Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 5 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 117 }
+
+panasonicCell5VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 5 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 118 }
+
+panasonicCell6Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 6 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 119 }
+
+panasonicCell6VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 6 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 120 }
+
+panasonicCell7Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 7 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 121 }
+
+panasonicCell7VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 7 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 122 }
+
+panasonicCell8Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 8 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 123 }
+
+panasonicCell8VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 8 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 124 }
+
+panasonicCell9Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 9 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 125 }
+
+panasonicCell9VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 9 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 126 }
+
+panasonicCell10Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 10 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 127 }
+
+panasonicCell10VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 10 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 128 }
+
+panasonicCell11Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 11 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 129 }
+
+panasonicCell11VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 11 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 130 }
+
+panasonicCell12Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 12 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 131 }
+
+panasonicCell12VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 12 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 132 }
+
+panasonicCell13Voltage OBJECT-TYPE
+    SYNTAX      Integer32
+    UNITS       "milli-volts"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 13 voltage (scaled: divide by 1000 for volts)"
+    ::= { batteryPanasonic 133 }
+
+panasonicCell13VoltageReal OBJECT-TYPE
+    SYNTAX      DisplayString
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Cell 13 voltage in volts (real float value as string)"
+    ::= { batteryPanasonic 134 }
+
+-- ========== Device Information (12.2.135-139) ==========
+panasonicManufactureName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery manufacturer name"
+    ::= { batteryPanasonic 135 }
+
+panasonicDeviceName OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery device model name"
+    ::= { batteryPanasonic 136 }
+
+panasonicManufactureDate OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Manufacture date code"
+    ::= { batteryPanasonic 137 }
+
+panasonicSerialNumber OBJECT-TYPE
+    SYNTAX      Integer32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery serial number"
+    ::= { batteryPanasonic 138 }
+
+panasonicBarcode OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(1..32))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "Battery barcode identifier"
+    ::= { batteryPanasonic 139 }
+
+-- ========================================
+-- Trap Definitions
+-- ========================================
+
+-- ========== Threshold Alarms (13.x.0) ==========
+batteryLowVoltage NOTIFICATION-TYPE
+    OBJECTS { panasonicPackVoltage, panasonicSOC, panasonicPackVoltageReal, panasonicSOCReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery pack voltage below threshold alarm"
+    ::= { ThresholdTraps 1 }
+
+batteryHighVoltage NOTIFICATION-TYPE
+    OBJECTS { panasonicPackVoltage, panasonicSOC, panasonicPackVoltageReal, panasonicSOCReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery pack voltage above threshold alarm"
+    ::= { ThresholdTraps 2 }
+
+batteryLowSOC NOTIFICATION-TYPE
+    OBJECTS { panasonicSOC, panasonicPackVoltage, panasonicSOCReal, panasonicPackVoltageReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery State of Charge below threshold alarm"
+    ::= { ThresholdTraps 3 }
+
+batteryHighTemp NOTIFICATION-TYPE
+    OBJECTS { panasonicMaxCellTemperature, panasonicMaxCellTemperatureReal, panasonicPackVoltage, panasonicSOC, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery temperature above threshold alarm"
+    ::= { ThresholdTraps 4 }
+
+batteryLowTemp NOTIFICATION-TYPE
+    OBJECTS { panasonicMinCellTemperature, panasonicMinCellTemperatureReal, panasonicPackVoltage, panasonicSOC, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery temperature below threshold alarm"
+    ::= { ThresholdTraps 5 }
+
+-- ========== BMS Bitmask Alarms (14.x.0) ==========
+batteryStatusFlagActive NOTIFICATION-TYPE
+    OBJECTS { panasonicStatus, panasonicStatusText, panasonicPackVoltage, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS Status register has active flags"
+    ::= { BitmaskTraps 1 }
+
+batteryWarningFlagActive NOTIFICATION-TYPE
+    OBJECTS { panasonicWarning, panasonicWarningText, panasonicPackVoltage, panasonicSOC, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS Warning register has active flags"
+    ::= { BitmaskTraps 2 }
+
+batteryAlarmFlagActive NOTIFICATION-TYPE
+    OBJECTS { panasonicAlarm, panasonicAlarmText, panasonicPackVoltage, panasonicCurrent, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS Alarm register has active flags - Critical protection"
+    ::= { BitmaskTraps 3 }
+
+batteryErrorFlagActive NOTIFICATION-TYPE
+    OBJECTS { panasonicError, panasonicErrorText, panasonicPackVoltage, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "BMS Error register has active flags - System malfunction"
+    ::= { BitmaskTraps 4 }
+
+-- ========== Health Status Alarms (15.x.0) ==========
+batteryCellImbalance NOTIFICATION-TYPE
+    OBJECTS { panasonicMaxCellVoltage, panasonicMinCellVoltage, panasonicMaxCellVoltageReal, panasonicMinCellVoltageReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Cell voltage imbalance detected (>100mV)"
+    ::= { HealthTraps 1 }
+
+batteryDegradation NOTIFICATION-TYPE
+    OBJECTS { panasonicSOH, panasonicSOHReal, panasonicCycleCount, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery degradation detected (SOH < 80%)"
+    ::= { HealthTraps 2 }
+
+-- ========== Critical Error Traps (16.x.0) ==========
+errorOverVoltageHw NOTIFICATION-TYPE
+    OBJECTS { panasonicErrorOverVoltageHw, panasonicPackVoltage, panasonicPackVoltageReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Hardware overvoltage error detected"
+    ::= { ErrorTraps 2 }
+
+errorChargeFet NOTIFICATION-TYPE
+    OBJECTS { panasonicErrorChargeFet, panasonicPackVoltage, panasonicCurrent, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Charge FET error detected"
+    ::= { ErrorTraps 5 }
+
+errorDischargeFet NOTIFICATION-TYPE
+    OBJECTS { panasonicErrorDischargeFet, panasonicPackVoltage, panasonicCurrent, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Discharge FET error detected"
+    ::= { ErrorTraps 6 }
+
+errorScp NOTIFICATION-TYPE
+    OBJECTS { panasonicErrorScp, panasonicPackVoltage, panasonicCurrent, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Short circuit protection triggered"
+    ::= { ErrorTraps 8 }
+
+errorCellPermanentFailure NOTIFICATION-TYPE
+    OBJECTS { panasonicErrorCellPermanentFailure, panasonicPackVoltage, panasonicSOH, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Permanent cell failure detected"
+    ::= { ErrorTraps 15 }
+
+-- ========== Critical Alarm Traps (17.x.0) ==========
+alarmOverCellVoltageProtection NOTIFICATION-TYPE
+    OBJECTS { panasonicAlarmOverCellVoltageProtection, panasonicMaxCellVoltage, panasonicMaxCellVoltageReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Cell overvoltage protection active"
+    ::= { AlarmTraps 1 }
+
+alarmUnderVoltageProtection NOTIFICATION-TYPE
+    OBJECTS { panasonicAlarmUnderVoltageProtection, panasonicMinCellVoltage, panasonicMinCellVoltageReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Undervoltage protection active"
+    ::= { AlarmTraps 3 }
+
+alarmOverDischargeCurrentHw NOTIFICATION-TYPE
+    OBJECTS { panasonicAlarmOverDischargeCurrentHw, panasonicCurrent, panasonicCurrentReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Hardware overcurrent protection active (discharge)"
+    ::= { AlarmTraps 7 }
+
+alarmFetOverheatProtection NOTIFICATION-TYPE
+    OBJECTS { panasonicAlarmFetOverheatProtection, panasonicFetTemperature, panasonicFetTemperatureReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "FET overheat protection active"
+    ::= { AlarmTraps 12 }
+
+-- ========== Warning Traps (18.x.0) ==========
+warningOverCellVoltage NOTIFICATION-TYPE
+    OBJECTS { panasonicWarningOverCellVoltage, panasonicMaxCellVoltage, panasonicMaxCellVoltageReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Cell overvoltage warning"
+    ::= { WarningTraps 1 }
+
+warningCellImbalance NOTIFICATION-TYPE
+    OBJECTS { panasonicWarningCellImbalance, panasonicMaxCellVoltage, panasonicMinCellVoltage, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Cell imbalance warning"
+    ::= { WarningTraps 4 }
+
+warningFetOverheat NOTIFICATION-TYPE
+    OBJECTS { panasonicWarningFetOverheat, panasonicFetTemperature, panasonicFetTemperatureReal, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "FET overheat warning"
+    ::= { WarningTraps 11 }
+
+-- ========== Status Change Traps (19.x.0) ==========
+statusFullyDischarged NOTIFICATION-TYPE
+    OBJECTS { panasonicStatusFullyDischarged, panasonicSOC, panasonicSOCReal, panasonicPackVoltage, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Battery fully discharged"
+    ::= { StatusTraps 1 }
+
+statusTerminateChargeAlarm NOTIFICATION-TYPE
+    OBJECTS { panasonicStatusTerminateChargeAlarm, panasonicPackVoltage, panasonicSOC, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Terminate charge alarm active"
+    ::= { StatusTraps 2 }
+
+statusPermanentFailure NOTIFICATION-TYPE
+    OBJECTS { panasonicStatusPermanentFailure, panasonicError, panasonicErrorText, deviceName, siteName }
+    STATUS  current
+    DESCRIPTION "Permanent failure status detected"
+    ::= { StatusTraps 4 }
+
+END

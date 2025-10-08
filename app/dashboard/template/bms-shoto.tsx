@@ -260,146 +260,59 @@ export default function OverviewDashboard() {
           </Card>
         </div>
 
-        <Tabs defaultValue="modbus" className="w-full">
-          <div className="flex items-center justify-between">
-            <TabsList>
-              <TabsTrigger value="modbus">Device Modbus/SNMP</TabsTrigger>
-              <TabsTrigger value="i2c">Device I2C</TabsTrigger>{" "}
-              {/* New Tab Trigger */}
-            </TabsList>
-            <MqttStatus />
-          </div>
-
-          <TabsContent value="modbus" className="mt-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Device Modbus/SNMP</CardTitle>
-                <CardDescription>List of Modbus/SNMP devices</CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                {modbusDevices.length === 0 ? (
-                  <div>No Modbus/SNMP devices found.</div>
-                ) : (
-                  <ul className="space-y-4">
-                    {modbusDevices.map((d, i) => (
-                      <li key={d.profile?.name || i} className="border-b pb-2">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <span className="font-semibold">
-                              {d.profile?.name}
-                            </span>
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              ({d.profile?.part_number})
-                            </span>
-                            <div className="text-xs">
-                              {d.protocol_setting?.protocol === "Modbus RTU"
-                                ? `Address: ${d.protocol_setting?.address}`
-                                : `IP: ${d.protocol_setting?.ip_address}`}
-                            </div>
-                            <div className="text-xs">
-                              Topic: {d.profile?.topic}
-                            </div>
-                          </div>
-                          <span
-                            className={`text-xs font-semibold ml-2 rounded-full px-2 py-1 ${
-                              statusSummary[d.profile?.name]?.includes(
-                                "success"
-                              )
-                                ? "status-online"
-                                : "status-offline"
-                            }`}
-                          >
-                            {statusSummary[d.profile?.name]?.includes("success")
-                              ? "Online"
-                              : "Offline"}
-                          </span>
+        <Card>
+          <CardHeader>
+            <CardTitle>Device SNMP</CardTitle>
+            <CardDescription>List of SNMP devices</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            {modbusDevices.length === 0 ? (
+              <div>No SNMP devices found.</div>
+            ) : (
+              <ul className="space-y-4">
+                {modbusDevices.map((d, i) => (
+                  <li key={d.profile?.name || i} className="border-b pb-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <span className="font-semibold">
+                          {d.profile?.name}
+                        </span>
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          ({d.profile?.part_number})
+                        </span>
+                        <div className="text-xs">
+                          {d.protocol_setting?.protocol === "Modbus RTU"
+                            ? `Address: ${d.protocol_setting?.address}`
+                            : `IP: ${d.protocol_setting?.ip_address}`}
                         </div>
-                        <DeviceDataDisplay
-                          topicData={deviceTopicData[d.profile?.topic]}
-                          deviceName={d.profile?.name}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="i2c" className="mt-2">
-            {" "}
-            {/* New Tab Content for I2C */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Device I2C</CardTitle>
-                <CardDescription>List of I2C devices</CardDescription>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                {i2cDevices.length === 0 ? (
-                  <div>No I2C devices found.</div>
-                ) : (
-                  <ul className="space-y-4">
-                    {i2cDevices.map((d, i) => (
-                      <li key={d.profile?.name || i} className="border-b pb-2">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <span className="font-semibold">
-                              {d.profile?.name}
-                            </span>
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              ({d.profile?.part_number})
-                            </span>
-                            <div className="text-xs">
-                              {/* I2C devices usually have address and device_bus */}
-                              Address: {d.protocol_setting?.address}, Bus:{" "}
-                              {d.protocol_setting?.device_bus}
-                            </div>
-                            <div className="text-xs">
-                              Topic: {d.profile?.topic}
-                            </div>
-                          </div>
-                          {/* Assuming statusSummary might also contain I2C device status,
-                              or you'd need a separate mechanism for I2C status. */}
-                          <span
-                            className={`text-xs font-semibold ml-2 rounded-full px-2 py-1 ${
-                              statusSummary[d.profile?.name]?.includes(
-                                "success"
-                              )
-                                ? "status-online"
-                                : "status-offline"
-                            }`}
-                          >
-                            {statusSummary[d.profile?.name]?.includes("success")
-                              ? "Online"
-                              : "Offline"}
-                          </span>
+                        <div className="text-xs">
+                          Topic: {d.profile?.topic}
                         </div>
-                        <div className="text-xs mt-1">
-                          <span className="font-semibold">Live Data:</span>
-                          <pre className="whitespace-pre-wrap break-words text-[10px] text-muted-foreground bg-muted p-1 rounded">
-                            {(() => {
-                              const topicData =
-                                deviceTopicData[d.profile?.topic];
-                              if (!topicData) return "Waiting...";
-                              try {
-                                const parsedValue = topicData.value
-                                  ? JSON.parse(topicData.value)
-                                  : {};
-                                return JSON.stringify(parsedValue, null, 2);
-                              } catch (err) {
-                                return "Invalid JSON in 'value'";
-                              }
-                            })()}
-                          </pre>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                      </div>
+                      <span
+                        className={`text-xs font-semibold ml-2 rounded-full px-2 py-1 ${
+                          statusSummary[d.profile?.name]?.includes(
+                            "success"
+                          )
+                            ? "status-online"
+                            : "status-offline"
+                        }`}
+                      >
+                        {statusSummary[d.profile?.name]?.includes("success")
+                          ? "Online"
+                          : "Offline"}
+                      </span>
+                    </div>
+                    <DeviceDataDisplay
+                      topicData={deviceTopicData[d.profile?.topic]}
+                      deviceName={d.profile?.name}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </SidebarInset>
   );

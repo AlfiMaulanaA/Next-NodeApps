@@ -175,9 +175,20 @@ def get_active_mac_address():
             log_simple(f"Failed to get MAC from {interface} (sysfs): {e}", "WARNING")
             continue
 
+    # Third try: Use getmac library as fallback
+    try:
+        import getmac
+        mac_address = getmac.get_mac_address()
+        if mac_address and mac_address != "00:00:00:00:00:00":
+            log_simple(f"Found MAC address using getmac library: {mac_address}", "SUCCESS")
+            return mac_address
+    except ImportError:
+        log_simple("getmac library not available", "WARNING")
+    except Exception as e:
+        log_simple(f"getmac library method failed: {e}", "WARNING")
+
     # Fallback to default if no active interface found
-    # Reduce log spam - only log this once per service startup
-    # log_simple("No active network interface found, using default MAC", "WARNING")
+    log_simple("No active network interface found, using default MAC", "WARNING")
     return "00:00:00:00:00:00"
 
 # --- Configuration Management ---

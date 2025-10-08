@@ -17,7 +17,6 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
-  AlertCircle,
   Clock,
   RefreshCw,
   FileDown,
@@ -33,70 +32,40 @@ interface MIBDownloadStatus {
   timestamp?: string;
 }
 
-interface MIBDeviceInfo {
-  name: string;
-  fileName: string;
-  description: string;
-  parameters: string;
-  version: string;
-}
-
-export function MIBDownloader({ device = "auto" }: { device?: "shoto" | "panasonic" | "auto" }) {
-  const [selectedDevice, setSelectedDevice] = useState<"shoto" | "panasonic">(() => {
-    // Auto-detect based on current URL path
-    if (device !== "auto") return device;
-    if (typeof window !== "undefined" && window.location.pathname.includes("panasonic")) {
-      return "panasonic";
-    }
-    return "shoto";
-  });
-
+export function PanasonicMIBDownloader() {
   const [downloadStatus, setDownloadStatus] = useState<MIBDownloadStatus>({
     status: "idle",
   });
 
-  const deviceConfigs: Record<"shoto" | "panasonic", MIBDeviceInfo> = {
-    shoto: {
-      name: "SHOTO Device",
-      fileName: "GSPE_SHOTO_MIB_v1_1.mib",
-      description: "SHOTO device MIB definitions for SNMP monitoring",
-      parameters: "42 SNMP objects with battery management data",
-      version: "v1.1",
-    },
-    panasonic: {
-      name: "Panasonic DCB105ZK",
-      fileName: "GSPE_PANASONIC_MIB_v1_1.mib",
-      description: "Panasonic DCB105ZK battery MIB with comprehensive BMS monitoring",
-      parameters: "139+ SNMP objects with 13S individual cell monitoring",
-      version: "v1.1",
-    },
+  const deviceConfig = {
+    name: "Panasonic DCB105ZK",
+    fileName: "GSPE_PANASONIC_MIB_v1_1.mib",
+    description: "Panasonic DCB105ZK battery MIB with comprehensive BMS monitoring",
+    parameters: "139+ SNMP objects with 13S individual cell monitoring",
+    version: "v1.1",
   };
 
-  const currentConfig = deviceConfigs[selectedDevice];
-
   // Handle MIB File Download
-  const handleDownloadMIB = async (device: "shoto" | "panasonic") => {
-    const config = deviceConfigs[device];
-
+  const handleDownloadMIB = async () => {
     try {
       setDownloadStatus({
         status: "downloading",
-        message: `Initiating ${config.name} MIB file download...`,
+        message: `Initiating ${deviceConfig.name} MIB file download...`,
       });
 
-      toast.loading(`Preparing ${config.name} MIB file download...`, {
+      toast.loading(`Preparing ${deviceConfig.name} MIB file download...`, {
         id: "mib-download",
         duration: 2000,
       });
 
       // Check if file exists first
-      const response = await fetch(`/files/${config.fileName}`, {
+      const response = await fetch(`/files/${deviceConfig.fileName}`, {
         method: "HEAD",
       });
 
       if (!response.ok) {
         throw new Error(
-          `File not found: ${config.fileName} (${response.status})`
+          `File not found: ${deviceConfig.fileName} (${response.status})`
         );
       }
 
@@ -108,8 +77,8 @@ export function MIBDownloader({ device = "auto" }: { device?: "shoto" | "panason
 
       // Create download link
       const link = document.createElement("a");
-      link.href = `/files/${config.fileName}`;
-      link.download = config.fileName;
+      link.href = `/files/${deviceConfig.fileName}`;
+      link.download = deviceConfig.fileName;
       link.style.display = "none";
 
       // Add to DOM, click, and remove
@@ -120,15 +89,15 @@ export function MIBDownloader({ device = "auto" }: { device?: "shoto" | "panason
       // Set success status
       setDownloadStatus({
         status: "success",
-        message: `${config.fileName} MIB file downloaded successfully`,
-        fileName: config.fileName,
+        message: `${deviceConfig.fileName} MIB file downloaded successfully`,
+        fileName: deviceConfig.fileName,
         fileSize: fileSize,
         timestamp: new Date().toLocaleString(),
       });
 
       // Dismiss loading toast and show success
       toast.dismiss("mib-download");
-      toast.success(`${config.name} MIB file downloaded successfully!`, {
+      toast.success(`${deviceConfig.name} MIB file downloaded successfully!`, {
         duration: 4000,
         position: "top-right",
       });
@@ -198,9 +167,9 @@ export function MIBDownloader({ device = "auto" }: { device?: "shoto" | "panason
               <FileDown className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <CardTitle className="text-lg text-foreground">SNMP MIB Downloader</CardTitle>
+              <CardTitle className="text-lg text-foreground">Panasonic MIB Downloader</CardTitle>
               <CardDescription className="text-muted-foreground">
-                Download Management Information Base (MIB) files for SNMP configuration
+                Download Panasonic DCB105ZK Management Information Base (MIB) file for SNMP configuration
               </CardDescription>
             </div>
           </div>
@@ -212,48 +181,25 @@ export function MIBDownloader({ device = "auto" }: { device?: "shoto" | "panason
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Device Selection */}
-        <div className="space-y-3">
-          <div className="text-sm font-medium text-foreground">Select Device MIB:</div>
-          <div className="flex gap-2">
-            <Button
-              variant={selectedDevice === "shoto" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedDevice("shoto")}
-              className="flex-1"
-            >
-              SHOTO Device
-            </Button>
-            <Button
-              variant={selectedDevice === "panasonic" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedDevice("panasonic")}
-              className="flex-1"
-            >
-              Panasonic DCB105ZK
-            </Button>
-          </div>
-        </div>
-
         {/* File Information */}
         <Alert className="border-border bg-muted/30">
           <FileText className="h-4 w-4 text-primary" />
           <AlertDescription>
             <div className="space-y-1 text-foreground">
               <p>
-                <strong>File:</strong> {currentConfig.fileName}
+                <strong>File:</strong> {deviceConfig.fileName}
               </p>
               <p>
-                <strong>Location:</strong> /public/files/{currentConfig.fileName}
+                <strong>Location:</strong> /public/files/{deviceConfig.fileName}
               </p>
               <p>
-                <strong>Description:</strong> {currentConfig.description}
+                <strong>Description:</strong> {deviceConfig.description}
               </p>
               <p>
-                <strong>Parameters:</strong> {currentConfig.parameters}
+                <strong>Parameters:</strong> {deviceConfig.parameters}
               </p>
               <p>
-                <strong>Version:</strong> {currentConfig.version}
+                <strong>Version:</strong> {deviceConfig.version}
               </p>
             </div>
           </AlertDescription>
@@ -299,7 +245,7 @@ export function MIBDownloader({ device = "auto" }: { device?: "shoto" | "panason
         {/* Download Actions */}
         <div className="flex gap-3">
           <Button
-            onClick={() => handleDownloadMIB(selectedDevice)}
+            onClick={handleDownloadMIB}
             disabled={downloadStatus.status === "downloading"}
             className="flex-1"
           >
@@ -311,13 +257,13 @@ export function MIBDownloader({ device = "auto" }: { device?: "shoto" | "panason
             ) : (
               <>
                 <Download className="w-4 h-4 mr-2" />
-                Download {currentConfig.name} MIB File
+                Download Panasonic MIB File
               </>
             )}
           </Button>
 
           {downloadStatus.status === "success" && (
-            <Button variant="outline" onClick={() => handleDownloadMIB(selectedDevice)}>
+            <Button variant="outline" onClick={handleDownloadMIB}>
               <RefreshCw className="w-4 h-4 mr-1" />
               Re-download
             </Button>

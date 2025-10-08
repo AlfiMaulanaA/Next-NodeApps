@@ -1,6 +1,6 @@
-"use client";
+ "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import {
   LogOut,
   BarChart3,
@@ -43,6 +43,7 @@ import {
   SidebarMenuBadge,
 } from "@/components/ui/sidebar";
 import { Separator } from "@radix-ui/react-separator";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { useTotalErrorCount } from "@/hooks/useTotalErrorCount";
 
 const appName = process.env.NEXT_PUBLIC_APP_NAME || "MQTT Gateway Dashboard";
@@ -60,6 +61,7 @@ const menuData = {
           title: "Dashboard",
           url: "/",
           icon: BarChart3,
+          isUse: true,
         },
       ],
     },
@@ -70,42 +72,44 @@ const menuData = {
           title: "IP Address Settings",
           url: "/network/ip-address",
           icon: Network,
+          isUse: true,
         },
         {
           title: "WiFi Settings",
           url: "/network/wifi",
           icon: Wifi,
+          isUse: true,
         },
-        {
-          title: "MQTT Broker Config",
-          url: "/network/mqtt",
-          icon: Send,
-        },
-        {
-          title: "Modbus Protocol",
-          url: "/network/protocol/modbus",
-          icon: HardDrive,
-        },
+        // {
+        //   title: "MQTT Broker Config",
+        //   url: "/network/mqtt",
+        //   icon: Send,
+        //   isUse: false,
+        // },
+        // {
+        //   title: "Modbus Protocol",
+        //   url: "/network/protocol/modbus",
+        //   icon: HardDrive,
+        //   isUse: false,
+        // },
         {
           title: "SNMP Protocol",
           url: "/network/protocol/snmp",
           icon: Monitor,
+          isUse: true,
         },
-        {
-          title: "API Control Panel",
-          url: "/api",
-          icon: Code,
-        },
-        {
-          title: "VPN Settings",
-          url: "/network/vpn",
-          icon: Lock,
-        },
-        {
-          title: "VPN Config",
-          url: "/network/vpn/config",
-          icon: Settings,
-        },
+        // {
+        //   title: "VPN Settings",
+        //   url: "/network/vpn",
+        //   icon: Lock,
+        //   isUse: false,
+        // },
+        // {
+        //   title: "VPN Config",
+        //   url: "/network/vpn/config",
+        //   icon: Settings,
+        //   isUse: false,
+        // },
       ],
     },
     {
@@ -115,74 +119,104 @@ const menuData = {
           title: "Modbus Device Manager",
           url: "/devices/modbus",
           icon: HardDrive,
+          isUse: true,
         },
+        // {
+        //   title: "SNMP MIB Data",
+        //   url: "/snmp-data-shoto",
+        //   icon: Activity,
+        //   isUse: true,
+        // },
         {
           title: "SNMP MIB Data",
-          url: "/snmp-data",
+          url: "/snmp-data-panasonic",
           icon: Activity,
+          isUse: true,
         },
-        {
-          title: "Modular I2C Devices",
-          url: "/devices/modular",
-          icon: Cpu,
-        },
-        {
-          title: "Threshold & Alerts",
-          url: "/devices/threshold",
-          icon: Shield,
-        },
+        // {
+        //   title: "SNMP MIB Data",
+        //   url: "/snmp-data-shoto",
+        //   icon: Activity,
+        //   isUse: true,
+        // },
+        // {
+        //   title: "Modular I2C Devices",
+        //   url: "/devices/modular",
+        //   icon: Cpu,
+        //   isUse: false,
+        // },
+        // {
+        //   title: "Threshold & Alerts",
+        //   url: "/devices/threshold",
+        //   icon: Shield,
+        //   isUse: false,
+        // },
       ],
     },
-    {
-      title: "Payload Management",
-      items: [
-        {
-          title: "Payload Discover & Publisher",
-          url: "/payload/discover",
-          icon: Search,
-        },
-        {
-          title: "Payload Remapping",
-          url: "/payload/remapping",
-          icon: ArrowLeftRight,
-        },
-      ],
-    },
-    {
-      title: "Control Center",
-      items: [
-        {
-          title: "Manual Control",
-          url: "/control/manual",
-          icon: Hand,
-        },
-        {
-          title: "Unified Automation",
-          url: "/control/unified",
-          icon: Combine,
-        },
-        {
-          title: "Logic Control",
-          url: "/control/logic",
-          icon: Code,
-        },
-        {
-          title: "Value Control",
-          url: "/control/value",
-          icon: Calculator,
-        },
-        {
-          title: "Voice Control",
-          url: "/control/voice",
-          icon: Mic,
-        },
-        {
-          title: "Scheduler Control",
-          url: "/control/schedule",
-          icon: Clock,
-        },
-      ],
-    },
+    // {
+    //   title: "Payload Management",
+    //   items: [
+    //     {
+    //       title: "Payload Discover & Publisher",
+    //       url: "/payload/discover",
+    //       icon: Search,
+    //       isUse: false,
+    //     },
+    //     {
+    //       title: "Payload Remapping",
+    //       url: "/payload/remapping",
+    //       icon: ArrowLeftRight,
+    //       isUse: false,
+    //     },
+    //     {
+    //       title: "Payload Static Configuration",
+    //       url: "/payload/static",
+    //       icon: Settings,
+    //       isUse: false,
+    //     },
+    //   ],
+    // },
+    // {
+    //   title: "Control Center",
+    //   items: [
+    //     {
+    //       title: "Manual Control",
+    //       url: "/control/manual",
+    //       icon: Hand,
+    //       isUse: false,
+    //     },
+    //     {
+    //       title: "Unified Automation",
+    //       url: "/control/unified",
+    //       icon: Combine,
+    //       isUse: false,
+    //     },
+    //     {
+    //       title: "Logic Control",
+    //       url: "/control/logic",
+    //       icon: Code,
+    //       isUse: false,
+    //     },
+    //     {
+    //       title: "Value Control",
+    //       url: "/control/value",
+    //       icon: Calculator,
+    //       isUse: false,
+    //     },
+    //     {
+    //       title: "Voice Control",
+    //       url: "/control/voice",
+    //       icon: Mic,
+    //       isUse: false,
+    //     },
+    //     {
+    //       title: "Scheduler Control",
+    //       url: "/control/schedule",
+    //       icon: Clock,
+    //       isUse: false,
+    //     },
+    //   ],
+    // },
     {
       title: "System Settings",
       items: [
@@ -190,28 +224,33 @@ const menuData = {
           title: "General Settings",
           url: "/settings/setting",
           icon: Settings,
+          isUse: true,
         },
-         {
-          title: "RTC DS3231 Sync",
-          url: "/settings/rtc-sync",
-          icon: Clock,
-        },
-        {
-          title: "Device Library",
-          url: "/settings/library",
-          icon: HardDrive,
-        },
+        //  {
+        //   title: "RTC DS3231 Sync",
+        //   url: "/settings/rtc-sync",
+        //   icon: Clock,
+        //   isUse: false,
+        // },
+        // {
+        //   title: "Device Library",
+        //   url: "/settings/library",
+        //   icon: HardDrive,
+        //   isUse: false,
+        // },
         {
           title: "Error Logs",
           url: "/settings/error-log",
           icon: FileText,
+          isUse: true,
         },
         {
           title: "Information",
           url: "/info",
           icon: Info,
+          isUse: true,
         },
-        
+
       ],
     },
   ],
@@ -221,6 +260,7 @@ export const AppSidebar = memo(function AppSidebar() {
   const pathname = usePathname();
   const totalErrors = useTotalErrorCount();
   const router = useRouter();
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
   // Simple logout function
   const handleLogout = () => {
@@ -228,6 +268,22 @@ export const AppSidebar = memo(function AppSidebar() {
     localStorage.removeItem("user");
     sessionStorage.clear();
     window.location.href = "/auth/login";
+  };
+
+  // Handle logout button click - show confirmation dialog
+  const handleLogoutClick = () => {
+    setShowLogoutDialog(true);
+  };
+
+  // Handle confirm logout
+  const handleConfirmLogout = () => {
+    setShowLogoutDialog(false);
+    handleLogout();
+  };
+
+  // Handle cancel logout
+  const handleCancelLogout = () => {
+    setShowLogoutDialog(false);
   };
 
   return (
@@ -255,39 +311,49 @@ export const AppSidebar = memo(function AppSidebar() {
         className="bg-background overflow-auto scrollbar-hide"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
-        {menuData.groups.map((group, groupIndex) => (
-          <SidebarGroup key={groupIndex}>
-            <SidebarGroupLabel className="text-sidebar-foreground/80">
-              {group.title}
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {group.items.map((item, itemIndex) => {
-                  const IconComponent = item.icon;
-                  return (
-                    <SidebarMenuItem key={itemIndex} className="relative">
-                      <SidebarMenuButton
-                        asChild
-                        isActive={pathname === item.url}
-                        className="group flex items-center gap-2 px-3 py-2 rounded-md w-full transition-colors text-sidebar-foreground hover:bg-muted/50 hover:text-sidebar-accent-foreground data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-medium data-[active=true]:border-l-2 data-[active=true]:border-l-primary"
-                      >
-                        <Link href={item.url}>
-                          <IconComponent className="h-4 w-4 text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground" />
-                          <span>{item.title}</span>
-                          {item.title === "Error Logs" && totalErrors > 0 && (
-                            <SidebarMenuBadge className="ml-auto bg-destructive text-white">
-                              {totalErrors}
-                            </SidebarMenuBadge>
-                          )}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {menuData.groups.map((group, groupIndex) => {
+          // Filter items that have isUse: true
+          const visibleItems = group.items.filter(item => item.isUse !== false);
+
+          // Only render the group if it has visible items
+          if (visibleItems.length === 0) {
+            return null;
+          }
+
+          return (
+            <SidebarGroup key={groupIndex}>
+              <SidebarGroupLabel className="text-sidebar-foreground/80">
+                {group.title}
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {visibleItems.map((item, itemIndex) => {
+                    const IconComponent = item.icon;
+                    return (
+                      <SidebarMenuItem key={itemIndex} className="relative">
+                        <SidebarMenuButton
+                          asChild
+                          isActive={pathname === item.url}
+                          className="group flex items-center gap-2 px-3 py-2 rounded-md w-full transition-colors text-sidebar-foreground hover:bg-muted/50 hover:text-sidebar-accent-foreground data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-medium data-[active=true]:border-l-2 data-[active=true]:border-l-primary"
+                        >
+                          <Link href={item.url}>
+                            <IconComponent className="h-4 w-4 text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground" />
+                            <span>{item.title}</span>
+                            {item.title === "Error Logs" && totalErrors > 0 && (
+                              <SidebarMenuBadge className="ml-auto bg-destructive text-white">
+                                {totalErrors}
+                              </SidebarMenuBadge>
+                            )}
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
 
         <SidebarFooter className="p-4 bg-background border-t border-sidebar-border">
           {/* Simple user info */}
@@ -308,7 +374,7 @@ export const AppSidebar = memo(function AppSidebar() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={handleLogout}
+                onClick={handleLogoutClick}
                 className="flex items-center gap-2 text-destructive bg-destructive/5 hover:bg-destructive/20 hover:text-destructive-foreground transition-colors px-3 py-3 rounded-md w-full border border-transparent hover:border-destructive/40"
               >
                 <LogOut className="h-4 w-4" />
@@ -319,6 +385,20 @@ export const AppSidebar = memo(function AppSidebar() {
         </SidebarFooter>
       </SidebarContent>
       <SidebarRail />
+
+      {/* Logout Confirmation Dialog */}
+      <ConfirmationDialog
+        open={showLogoutDialog}
+        onOpenChange={setShowLogoutDialog}
+        type="warning"
+        title="Confirm Logout"
+        description="Are you sure you want to log out? You will need to log in again to access the system."
+        confirmText="Logout"
+        cancelText="Cancel"
+        onConfirm={handleConfirmLogout}
+        onCancel={handleCancelLogout}
+        destructive={true}
+      />
     </Sidebar>
   );
 });
