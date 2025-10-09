@@ -1,0 +1,35 @@
+[
+  {
+    "id": "",
+    "name": "RelayMini1",
+    "address": 37,
+    "device_bus": 0,
+    "part_number": "RELAYMINI",
+    "mac": "00:00:00:00:00:00",
+    "device_type": "Modular",
+    "manufacturer": "IOT",
+    "topic": "Limbah/Modular/relay_mini/1"
+  },
+  {
+    "id": "",
+    "name": "Drycontact1",
+    "address": 35,
+    "device_bus": 0,
+    "part_number": "DRYCONTACT",
+    "mac": "00:00:00:00:00:00",
+    "device_type": "Modular",
+    "manufacturer": "IOT",
+    "topic": "Limbah/Modular/drycontact/1"
+  },
+  {
+    "id": "",
+    "name": "Relay1",
+    "address": 32,
+    "device_bus": 0,
+    "part_number": "RELAY",
+    "mac": "00:00:00:00:00:00",
+    "device_type": "Modular",
+    "manufacturer": "IOT",
+    "topic": "Limbah/Modular/relay/1"
+  }
+]

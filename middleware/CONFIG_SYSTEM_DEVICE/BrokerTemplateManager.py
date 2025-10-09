@@ -1,6 +1,9 @@
 import json
 import os
 import logging
+import time
+import signal
+import sys
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import re
@@ -542,3 +545,149 @@ class BrokerTemplateManager:
         except Exception as e:
             self.logger.error(f"Error importing templates: {e}")
             return False
+
+
+# --- Service Functions for Nano Pi Deployment ---
+
+def print_startup_banner():
+    """Print standardized startup banner"""
+    print("\n" + "="*50)
+    print("======= Broker Template Manager =======")
+    print("Initializing System...")
+    print("="*50)
+
+def print_success_banner():
+    """Print success status banner"""
+    print("\n" + "="*50)
+    print("======= Broker Template Manager =======")
+    print("Success To Running")
+    print("")
+
+def print_broker_status(broker_connected=False):
+    """Print MQTT broker connection status"""
+    if broker_connected:
+        print("MQTT Broker is Running")
+    else:
+        print("MQTT Broker connection failed")
+
+    print("\n" + "="*34)
+    print("Log print Data")
+    print("")
+
+def log_simple(message, level="INFO"):
+    """Simple logging without timestamp for cleaner output"""
+    if level == "ERROR":
+        print(f"[ERROR] {message}")
+    elif level == "SUCCESS":
+        print(f"[OK] {message}")
+    elif level == "WARNING":
+        print(f"[WARN] {message}")
+    else:
+        print(f"[INFO] {message}")
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    print(f"\n🛑 Received signal {signum}, shutting down gracefully...")
+    if 'manager' in globals() and manager:
+        try:
+            if manager.mqtt_client:
+                manager.mqtt_client.loop_stop()
+                manager.mqtt_client.disconnect()
+                log_simple("MQTT client disconnected", "SUCCESS")
+        except Exception as e:
+            log_simple(f"Error disconnecting MQTT: {e}", "ERROR")
+
+    log_simple("Broker Template Manager stopped", "SUCCESS")
+    sys.exit(0)
+
+def check_mqtt_connection(host="localhost", port=1883, timeout=5):
+    """Check if MQTT broker is accessible"""
+    try:
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except:
+        return False
+
+def main():
+    """Main service entry point for Nano Pi deployment"""
+    # Setup signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # Print startup banner
+    print_startup_banner()
+
+    # Check MQTT connectivity
+    mqtt_host = os.getenv("MQTT_HOST", "localhost")
+    mqtt_port = int(os.getenv("MQTT_PORT", "1883"))
+
+    log_simple(f"Checking MQTT broker at {mqtt_host}:{mqtt_port}")
+    broker_connected = check_mqtt_connection(mqtt_host, mqtt_port)
+
+    if not broker_connected:
+        log_simple(f"Warning: Cannot connect to MQTT broker at {mqtt_host}:{mqtt_port}", "WARNING")
+        log_simple("Service will continue but MQTT operations may fail", "WARNING")
+
+    # Initialize Broker Template Manager
+    global manager
+    try:
+        log_simple("Initializing Broker Template Manager...")
+        manager = BrokerTemplateManager(
+            templates_file="./JSON/brokerTemplates.json",
+            mqtt_broker=mqtt_host,
+            mqtt_port=mqtt_port
+        )
+        log_simple("Broker Template Manager initialized", "SUCCESS")
+
+        # Display loaded templates
+        templates = manager.get_all_templates()
+        log_simple(f"Loaded {len(templates)} templates", "SUCCESS")
+
+        # Display template statistics
+        stats = manager.get_template_stats()
+        log_simple(f"Template categories: {stats['categories']}", "INFO")
+
+        # Print success banner
+        print_success_banner()
+        print_broker_status(broker_connected)
+
+        # Periodic health reporting
+        health_counter = 0
+
+        # Main service loop
+        log_simple("Service is running and listening for MQTT messages", "SUCCESS")
+        log_simple("Press Ctrl+C to stop", "INFO")
+
+        while True:
+            try:
+                time.sleep(5)  # Check every 5 seconds
+
+                # Periodic health check every 60 seconds
+                health_counter += 5
+                if health_counter >= 60:
+                    templates_count = len(manager.get_all_templates())
+                    log_simple(f"Health check: {templates_count} templates loaded", "INFO")
+                    health_counter = 0
+
+            except Exception as e:
+                log_simple(f"Error in main loop: {e}", "ERROR")
+                time.sleep(5)  # Sleep longer on error
+
+    except KeyboardInterrupt:
+        log_simple("Received shutdown signal", "INFO")
+        signal_handler(signal.SIGINT, None)
+    except Exception as e:
+        log_simple(f"Critical error starting service: {e}", "ERROR")
+        if 'manager' in globals() and manager and manager.mqtt_client:
+            try:
+                manager.mqtt_client.disconnect()
+            except:
+                pass
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

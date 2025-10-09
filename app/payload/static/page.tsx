@@ -603,6 +603,8 @@ export default function StaticPayloadPage() {
     return () => clearInterval(timer);
   }, []);
 
+
+
   // Initialize MQTT connection
   useEffect(() => {
     console.log("🔧 [DEBUG] StaticPayloadPage: Component mounted, initializing MQTT connection");
@@ -1121,7 +1123,7 @@ export default function StaticPayloadPage() {
         <div className="container px-4">
           <Tabs defaultValue="static-payload" className="w-full">
             <div className="flex items-center justify-between py-3">
-              <TabsList className="grid w-fit grid-cols-3">
+            <TabsList className="grid w-fit grid-cols-3">
                 <TabsTrigger value="static-payload" className="flex items-center gap-2">
                   <Database className="h-4 w-4" />
                   Static Payload
@@ -1601,6 +1603,8 @@ export default function StaticPayloadPage() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+
 
             {/* Tab: Broker Templates */}
             <TabsContent value="broker-templates" className="mt-6">

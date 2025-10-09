@@ -95,41 +95,41 @@ const menuData = {
         // },
       ],
     },
-    // {
-    //   title: "Control Center",
-    //   items: [
-    //     {
-    //       title: "Manual Control",
-    //       url: "/control/manual",
-    //       icon: Play,
-    //     },
-    //     {
-    //       title: "Scheduled Tasks",
-    //       url: "/control/schedule",
-    //       icon: Activity,
-    //     },
-    //     {
-    //       title: "Logic Control",
-    //       url: "/control/logic",
-    //       icon: Settings,
-    //     },
-    //     {
-    //       title: "Visual Automation",
-    //       url: "/control/logic/visual",
-    //       icon: Zap,
-    //     },
-    //     {
-    //       title: "Value Control",
-    //       url: "/control/value",
-    //       icon: Database,
-    //     },
-    //     {
-    //       title: "Voice Control",
-    //       url: "/control/voice",
-    //       icon: Wifi,
-    //     },
-    //   ],
-    // },
+    {
+      title: "Control Center",
+      items: [
+        {
+          title: "Manual Control",
+          url: "/control/manual",
+          icon: Play,
+        },
+        {
+          title: "Scheduled Tasks",
+          url: "/control/schedule",
+          icon: Activity,
+        },
+        {
+          title: "Logic Control",
+          url: "/control/logic",
+          icon: Settings,
+        },
+        {
+          title: "Visual Automation",
+          url: "/control/logic/visual",
+          icon: Zap,
+        },
+        {
+          title: "Value Control",
+          url: "/control/value",
+          icon: Database,
+        },
+        {
+          title: "Voice Control",
+          url: "/control/voice",
+          icon: Wifi,
+        },
+      ],
+    },
     {
       title: "Network Configuration",
       items: [
