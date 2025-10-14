@@ -43,8 +43,8 @@ class BrokerConnection:
                 if self.broker_config.get('ssl', False):
                     self.client.tls_set()
 
-                # Connection timeout
-                connect_timeout = self.broker_config.get('connect_timeout', 10)
+                # Connection timeout - increase for remote connections
+                connect_timeout = self.broker_config.get('connect_timeout', 15)
 
                 # Attempt connection
                 start_time = time.time()
@@ -57,6 +57,16 @@ class BrokerConnection:
                         print(f"✅ Broker {self.template_id} connected successfully")
                     else:
                         print(f"❌ Broker {self.template_id} connection failed with code: {rc}")
+                        # Log specific error codes for debugging
+                        error_messages = {
+                            1: "Connection refused - incorrect protocol version",
+                            2: "Connection refused - invalid client identifier",
+                            3: "Connection refused - server unavailable",
+                            4: "Connection refused - bad username or password",
+                            5: "Connection refused - not authorised"
+                        }
+                        error_msg = error_messages.get(rc, f"Unknown error code: {rc}")
+                        print(f"   Error details: {error_msg}")
 
                 self.client.on_connect = on_connect
 
@@ -101,6 +111,11 @@ class BrokerConnection:
                 except Exception as e:
                     self.last_error = str(e)
                     print(f"❌ Broker {self.template_id} connection error: {e}")
+                    # Stop the loop if connection failed
+                    try:
+                        self.client.loop_stop()
+                    except:
+                        pass
                     return False
 
         except Exception as e:
@@ -238,6 +253,15 @@ class BrokerResolver:
             connection_key = f"{template_id}_{resolved_config['host']}_{resolved_config['port']}"
 
             with self.lock:
+                # Clear old connection if template changed - check if existing connection has different template
+                if connection_key in self.broker_connections:
+                    old_connection = self.broker_connections[connection_key]
+                    # Check if template_id changed for this connection
+                    if old_connection.template_id != template_id:
+                        self.logger.info(f"Template changed for {connection_key} from {old_connection.template_id} to {template_id}, clearing old connection")
+                        old_connection.disconnect()
+                        del self.broker_connections[connection_key]
+
                 if connection_key not in self.broker_connections:
                     self.broker_connections[connection_key] = BrokerConnection(resolved_config, template_id)
 

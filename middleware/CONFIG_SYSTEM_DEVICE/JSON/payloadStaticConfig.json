@@ -36,5 +36,24 @@
     "created_at": "2025-10-14T15:03:35.468008",
     "updated_at": "2025-10-14T15:03:35.468008",
     "version": 1
+  },
+  {
+    "id": "ab999d50e8364a2d",
+    "topic": "test/5",
+    "data": {
+      "nama": "gspe"
+    },
+    "interval": 5,
+    "qos": 0,
+    "lwt": true,
+    "retain": true,
+    "template_id": "test2",
+    "broker_config": {
+      "template_id": "test2",
+      "overrides": {}
+    },
+    "created_at": "2025-10-14T17:11:26.814056",
+    "updated_at": "2025-10-14T17:15:58.359841",
+    "version": 3
   }
 ]

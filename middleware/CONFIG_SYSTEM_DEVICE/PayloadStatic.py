@@ -343,9 +343,11 @@ def handle_update_data(client, payload):
         if isinstance(current_data, dict):
             # Old format: get payloads array
             payloads = current_data.get('payloads', [])
+            is_old_format = True
         else:
             # New format: direct array
             payloads = current_data
+            is_old_format = False
 
         # Find and update the payload
         for i, item in enumerate(payloads):
@@ -354,35 +356,42 @@ def handle_update_data(client, payload):
 
                 # Update the topic if it has changed
                 if new_topic and new_topic != old_topic:
-                    current_data["payloads"][i]["topic"] = new_topic
+                    payloads[i]["topic"] = new_topic
                     logger.info(f"Topic updated from '{old_topic}' to '{new_topic}'")
 
                 # Update the data field - frontend sends array of {key, value} objects
                 if updated_data and isinstance(updated_data, list):
-                    current_data["payloads"][i]["data"] = {field["key"]: field["value"] for field in updated_data}
+                    payloads[i]["data"] = {field["key"]: field["value"] for field in updated_data}
                 elif updated_data and isinstance(updated_data, dict):
-                    current_data["payloads"][i]["data"] = updated_data
+                    payloads[i]["data"] = updated_data
 
                 # Update other fields
-                current_data["payloads"][i]["interval"] = payload.get("interval", item.get("interval", 0))
-                current_data["payloads"][i]["qos"] = payload.get("qos", item.get("qos", 0))
-                current_data["payloads"][i]["lwt"] = payload.get("lwt", item.get("lwt", True))
-                current_data["payloads"][i]["retain"] = payload.get("retain", item.get("retain", False))
+                payloads[i]["interval"] = payload.get("interval", item.get("interval", 0))
+                payloads[i]["qos"] = payload.get("qos", item.get("qos", 0))
+                payloads[i]["lwt"] = payload.get("lwt", item.get("lwt", True))
+                payloads[i]["retain"] = payload.get("retain", item.get("retain", False))
 
-                # Update template if provided
+                # Update template if provided - ensure broker resolver gets updated
                 if payload.get("template_id"):
-                    current_data["payloads"][i]["template_id"] = payload.get("template_id")
-                    current_data["payloads"][i]["broker_config"] = {
+                    payloads[i]["template_id"] = payload.get("template_id")
+                    payloads[i]["broker_config"] = {
                         "template_id": payload.get("template_id"),
                         "overrides": {}
                     }
+                    logger.info(f"Template updated to: {payload.get('template_id')}")
 
                 # Update timestamp and version
-                current_data["payloads"][i]["updated_at"] = datetime.now().isoformat()
-                current_data["payloads"][i]["version"] = item.get("version", 1) + 1
+                payloads[i]["updated_at"] = datetime.now().isoformat()
+                payloads[i]["version"] = item.get("version", 1) + 1
 
-                write_json_file(DATA_FILE_PATH, current_data)
-                update_lwt(pub_client, current_data["payloads"][i])
+                # Save the updated data
+                if is_old_format:
+                    current_data["payloads"] = payloads
+                    write_json_file(DATA_FILE_PATH, current_data)
+                    update_lwt(pub_client, payloads[i])
+                else:
+                    write_json_file(DATA_FILE_PATH, payloads)
+                    update_lwt(pub_client, payloads[i])
 
                 # Clear retained message for old topic if topic changed
                 if new_topic and new_topic != old_topic:
@@ -397,7 +406,7 @@ def handle_update_data(client, payload):
                     "status": "success",
                     "message": f"Data updated for topic {new_topic}",
                     "topic": new_topic,
-                    "data": current_data["payloads"][i]
+                    "data": payloads[i]
                 }
                 client.publish("response/data/update", json.dumps(response_payload))
                 logger.info(f"Updated payload for topic: {new_topic} (from {original_topic})")

@@ -1,8 +1,8 @@
 {
   "templates": [
     {
-      "template_id": "local",
-      "name": "localhost",
+      "template_id": "default_local",
+      "name": "default_local",
       "description": "",
       "category": "development",
       "config": {
@@ -21,21 +21,21 @@
       "fallback_brokers": [],
       "metadata": {
         "created_by": "user",
-        "version": "1.0",
-        "last_updated": "2025-10-14T02:11:14.377Z",
-        "created_at": "2025-10-14T09:11:14.395280"
-      },
-      "connection_status": "connected"
+        "version": "1.1",
+        "last_updated": "2025-10-14T09:38:49.293Z",
+        "created_at": "2025-10-14T16:37:22.377813",
+        "updated_at": "2025-10-14T16:38:49.312241"
+      }
     },
     {
-      "template_id": "test2",
-      "name": "test2",
+      "template_id": "default_websocket",
+      "name": "default_websocket",
       "description": "",
       "category": "development",
       "config": {
-        "protocol": "mqtt",
-        "host": "192.168.0.138",
-        "port": 1883,
+        "protocol": "ws",
+        "host": "localhost",
+        "port": 9000,
         "ssl": false,
         "username": "",
         "password": "",
@@ -48,16 +48,14 @@
       "fallback_brokers": [],
       "metadata": {
         "created_by": "user",
-        "version": "1.4",
-        "last_updated": "2025-10-14T10:20:34.504Z",
-        "created_at": "2025-10-14T10:02:39.190Z",
-        "updated_at": "2025-10-14T17:20:34.525690"
-      },
-      "connection_status": "connected"
+        "version": "1.0",
+        "last_updated": "2025-10-14T09:38:39.518Z",
+        "created_at": "2025-10-14T16:38:39.539721"
+      }
     }
   ],
   "metadata": {
-    "last_updated": "2025-10-14T17:20:34.526243",
+    "last_updated": "2025-10-14T16:38:49.312638",
     "total_templates": 2
   }
 }

@@ -75,6 +75,7 @@ interface BrokerTemplate {
     created_at?: string;
     updated_at?: string;
   };
+  connection_status?: 'connected' | 'disconnected' | 'checking' | 'error' | 'unknown';
 }
 
 const categoryIcons: Record<string, any> = {
@@ -103,6 +104,7 @@ export default function BrokerTemplatesEmbedded() {
   const [deleteTemplateId, setDeleteTemplateId] = useState<string>("");
   const [mqttClient, setMqttClient] = useState<any>(null);
   const [mqttConnected, setMqttConnected] = useState(false);
+  const [connectionStatuses, setConnectionStatuses] = useState<Record<string, 'connected' | 'disconnected' | 'checking' | 'error' | 'unknown'>>({});
 
   // Form state
   const [formData, setFormData] = useState<Partial<BrokerTemplate>>({
@@ -532,6 +534,47 @@ export default function BrokerTemplatesEmbedded() {
     }));
   };
 
+  // Check connection status for a broker template - now uses backend API
+  const checkConnectionStatus = async (template: BrokerTemplate): Promise<'connected' | 'disconnected'> => {
+    // Connection status is now provided by backend in the template data
+    // This function is kept for compatibility but status comes from MQTT response
+    const status = template.connection_status;
+    return status === 'connected' ? 'connected' : 'disconnected';
+  };
+
+  // Update connection status for all templates
+  const updateConnectionStatuses = async () => {
+    if (templates.length === 0) return;
+
+    // Set all to checking first
+    const checkingStatuses: Record<string, 'checking'> = {};
+    templates.forEach(template => {
+      checkingStatuses[template.template_id] = 'checking';
+    });
+    setConnectionStatuses(checkingStatuses);
+
+    // Check each template's connection status
+    const statusPromises = templates.map(async (template) => {
+      const status = await checkConnectionStatus(template);
+      return { templateId: template.template_id, status };
+    });
+
+    const results = await Promise.all(statusPromises);
+    const newStatuses: Record<string, 'connected' | 'disconnected'> = {};
+    results.forEach(({ templateId, status }) => {
+      newStatuses[templateId] = status;
+    });
+
+    setConnectionStatuses(newStatuses);
+  };
+
+  // Update connection statuses when templates change
+  useEffect(() => {
+    if (templates.length > 0) {
+      updateConnectionStatuses();
+    }
+  }, [templates]);
+
   // Default templates as ultimate fallback
   const getDefaultTemplates = (): BrokerTemplate[] => {
     return [
@@ -690,6 +733,7 @@ export default function BrokerTemplatesEmbedded() {
                   <TableHead className="min-w-[200px]">Template</TableHead>
                   <TableHead className="min-w-[150px]">Category</TableHead>
                   <TableHead className="min-w-[200px]">Broker Config</TableHead>
+                  <TableHead className="min-w-[120px]">Connection Status</TableHead>
                   <TableHead className="min-w-[120px]">Version</TableHead>
                   <TableHead className="w-32 text-center font-semibold">Actions</TableHead>
                 </TableRow>
@@ -697,7 +741,7 @@ export default function BrokerTemplatesEmbedded() {
               <TableBody>
                 {templates.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-16">
+                    <TableCell colSpan={7} className="text-center py-16">
                       <div className="flex flex-col items-center gap-4">
                         <div className="h-16 w-16 bg-muted/50 rounded-full flex items-center justify-center">
                           <Settings className="h-8 w-8 text-muted-foreground" />
@@ -758,6 +802,36 @@ export default function BrokerTemplatesEmbedded() {
                               <X className="h-3 w-3 text-gray-400" />
                             )}
                           </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-center">
+                          {template.connection_status === 'checking' ? (
+                            <div className="flex items-center gap-2">
+                              <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">Checking...</span>
+                            </div>
+                          ) : template.connection_status === 'connected' ? (
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              <span className="text-xs text-green-600 font-medium">Connected</span>
+                            </div>
+                          ) : template.connection_status === 'disconnected' ? (
+                            <div className="flex items-center gap-2">
+                              <X className="h-4 w-4 text-red-600" />
+                              <span className="text-xs text-red-600 font-medium">Disconnected</span>
+                            </div>
+                          ) : template.connection_status === 'error' ? (
+                            <div className="flex items-center gap-2">
+                              <AlertCircle className="h-4 w-4 text-orange-600" />
+                              <span className="text-xs text-orange-600 font-medium">Error</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <Settings className="h-4 w-4 text-gray-600" />
+                              <span className="text-xs text-gray-600 font-medium">Unknown</span>
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>

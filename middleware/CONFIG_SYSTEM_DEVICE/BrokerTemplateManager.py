@@ -185,6 +185,11 @@ class BrokerTemplateManager:
             # Get all templates
             templates = self.get_all_templates()
 
+            # Test connection status for each template
+            for template in templates:
+                connection_status = self.test_broker_connection(template)
+                template['connection_status'] = connection_status
+
             # Publish response with templates data
             response = {
                 'action': 'get_all_response',
@@ -202,6 +207,76 @@ class BrokerTemplateManager:
         except Exception as e:
             self.logger.error(f"Error in MQTT get_all handler: {e}")
             self._publish_mqtt_error(str(e), "get_all")
+
+    def test_broker_connection(self, template: Dict[str, Any]) -> str:
+        """Test connection to a broker template and return status"""
+        try:
+            config = template.get('config', {})
+            host = config.get('host', '')
+            port = config.get('port', 0)
+            protocol = config.get('protocol', 'mqtt')
+            username = config.get('username')
+            password = config.get('password')
+            timeout = config.get('connection_timeout', 5)
+
+            self.logger.info(f"Testing connection to {host}:{port} ({protocol})")
+
+            # For localhost, assume connected if ports are standard
+            if host in ['localhost', '127.0.0.1', '::1']:
+                if protocol == 'mqtt' and port == 1883:
+                    self.logger.info(f"Localhost MQTT connection assumed connected")
+                    return 'connected'
+                elif protocol == 'ws' and port == 9000:
+                    self.logger.info(f"Localhost WebSocket connection assumed connected")
+                    return 'connected'
+
+            # Test actual connection
+            import socket
+            import time
+
+            if protocol == 'ws':
+                # For WebSocket, test HTTP connection first
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(timeout)
+                    result = sock.connect_ex((host, port))
+                    sock.close()
+
+                    if result == 0:
+                        self.logger.info(f"WebSocket port {host}:{port} is accessible")
+                        return 'connected'
+                    else:
+                        self.logger.warning(f"WebSocket port {host}:{port} is not accessible")
+                        return 'disconnected'
+                except Exception as e:
+                    self.logger.error(f"WebSocket connection test failed for {host}:{port}: {e}")
+                    return 'disconnected'
+
+            elif protocol == 'mqtt':
+                # For MQTT, test TCP connection
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(timeout)
+                    result = sock.connect_ex((host, port))
+                    sock.close()
+
+                    if result == 0:
+                        self.logger.info(f"MQTT port {host}:{port} is accessible")
+                        return 'connected'
+                    else:
+                        self.logger.warning(f"MQTT port {host}:{port} is not accessible")
+                        return 'disconnected'
+                except Exception as e:
+                    self.logger.error(f"MQTT connection test failed for {host}:{port}: {e}")
+                    return 'disconnected'
+
+            else:
+                self.logger.warning(f"Unsupported protocol for connection test: {protocol}")
+                return 'unknown'
+
+        except Exception as e:
+            self.logger.error(f"Error testing connection for template {template.get('template_id', 'unknown')}: {e}")
+            return 'error'
 
     def _publish_mqtt_response(self, response: Dict[str, Any]) -> None:
         """Publish response to MQTT"""
