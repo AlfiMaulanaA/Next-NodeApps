@@ -200,7 +200,11 @@ class BrokerResolver:
             with open(self.payload_config_file, 'r') as f:
                 config = json.load(f)
 
-            payloads = config.get('payloads', [])
+            # Support both new format (direct array) and old format (object with payloads)
+            if isinstance(config, list):
+                payloads = config  # New format: direct array
+            else:
+                payloads = config.get('payloads', [])  # Old format: object with payloads
 
             # Find payload configuration for this topic
             payload_config = None
@@ -327,7 +331,11 @@ class BrokerResolver:
             with open(self.payload_config_file, 'r') as f:
                 config = json.load(f)
 
-            payloads = config.get('payloads', [])
+            # Support both new format (direct array) and old format (object with payloads)
+            if isinstance(config, list):
+                payloads = config  # New format: direct array
+            else:
+                payloads = config.get('payloads', [])  # Old format: object with payloads
             current_template_id = None
 
             for payload in payloads:
@@ -373,7 +381,11 @@ class BrokerResolver:
             with open(self.payload_config_file, 'r') as f:
                 config = json.load(f)
 
-            payloads = config.get('payloads', [])
+            # Support both new format (direct array) and old format (object with payloads)
+            if isinstance(config, list):
+                payloads = config  # New format: direct array
+            else:
+                payloads = config.get('payloads', [])  # Old format: object with payloads
             current_template_id = None
 
             for payload in payloads:

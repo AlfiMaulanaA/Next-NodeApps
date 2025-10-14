@@ -169,7 +169,6 @@ export default function VoiceControlPage() {
     pin: 1,
     address: 0,
     device_bus: 0,
-    voice_commands: "",
     object_name: "",
     description: "",
   });
@@ -440,6 +439,12 @@ export default function VoiceControlPage() {
       // Handle READ response - update commands list
       if (payload.data && Array.isArray(payload.data)) {
         setCommands(payload.data);
+        // Save to localStorage when data is loaded
+        try {
+          localStorage.setItem('voice_commands', JSON.stringify(payload.data));
+        } catch (error) {
+          console.error('Voice Control: Error saving to localStorage:', error);
+        }
       } else {
         // Handle CREATE/UPDATE/DELETE responses
         toast.success(payload.message || 'Operation successful');
@@ -572,8 +577,6 @@ export default function VoiceControlPage() {
       pin: 1,
       address: 0,
       device_bus: 0,
-      mac: "",
-      voice_commands: "",
       object_name: "",
       description: "",
     });
@@ -584,18 +587,27 @@ export default function VoiceControlPage() {
     if (!mqttClient) return;
 
     // Validate form
-    if (!formData.device_name || !formData.object_name || !formData.voice_commands.trim()) {
+    if (!formData.device_name || !formData.object_name) {
       toast.error('Please fill in all required fields');
       return;
     }
 
     const selectedDevice = availableDevices.find(d => d.name === formData.device_name);
 
-    // Convert voice_commands string to array
-    const voiceCommandsArray = formData.voice_commands
-      .split(',')
-      .map(cmd => cmd.trim())
-      .filter(cmd => cmd.length > 0);
+    // Generate automatic voice commands based on object name
+    const objectName = formData.object_name.toLowerCase();
+    const voiceCommandsArray = [
+      `nyalakan ${objectName}`,
+      `hidupkan ${objectName}`,
+      `aktifkan ${objectName}`,
+      `matikan ${objectName}`,
+      `padamkan ${objectName}`,
+      `nonaktifkan ${objectName}`,
+      `turn on ${objectName}`,
+      `turn off ${objectName}`,
+      `enable ${objectName}`,
+      `disable ${objectName}`
+    ];
 
     const payload = {
       device_name: formData.device_name,
@@ -608,35 +620,15 @@ export default function VoiceControlPage() {
       part_number: selectedDevice?.part_number || "RELAY",
     };
 
-    // Optimistic update - immediately add to UI
-    const optimisticCommand: VoiceCommand = {
-      id: `temp-${Date.now()}`, // Temporary ID until backend responds
-      device_name: formData.device_name,
-      part_number: selectedDevice?.part_number || "RELAY",
-      pin: formData.pin,
-      address: selectedDevice?.address || 0,
-      device_bus: selectedDevice?.device_bus || 0,
-      mac: "00:00:00:00:00:00", // Will be updated by backend
-      voice_commands: voiceCommandsArray,
-      object_name: formData.object_name,
-      description: formData.description,
-      status: 'unknown',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    // Add to commands list immediately
-    setCommands(prev => [...prev, optimisticCommand]);
+    // Send to backend first, then update UI on success
+    mqttClient.publish(AUTOMATION_VOICE_TOPICS.CREATE, JSON.stringify(payload));
 
     // Close dialog and reset form immediately
     setCreateDialogOpen(false);
     resetForm();
 
-    // Show success message
-    toast.success('Voice command created successfully!');
-
-    // Send to backend
-    mqttClient.publish(AUTOMATION_VOICE_TOPICS.CREATE, JSON.stringify(payload));
+    // Show processing message
+    toast.info('Creating voice command...');
   };
 
   const handleEdit = (command: VoiceCommand) => {
@@ -647,8 +639,6 @@ export default function VoiceControlPage() {
       pin: command.pin,
       address: command.address,
       device_bus: command.device_bus,
-      mac: command.mac || '',
-      voice_commands: (command.voice_commands || []).join(', '),
       object_name: command.object_name,
       description: command.description || "",
     });
@@ -660,38 +650,22 @@ export default function VoiceControlPage() {
 
     const selectedDevice = availableDevices.find(d => d.name === formData.device_name);
 
-    // Convert voice_commands string to array
-    const voiceCommandsArray = formData.voice_commands
-      .split(',')
-      .map(cmd => cmd.trim())
-      .filter(cmd => cmd.length > 0);
+    // Generate automatic voice commands based on object name
+    const objectName = formData.object_name.toLowerCase();
+    const voiceCommandsArray = [
+      `nyalakan ${objectName}`,
+      `hidupkan ${objectName}`,
+      `aktifkan ${objectName}`,
+      `matikan ${objectName}`,
+      `padamkan ${objectName}`,
+      `nonaktifkan ${objectName}`,
+      `turn on ${objectName}`,
+      `turn off ${objectName}`,
+      `enable ${objectName}`,
+      `disable ${objectName}`
+    ];
 
-    // Optimistic update - immediately update the command in UI
-    const updatedCommand: VoiceCommand = {
-      ...editingCommand,
-      device_name: formData.device_name,
-      part_number: selectedDevice?.part_number || "RELAY",
-      pin: formData.pin,
-      address: selectedDevice?.address || 0,
-      device_bus: selectedDevice?.device_bus || 0,
-      voice_commands: voiceCommandsArray,
-      object_name: formData.object_name,
-      description: formData.description,
-      updated_at: new Date().toISOString(),
-    };
-
-    // Update the command in the list
-    setCommands(prev => prev.map(cmd =>
-      cmd.id === editingCommand.id ? updatedCommand : cmd
-    ));
-
-    // Close dialog and reset form immediately
-    setEditDialogOpen(false);
-    resetForm();
-
-    // Show success message
-    toast.success('Voice command updated successfully!');
-
+    // Send update to backend first
     const payload = {
       id: editingCommand.id,
       data: {
@@ -707,6 +681,13 @@ export default function VoiceControlPage() {
     };
 
     mqttClient.publish(AUTOMATION_VOICE_TOPICS.UPDATE, JSON.stringify(payload));
+
+    // Close dialog and reset form immediately
+    setEditDialogOpen(false);
+    resetForm();
+
+    // Show processing message
+    toast.info('Updating voice command...');
   };
 
   const handleDelete = (command: VoiceCommand) => {
@@ -717,20 +698,18 @@ export default function VoiceControlPage() {
   const confirmDelete = () => {
     if (!mqttClient || !deletingCommand) return;
 
-    // Optimistic update - immediately remove from UI
-    setCommands(prev => prev.filter(cmd => cmd.id !== deletingCommand.id));
-
-    // Close dialog immediately
-    setDeleteDialogOpen(false);
-
-    // Show success message
-    toast.success('Voice command deleted successfully!');
-
+    // Send delete to backend first
     const payload = {
       id: deletingCommand.id
     };
 
     mqttClient.publish(AUTOMATION_VOICE_TOPICS.DELETE, JSON.stringify(payload));
+
+    // Close dialog immediately
+    setDeleteDialogOpen(false);
+
+    // Show processing message
+    toast.info('Deleting voice command...');
 
     // Reset deleting command
     setDeletingCommand(null);
@@ -873,14 +852,6 @@ export default function VoiceControlPage() {
 
           <div className="flex items-center gap-2">
             <MQTTConnectionBadge />
-            <Button
-              size="sm"
-              onClick={() => setCreateDialogOpen(true)}
-              className="gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Add Command
-            </Button>
           </div>
         </div>
       </header>
@@ -939,40 +910,36 @@ export default function VoiceControlPage() {
           </CardHeader>
 
           <CardContent className="space-y-4">
-            {/* Voice Command Input */}
-            <div className="bg-muted/30 rounded-lg p-4">
-              <div className="flex gap-3">
-                <div className="flex-1 relative">
-                  <Input
-                    placeholder="Speak or type your command (e.g., 'nyalakan lampu kamar')"
-                    value={testCommand}
-                    onChange={(e) => setTestCommand(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        handleSendVoiceCommand(testCommand);
-                        setTestCommand("");
-                      }
+            {/* Live Voice Command Display */}
+            <div className="hidden">
+              <div className="bg-muted/30 rounded-lg p-4">
+                <div className="flex gap-3">
+                  <div className="flex-1 relative">
+                    <Input
+                      placeholder="Live command will appear here when you speak..."
+                      value={testCommand}
+                      readOnly
+                      className="h-11 text-base bg-background"
+                    />
+                    <Mic className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <Button
+                    size="default"
+                    onClick={() => {
+                      handleSendVoiceCommand(testCommand);
+                      setTestCommand("");
                     }}
-                    className="h-11 text-base"
-                  />
-                  <Mic className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    disabled={!testCommand.trim() || !mqttClient}
+                    className="px-6"
+                  >
+                    Send Command
+                  </Button>
                 </div>
-                <Button
-                  size="default"
-                  onClick={() => {
-                    handleSendVoiceCommand(testCommand);
-                    setTestCommand("");
-                  }}
-                  disabled={!testCommand.trim() || !mqttClient}
-                  className="px-6"
-                >
-                  Send Command
-                </Button>
+                <p className="text-xs text-muted-foreground mt-2 flex items-center gap-2">
+                  <Sparkles className="h-3 w-3" />
+                  Voice commands appear here automatically • Click Send to execute
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-2">
-                <Sparkles className="h-3 w-3" />
-                Press Enter or click Send • Supports Indonesian voice commands
-              </p>
             </div>
           </CardContent>
         </Card>
@@ -1170,10 +1137,21 @@ export default function VoiceControlPage() {
               <h2 className="text-2xl font-bold tracking-tight">Voice Commands</h2>
               <p className="text-muted-foreground">Manage your smart home voice-controlled devices</p>
             </div>
-            <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
-              <Plus className="h-5 w-5" />
-              Add Command
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTestDialogOpen(true)}
+                className="gap-2"
+              >
+                <TestTube className="h-4 w-4" />
+                Test Command
+              </Button>
+              <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
+                <Plus className="h-5 w-5" />
+                Add Command
+              </Button>
+            </div>
           </div>
 
           {commands.length === 0 ? (
@@ -1322,15 +1300,14 @@ export default function VoiceControlPage() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex gap-2 pt-2 border-t">
+                      <div className="flex justify-end gap-2 pt-2 border-t">
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleEdit(command)}
-                          className="flex-1 gap-2"
+                          className="gap-2"
                         >
                           <Edit2 className="h-4 w-4" />
-                          Edit
                         </Button>
                         <Button
                           size="sm"
@@ -1419,9 +1396,12 @@ export default function VoiceControlPage() {
                     id="mac"
                     value={formData.mac}
                     readOnly
-                    className="bg-muted/50 font-mono text-xs"
-                    placeholder="Auto-populated"
+                    className={`bg-muted/50 font-mono text-xs ${formData.mac !== '00:00:00:00:00:00' ? 'text-green-700 bg-green-50' : 'text-muted-foreground'}`}
+                    placeholder="Auto-detected"
                   />
+                  {formData.mac !== '00:00:00:00:00:00' && (
+                    <p className="text-xs text-green-600 mt-1">✅ MAC address detected</p>
+                  )}
                 </div>
               </div>
 
@@ -1449,7 +1429,7 @@ export default function VoiceControlPage() {
               </div>
 
               <div>
-                <Label htmlFor="object_name">Object Name *</Label>
+                <Label htmlFor="object_name">Target Name *</Label>
                 <Input
                   id="object_name"
                   value={formData.object_name}
@@ -1458,18 +1438,29 @@ export default function VoiceControlPage() {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="voice_commands">Voice Commands *</Label>
-                <Textarea
-                  id="voice_commands"
-                  value={formData.voice_commands}
-                  onChange={(e) => setFormData(prev => ({ ...prev, voice_commands: e.target.value }))}
-                  placeholder="turn on, nyalakan, hidupkan (comma-separated)"
-                  rows={3}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Separate multiple commands with commas
-                </p>
+              <div className="hidden">
+                <Label htmlFor="voice_commands">Voice Commands (Auto-generated)</Label>
+                <div className="p-3 bg-muted/50 rounded-md border">
+                  <p className="text-sm text-muted-foreground mb-2">Commands will be automatically generated based on the target name:</p>
+                  <div className="text-xs font-mono bg-background p-2 rounded border">
+                    {formData.object_name ? (
+                      <div className="space-y-1">
+                        <div>• nyalakan {formData.object_name.toLowerCase()}</div>
+                        <div>• hidupkan {formData.object_name.toLowerCase()}</div>
+                        <div>• aktifkan {formData.object_name.toLowerCase()}</div>
+                        <div>• matikan {formData.object_name.toLowerCase()}</div>
+                        <div>• padamkan {formData.object_name.toLowerCase()}</div>
+                        <div>• nonaktifkan {formData.object_name.toLowerCase()}</div>
+                        <div>• turn on {formData.object_name.toLowerCase()}</div>
+                        <div>• turn off {formData.object_name.toLowerCase()}</div>
+                        <div>• enable {formData.object_name.toLowerCase()}</div>
+                        <div>• disable {formData.object_name.toLowerCase()}</div>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">Enter a target name to see auto-generated commands</span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div>

@@ -1,4 +1,5 @@
 import json
+import sys
 import time
 import threading
 from threading import Lock
@@ -12,9 +13,40 @@ CONFIG_FILE_PATH = "../MODULAR_I2C/JSON/Config/mqtt_config.json"
 DATA_FILE_PATH = "./JSON/payloadStaticConfig.json"
 ERROR_LOG_TOPIC = "subrack/error/log"
 
-# --- Setup Logging ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("PayloadStaticService")
+# --- Minimal Logging Setup (like run_automation_voice.py) ---
+def setup_minimal_logging():
+    """Setup minimal logging - only warnings/errors to console, detailed to file"""
+
+    # Clear existing handlers
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Console handler - only warnings and errors (minimal spam)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.WARNING)  # Only show warnings and errors
+    console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+    console_handler.setFormatter(console_formatter)
+
+    # File handler - detailed logging
+    file_handler = logging.FileHandler('payload_static.log')
+    file_handler.setLevel(logging.INFO)
+    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(file_formatter)
+
+    # Setup root logger
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[console_handler, file_handler]
+    )
+
+    # Suppress noisy third-party logs
+    logging.getLogger('paho.mqtt.client').setLevel(logging.WARNING)
+    logging.getLogger('BrokerResolver').setLevel(logging.WARNING)
+
+# Initialize minimal logging
+setup_minimal_logging()
+logger = logging.getLogger("PayloadStatic")
 
 json_lock = Lock()
 
@@ -34,6 +66,12 @@ def read_json_file(file_path):
         try:
             with open(file_path, "r") as file:
                 return json.load(file)
+        except FileNotFoundError:
+            logger.warning(f"JSON file not found at {file_path}, creating empty structure")
+            # Create the file with empty array structure (new format)
+            empty_data = []
+            write_json_file(file_path, empty_data)
+            return empty_data
         except Exception as e:
             logger.error(f"Error reading JSON file at {file_path}: {e}")
             return []
@@ -150,21 +188,22 @@ def add_online_status(data):
         if not isinstance(item_data, dict):
             logger.warning(f"Skipping invalid data format for topic {topic}: {item_data}")
             continue
-        if lwt_status:
-            item["data"] = {"online": 1, **item_data}
-        else:
-            item_data.pop("online", None)
-            item["data"] = item_data
+        # Always set online status: 1 when LWT is enabled, 0 when disabled
+        item["data"] = {"online": 1 if lwt_status else 0, **item_data}
     return data
 
 def set_lwt(client):
     data = read_json_file(DATA_FILE_PATH)
-    if not data or not isinstance(data, dict):
+    if not data:
         logger.info("No valid data available to set LWT.")
         return
 
-    # Handle new format with templates + payloads structure
-    payloads = data.get('payloads', [])
+    # Handle both old format (dict) and new format (array)
+    if isinstance(data, dict):
+        payloads = data.get('payloads', [])
+    else:
+        payloads = data  # New format: direct array
+
     if not payloads:
         logger.info("No payloads configured for LWT.")
         return
@@ -183,21 +222,35 @@ def update_lwt(client, new_entry):
         client.will_set(topic, json.dumps(offline_payload), qos=1, retain=False)
 
 def handle_get_data(client):
-    logger.info("[DEBUG] Processing getData command")
-    data = read_json_file(DATA_FILE_PATH)
-    logger.info(f"[DEBUG] Read {len(data)} items from JSON file")
-    logger.debug(f"[DEBUG] Data contents: {data}")
+    """Handle getData command with clean logging"""
+    try:
+        data = read_json_file(DATA_FILE_PATH)
+        if not data:
+            logger.warning("No payload data available")
+            data = {"templates": [], "payloads": []}
 
-    json_response = json.dumps(data)
-    logger.info(f"[DEBUG] Publishing response to response/data/payload, length: {len(json_response)}")
-    logger.debug(f"[DEBUG] JSON response: {json_response}")
+        # Ensure proper format
+        if isinstance(data, list):
+            data = {"templates": [], "payloads": data}
 
-    result = client.publish("response/data/payload", json_response)
-    logger.info(f"[DEBUG] Publish result: {result}")
-    if result.rc == 0:
-        logger.info("[DEBUG] Successfully published getData response")
-    else:
-        logger.error(f"[DEBUG] Failed to publish getData response, code: {result.rc}")
+        payload_count = len(data.get('payloads', []))
+        template_count = len(data.get('templates', []))
+
+        logger.info(f"Processed getData: {payload_count} payloads, {template_count} templates")
+
+        json_response = json.dumps(data)
+        result = client.publish("response/data/payload", json_response)
+
+        if result.rc != 0:
+            logger.error(f"Failed to publish response (code: {result.rc})")
+
+    except Exception as e:
+        logger.error(f"Error in handle_get_data: {e}")
+        client.publish("response/data/payload", json.dumps({
+            "status": "error",
+            "message": "Failed to retrieve data",
+            "error": str(e)
+        }))
 
 def handle_write_data(client, payload):
     try:
@@ -238,30 +291,36 @@ def handle_write_data(client, payload):
         # Read current data (handle both old and new format)
         current_data = read_json_file(DATA_FILE_PATH)
         if not current_data:
-            # Initialize with new format
-            current_data = {"templates": [], "payloads": []}
+            # Initialize with new format (direct array)
+            current_data = []
 
-        # Handle both old format (list) and new format (dict with payloads)
-        if isinstance(current_data, list):
-            # Convert old format to new format
-            current_data = {
-                "templates": [],
-                "payloads": current_data
-            }
+        # Handle both old format (dict) and new format (array)
+        if isinstance(current_data, dict):
+            # Old format: convert to new format
+            payloads = current_data.get('payloads', [])
+            payloads.append(new_entry)
+            current_data = payloads  # Now it's a direct array
+        else:
+            # New format: direct array
+            current_data.append(new_entry)
 
-        # Add new entry to payloads
-        current_data["payloads"].append(new_entry)
         write_json_file(DATA_FILE_PATH, current_data)
 
         # Set LWT for the new entry
         update_lwt(pub_client, new_entry)
 
-        client.publish("response/data/write", json.dumps({
+        # Send success response to frontend
+        response_payload = {
             "status": "success",
             "message": f"Data created for topic {topic}",
             "data": new_entry
-        }))
-        logger.info(f"Successfully created new payload entry for topic: {topic} with template: {template_id}")
+        }
+        client.publish("response/data/write", json.dumps(response_payload))
+        logger.info(f"Created payload for topic: {topic} (template: {template_id})")
+
+        # Immediately send updated data to frontend to refresh UI
+        logger.info("Sending updated data to frontend after create operation")
+        handle_get_data(client)
 
     except Exception as e:
         logger.error(f"Error in handle_write_data: {e}")
@@ -280,15 +339,13 @@ def handle_update_data(client, payload):
 
         current_data = read_json_file(DATA_FILE_PATH)
 
-        # Handle both old format (list) and new format (dict with payloads)
-        if isinstance(current_data, list):
-            # Convert old format to new format
-            current_data = {
-                "templates": [],
-                "payloads": current_data
-            }
-
-        payloads = current_data.get('payloads', [])
+        # Handle both old format (dict) and new format (array)
+        if isinstance(current_data, dict):
+            # Old format: get payloads array
+            payloads = current_data.get('payloads', [])
+        else:
+            # New format: direct array
+            payloads = current_data
 
         # Find and update the payload
         for i, item in enumerate(payloads):
@@ -335,13 +392,19 @@ def handle_update_data(client, payload):
                     except Exception as e:
                         logger.warning(f"Failed to clear retained message for old topic {old_topic}: {e}")
 
-                client.publish("response/data/update", json.dumps({
+                # Send success response to frontend
+                response_payload = {
                     "status": "success",
                     "message": f"Data updated for topic {new_topic}",
                     "topic": new_topic,
                     "data": current_data["payloads"][i]
-                }))
-                logger.info(f"Successfully updated payload entry for topic: {new_topic}")
+                }
+                client.publish("response/data/update", json.dumps(response_payload))
+                logger.info(f"Updated payload for topic: {new_topic} (from {original_topic})")
+
+                # Immediately send updated data to frontend to refresh UI
+                logger.info("Sending updated data to frontend after update operation")
+                handle_get_data(client)
                 return
 
         client.publish("response/data/update", json.dumps({"status": "error", "message": f"No entry found with topic {original_topic}"}))
@@ -355,36 +418,69 @@ def handle_delete_data(client, payload):
     if topic:
         current_data = read_json_file(DATA_FILE_PATH)
 
-        # Handle both old format (list) and new format (dict with payloads)
-        if isinstance(current_data, list):
-            # Convert old format to new format
-            current_data = {
-                "templates": [],
-                "payloads": current_data
-            }
+        # Handle both old format (dict) and new format (array)
+        if isinstance(current_data, dict):
+            # Old format: get payloads array and update it
+            payloads = current_data.get('payloads', [])
+            original_count = len(payloads)
+            updated_payloads = [item for item in payloads if item.get("topic") != topic]
 
-        payloads = current_data.get('payloads', [])
-        original_count = len(payloads)
+            if len(updated_payloads) < original_count:
+                current_data["payloads"] = updated_payloads
+                write_json_file(DATA_FILE_PATH, current_data)
 
-        # Filter out the topic to delete
-        updated_payloads = [item for item in payloads if item.get("topic") != topic]
+                # Clear retained message by publishing empty payload with retain=True
+                try:
+                    result = client.publish(topic, "", qos=1, retain=True)
+                    logger.info(f"✓ Cleared retained message for topic: {topic}")
+                except Exception as e:
+                    logger.warning(f"Failed to clear retained message for topic {topic}: {e}")
 
-        if len(updated_payloads) < original_count:
-            # Update the data structure
-            current_data["payloads"] = updated_payloads
-            write_json_file(DATA_FILE_PATH, current_data)
+                # Send success response to frontend
+                response_payload = {
+                    "status": "success",
+                    "message": f"Successfully deleted topic {topic}",
+                    "topic": topic
+                }
+                client.publish("response/data/delete", json.dumps(response_payload))
+                logger.info(f"Deleted payload for topic: {topic}")
 
-            # Clear retained message by publishing empty payload with retain=True
-            try:
-                result = client.publish(topic, "", qos=1, retain=True)
-                logger.info(f"✓ Cleared retained message for topic: {topic}")
-            except Exception as e:
-                logger.warning(f"Failed to clear retained message for topic {topic}: {e}")
-
-            client.publish("response/data/delete", json.dumps({"status": "success", "topic": topic}))
-            logger.info(f"Successfully deleted payload entry for topic: {topic}")
+                # Immediately send updated data to frontend to refresh UI
+                logger.info("Sending updated data to frontend after delete operation")
+                handle_get_data(client)
+            else:
+                client.publish("response/data/delete", json.dumps({"status": "error", "message": f"No entry found with topic {topic}"}))
         else:
-            client.publish("response/data/delete", json.dumps({"status": "error", "message": f"No entry found with topic {topic}"}))
+            # New format: direct array
+            original_count = len(current_data)
+            updated_payloads = [item for item in current_data if item.get("topic") != topic]
+
+            if len(updated_payloads) < original_count:
+                write_json_file(DATA_FILE_PATH, updated_payloads)
+
+                # Clear retained message by publishing empty payload with retain=True
+                try:
+                    result = client.publish(topic, "", qos=1, retain=True)
+                    logger.info(f"✓ Cleared retained message for topic: {topic}")
+                except Exception as e:
+                    logger.warning(f"Failed to clear retained message for topic {topic}: {e}")
+
+                # Send success response to frontend
+                response_payload = {
+                    "status": "success",
+                    "message": f"Successfully deleted topic {topic}",
+                    "topic": topic
+                }
+                client.publish("response/data/delete", json.dumps(response_payload))
+                logger.info(f"Deleted payload for topic: {topic}")
+
+                # Immediately send updated data to frontend to refresh UI
+                logger.info("Sending updated data to frontend after delete operation")
+                handle_get_data(client)
+            else:
+                client.publish("response/data/delete", json.dumps({"status": "error", "message": f"No entry found with topic {topic}"}))
+    else:
+        client.publish("response/data/delete", json.dumps({"status": "error", "message": "No topic provided"}))
 
 def send_data_periodically():
     """Send data periodically using template broker system with health monitoring."""
@@ -397,15 +493,17 @@ def send_data_periodically():
     while True:
         try:
             data = read_json_file(DATA_FILE_PATH)
-            if not data or not isinstance(data, dict):
-                logger.warning("No valid payload data found or invalid format")
+            if not data:
                 time.sleep(5)
                 continue
 
-            # Get payloads array
-            payloads = data.get('payloads', [])
+            # Handle both old format (dict) and new format (array)
+            if isinstance(data, dict):
+                payloads = data.get('payloads', [])
+            else:
+                payloads = data  # New format: direct array
+
             if not payloads:
-                logger.warning("No payloads configured")
                 time.sleep(5)
                 continue
 
@@ -415,7 +513,7 @@ def send_data_periodically():
             for item in data_with_online:
                 topic = item.get("topic")
                 payload = item.get("data")
-                interval = item.get("interval", 5)  # Default 5 seconds if not set
+                interval = item.get("interval", 5)
 
                 if not topic or not payload or interval <= 0:
                     continue
@@ -438,29 +536,25 @@ def send_data_periodically():
 
                         if success:
                             last_publish_times[topic] = current_time
-                            logger.info(f"✅ Published static data to {topic} (interval: {interval}s, template: {item.get('template_id')})")
+                            # Success logged to file only (no console spam)
                         else:
-                            logger.warning(f"❌ Failed to publish to {topic} using template system")
+                            logger.warning(f"Failed to publish to {topic}")
 
                     except Exception as e:
-                        logger.error(f"Error publishing to {topic}: {e}")
+                        logger.error(f"Publishing error for {topic}: {e}")
 
-            # Periodic cleanup of unhealthy connections
+            # Periodic cleanup of unhealthy connections (every 60 seconds)
             cleanup_counter += 1
-            if cleanup_counter >= 60:  # Every 60 seconds
+            if cleanup_counter >= 60:
                 broker_resolver.cleanup_unhealthy_connections()
                 cleanup_counter = 0
+                logger.info("Broker connections cleaned up")
 
-                # Log health report
-                health_report = broker_resolver.get_broker_health_report()
-                logger.info(f"Broker Health Report: {health_report}")
-
-            # Sleep for 1 second to check intervals frequently
             time.sleep(1)
 
         except Exception as e:
             logger.error(f"Error in send_data_periodically: {e}")
-            time.sleep(5)  # Sleep longer on error
+            time.sleep(5)
 
 # Set LWT for publisher client
 set_lwt(pub_client)

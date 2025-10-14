@@ -264,7 +264,7 @@ class VoiceCommandProcessor:
             # Get active MAC address for the controller (same as AutomationLogic.py)
             active_mac = self._get_active_mac_address()
 
-            # Create payload using the same structure as AutomationLogic.py
+            # Create payload using the simplified structure
             payload = {
                 "mac": active_mac,  # Use active network MAC address
                 "protocol_type": "Modular",
@@ -276,11 +276,7 @@ class VoiceCommandProcessor:
                 },
                 "address": command.get('address', 0),
                 "device_bus": command.get('device_bus', 0),
-                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "source": "voice_command",
-                "voice_command_id": command.get('id'),
-                "object_name": object_name,
-                "device_name": device_name
+                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
 
             # Publish to MQTT

@@ -20,15 +20,8 @@ class AutomationVoice:
         try:
             os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
             if not os.path.exists(self.config_file):
-                # Create initial config file
-                initial_config = {
-                    "commands": [],
-                    "metadata": {
-                        "version": "1.0",
-                        "created_at": datetime.now().isoformat(),
-                        "last_updated": datetime.now().isoformat()
-                    }
-                }
+                # Create initial config file as array
+                initial_config = []
                 with open(self.config_file, 'w', encoding='utf-8') as f:
                     json.dump(initial_config, f, indent=2, ensure_ascii=False)
                 logger.info(f"Created initial voice control config file: {self.config_file}")
@@ -36,22 +29,29 @@ class AutomationVoice:
             logger.error(f"Error creating config file: {e}")
             raise
 
-    def load_config(self) -> Dict[str, Any]:
+    def load_config(self) -> List[Dict[str, Any]]:
         """Load configuration from file"""
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                # Handle both old format (dict) and new format (array)
+                if isinstance(data, list):
+                    return data
+                elif isinstance(data, dict):
+                    # Convert old format to new format
+                    return data.get('commands', [])
+                else:
+                    return []
         except FileNotFoundError:
             logger.warning(f"Config file not found: {self.config_file}")
-            return {"commands": [], "metadata": {}}
+            return []
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing config file: {e}")
-            return {"commands": [], "metadata": {}}
+            return []
 
-    def save_config(self, config: Dict[str, Any]):
+    def save_config(self, config: List[Dict[str, Any]]):
         """Save configuration to file"""
         try:
-            config["metadata"]["last_updated"] = datetime.now().isoformat()
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
             logger.info("Configuration saved successfully")
@@ -77,6 +77,15 @@ class AutomationVoice:
             command_id = str(uuid.uuid4().hex)[:16]
             current_time = datetime.now().isoformat()
 
+            # Detect MAC address for the device if not provided
+            device_mac = command_data.get('mac', '00:00:00:00:00:00')
+            if device_mac == '00:00:00:00:00:00':
+                device_mac = self.detect_device_mac(
+                    command_data['device_name'],
+                    command_data.get('address', 0),
+                    command_data.get('device_bus', 0)
+                )
+
             # Create command entry
             command = {
                 'id': command_id,
@@ -85,7 +94,7 @@ class AutomationVoice:
                 'pin': command_data.get('pin', 1),
                 'address': command_data.get('address', 0),
                 'device_bus': command_data.get('bus', command_data.get('device_bus', 0)),
-                'mac': command_data.get('mac', '00:00:00:00:00:00'),
+                'mac': device_mac,  # Use detected MAC address
                 'voice_commands': command_data['voice_commands'] if isinstance(command_data['voice_commands'], list) else [command_data['voice_commands']],
                 'object_name': command_data['object_name'],
                 'description': command_data.get('desc', command_data.get('description', '')),
@@ -94,11 +103,11 @@ class AutomationVoice:
                 'updated_at': current_time
             }
 
-            # Add to commands list
-            config['commands'].append(command)
+            # Add to commands list (config is now a list)
+            config.append(command)
             self.save_config(config)
 
-            logger.info(f"Created voice command: {command_id} for device {command_data['device_name']}")
+            logger.info(f"Created voice command: {command_id} for device {command_data['device_name']} with MAC {device_mac}")
             return {
                 'success': True,
                 'data': command
@@ -115,7 +124,8 @@ class AutomationVoice:
         """Get all voice commands"""
         try:
             config = self.load_config()
-            commands = config.get('commands', [])
+            # config is now a list directly
+            commands = config if isinstance(config, list) else []
 
             logger.info(f"Retrieved {len(commands)} voice commands")
             return {
@@ -135,7 +145,8 @@ class AutomationVoice:
         """Get a specific command by ID"""
         try:
             config = self.load_config()
-            commands = config.get('commands', [])
+            # config is now a list directly
+            commands = config if isinstance(config, list) else []
 
             for command in commands:
                 if command.get('id') == command_id:
@@ -151,7 +162,8 @@ class AutomationVoice:
         """Update an existing voice command"""
         try:
             config = self.load_config()
-            commands = config.get('commands', [])
+            # config is now a list directly
+            commands = config if isinstance(config, list) else []
 
             # Find and update the command
             for i, command in enumerate(commands):
@@ -170,8 +182,8 @@ class AutomationVoice:
                             else:
                                 updated_command[key] = value
 
-                    # Update in config
-                    config['commands'][i] = updated_command
+                    # Update in config (config is now a list)
+                    config[i] = updated_command
                     self.save_config(config)
 
                     logger.info(f"Updated voice command: {command_id}")
@@ -196,7 +208,8 @@ class AutomationVoice:
         """Delete a voice command"""
         try:
             config = self.load_config()
-            commands = config.get('commands', [])
+            # config is now a list directly
+            commands = config if isinstance(config, list) else []
 
             # Find and remove the command
             for i, command in enumerate(commands):
@@ -226,7 +239,8 @@ class AutomationVoice:
         """Get all commands for a specific device"""
         try:
             config = self.load_config()
-            commands = config.get('commands', [])
+            # config is now a list directly
+            commands = config if isinstance(config, list) else []
 
             device_commands = [
                 command for command in commands
@@ -244,7 +258,8 @@ class AutomationVoice:
         """Search commands by object name or voice commands"""
         try:
             config = self.load_config()
-            commands = config.get('commands', [])
+            # config is now a list directly
+            commands = config if isinstance(config, list) else []
             query_lower = query.lower()
 
             matching_commands = []
@@ -394,10 +409,11 @@ class AutomationVoice:
                 except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
                     logger.warning(f"General ARP scan failed for device {device_name}: {e}")
 
-            # Priority 4: Try network scanning with nmap if available
+            # Priority 4: Try network scanning with nmap if available (reduced timeout and better error handling)
             try:
+                logger.debug("Attempting nmap network scan...")
                 result = subprocess.run(['nmap', '-sn', '192.168.1.0/24'],
-                                      capture_output=True, text=True, timeout=30)
+                                      capture_output=True, text=True, timeout=15)  # Reduced timeout from 30 to 15 seconds
 
                 if result.returncode == 0:
                     lines = result.stdout.split('\n')
@@ -429,8 +445,12 @@ class AutomationVoice:
                                         else:
                                             logger.info(f"📡 Detected MAC address {current_mac} for device {device_name} at {current_ip}")
                                             return current_mac
+                else:
+                    logger.warning(f"Nmap scan failed with return code {result.returncode}")
             except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
                 logger.warning(f"Nmap scan failed: {e}")
+            except FileNotFoundError:
+                logger.debug("Nmap not installed on this system")
 
             # Fallback: generate a mock MAC address based on device info
             logger.warning(f"Could not detect real MAC address for device {device_name}, using generated MAC")
@@ -617,7 +637,8 @@ class AutomationVoice:
         """Update MAC addresses for all devices in the configuration"""
         try:
             config = self.load_config()
-            commands = config.get('commands', [])
+            # config is now a list directly
+            commands = config if isinstance(config, list) else []
             updated_count = 0
 
             for command in commands:
@@ -659,7 +680,8 @@ class AutomationVoice:
         """Get statistics about voice commands"""
         try:
             config = self.load_config()
-            commands = config.get('commands', [])
+            # config is now a list directly
+            commands = config if isinstance(config, list) else []
 
             stats = {
                 'total_commands': len(commands),

@@ -24,7 +24,7 @@ export interface VoiceCommandForm {
   address: number;
   device_bus: number;
   mac?: string;
-  voice_commands: string;
+  voice_commands?: string[];
   object_name: string;
   description?: string;
 }

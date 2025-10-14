@@ -198,9 +198,9 @@ class AutomationVoiceMQTT:
         try:
             result = self.automation_voice.create_command(payload)
 
-            if result['success']:
+            if result.get('success'):
                 logger.info(f"Created voice command for device: {payload.get('device_name')}")
-                self.send_success_response(result['data'], "Command created successfully")
+                self.send_success_response(result.get('data'), "Command created successfully")
             else:
                 logger.error(f"Failed to create voice command: {result.get('error')}")
                 self.send_error_response("Failed to create command", result.get('error'))
@@ -214,10 +214,10 @@ class AutomationVoiceMQTT:
         try:
             result = self.automation_voice.get_all_commands()
 
-            if result['success']:
-                logger.info(f"Retrieved {len(result['data'])} voice commands")
+            if result.get('success'):
+                logger.info(f"Retrieved {len(result.get('data', []))} voice commands")
                 # Send response wrapped in success structure for consistency
-                self.send_success_response(result['data'], "Commands retrieved successfully")
+                self.send_success_response(result.get('data', []), "Commands retrieved successfully")
             else:
                 logger.error(f"Failed to read voice commands: {result.get('error')}")
                 self.send_error_response("Failed to read commands", result.get('error'))
@@ -238,9 +238,9 @@ class AutomationVoiceMQTT:
 
             result = self.automation_voice.update_command(command_id, update_data)
 
-            if result['success']:
+            if result.get('success'):
                 logger.info(f"Updated voice command: {command_id}")
-                self.send_success_response(result['data'], "Command updated successfully")
+                self.send_success_response(result.get('data'), "Command updated successfully")
             else:
                 logger.error(f"Failed to update voice command: {result.get('error')}")
                 self.send_error_response("Failed to update command", result.get('error'))
@@ -260,7 +260,7 @@ class AutomationVoiceMQTT:
 
             result = self.automation_voice.delete_command(command_id)
 
-            if result['success']:
+            if result.get('success'):
                 logger.info(f"Deleted voice command: {command_id}")
                 self.send_success_response({"id": command_id}, "Command deleted successfully")
             else:

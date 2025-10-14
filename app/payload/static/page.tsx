@@ -450,15 +450,6 @@ function PayloadForm({
           </div>
         </div>
 
-        {/* Broker Template Selection */}
-        <div className="space-y-4">
-          <TemplateSelector
-            selectedTemplateId={selectedTemplateId}
-            onTemplateChange={onTemplateChange}
-            disabled={false}
-          />
-        </div>
-
         {/* Data Fields Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -480,6 +471,15 @@ function PayloadForm({
           <div className="space-y-3 max-h-60 overflow-y-auto">
             {renderFields()}
           </div>
+        </div>
+
+        {/* Broker Template Selection */}
+        <div className="space-y-4">
+          <TemplateSelector
+            selectedTemplateId={selectedTemplateId}
+            onTemplateChange={onTemplateChange}
+            disabled={false}
+          />
         </div>
       </div>
 
@@ -1306,7 +1306,7 @@ export default function StaticPayloadPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="space-y-1">
-                        <p className="text-sm font-medium text-muted-foreground">QoS &gt 0</p>
+                        <p className="text-sm font-medium text-muted-foreground">QoS &gt; 0</p>
                         <p className="text-2xl font-bold tracking-tight text-orange-600">
                           {items.filter((item) => item.qos > 0).length}
                         </p>
@@ -1446,7 +1446,7 @@ export default function StaticPayloadPage() {
                                           : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
                                       }`}>
                                         <div className={`w-1 h-1 rounded-full ${it.lwt ? 'bg-emerald-500' : 'bg-slate-400'}`}></div>
-                                        <span className="text-xs">{it.lwt ? 'ON' : 'OFF'}</span>
+                                        <span className="text-xs">{it.lwt ? 'Active' : 'Inactive'}</span>
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -1457,7 +1457,7 @@ export default function StaticPayloadPage() {
                                           : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
                                       }`}>
                                         <div className={`w-1 h-1 rounded-full ${it.retain ? 'bg-blue-500' : 'bg-slate-400'}`}></div>
-                                        <span className="text-xs">{it.retain ? 'ON' : 'OFF'}</span>
+                                        <span className="text-xs">{it.retain ? 'Active' : 'Inactive'}</span>
                                       </div>
                                     </div>
                                   </div>

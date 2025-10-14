@@ -1,35 +1,8 @@
 {
   "templates": [
     {
-      "template_id": "AWS_Test",
-      "name": "AWS_Test",
-      "description": "Migrated from database - AWS Test configuration",
-      "category": "production",
-      "config": {
-        "protocol": "ws",
-        "host": "localhost",
-        "port": 9000,
-        "ssl": false,
-        "username": "",
-        "password": "",
-        "qos": 0,
-        "retain": false,
-        "keepalive": 60,
-        "connection_timeout": 5,
-        "reconnect_period": 3
-      },
-      "fallback_brokers": [],
-      "metadata": {
-        "created_by": "system_migration",
-        "version": "1.1",
-        "last_updated": "2025-10-07T08:55:34.740Z",
-        "created_at": "2025-09-17T16:27:27.000Z",
-        "updated_at": "2025-10-07T15:55:34.761007"
-      }
-    },
-    {
-      "template_id": "custom_broker_v15",
-      "name": "Custom Broker 15",
+      "template_id": "local",
+      "name": "localhost",
       "description": "",
       "category": "development",
       "config": {
@@ -49,39 +22,13 @@
       "metadata": {
         "created_by": "user",
         "version": "1.0",
-        "last_updated": "2025-10-07T07:53:30.252Z",
-        "created_at": "2025-10-07T07:53:30.252Z"
-      }
-    },
-    {
-      "template_id": "custom_broker_v1",
-      "name": "Custom Broker 1",
-      "description": "",
-      "category": "development",
-      "config": {
-        "protocol": "mqtt",
-        "host": "localhost",
-        "port": 1883,
-        "ssl": false,
-        "username": "",
-        "password": "",
-        "qos": 0,
-        "retain": false,
-        "keepalive": 60,
-        "connection_timeout": 5,
-        "reconnect_period": 3
-      },
-      "fallback_brokers": [],
-      "metadata": {
-        "created_by": "user",
-        "version": "1.0",
-        "last_updated": "2025-10-08T03:39:05.487Z",
-        "created_at": "2025-10-08T10:39:05.507104"
+        "last_updated": "2025-10-14T02:11:14.377Z",
+        "created_at": "2025-10-14T09:11:14.395280"
       }
     }
   ],
   "metadata": {
-    "last_updated": "2025-10-08T10:39:05.507576",
-    "total_templates": 3
+    "last_updated": "2025-10-14T09:11:14.395619",
+    "total_templates": 1
   }
 }

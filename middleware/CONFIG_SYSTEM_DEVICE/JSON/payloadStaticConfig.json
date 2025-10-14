@@ -1,297 +1,40 @@
-{
-  "templates": [
-    {
-      "template_id": "local_dev_v1",
-      "name": "Local Development Broker",
-      "description": "Local MQTT broker untuk development dengan fallback ke WebSocket",
-      "category": "development",
-      "config": {
-        "protocol": "mqtt",
-        "host": "localhost",
-        "port": 1883,
-        "ssl": false,
-        "username": "",
-        "password": "",
-        "qos": 0,
-        "retain": false,
-        "keepalive": 60,
-        "connection_timeout": 5,
-        "reconnect_period": 3
-      },
-      "fallback_brokers": [
-        {
-          "host": "localhost",
-          "port": 9000,
-          "protocol": "ws",
-          "path": "/mqtt"
-        }
-      ],
-      "metadata": {
-        "created_by": "system",
-        "version": "1.0",
-        "last_updated": "2025-01-01T00:00:00Z"
-      }
+[
+  {
+    "id": "ea23b774e8364c82",
+    "topic": "local/test",
+    "data": {
+      "age": 25
     },
-    {
-      "template_id": "cloud_prod_v1",
-      "name": "Production Cloud Broker",
-      "description": "Secure cloud MQTT broker untuk production dengan fallback lokal",
-      "category": "production",
-      "config": {
-        "protocol": "mqtt",
-        "host": "localhost",
-        "port": 1883,
-        "ssl": false,
-        "username": "",
-        "password": "",
-        "qos": 1,
-        "retain": true,
-        "keepalive": 60,
-        "connection_timeout": 5,
-        "reconnect_period": 3
-      },
-      "fallback_brokers": [
-        {
-          "host": "localhost",
-          "port": 9000,
-          "protocol": "ws",
-          "path": "/mqtt"
-        }
-      ],
-      "metadata": {
-        "created_by": "admin",
-        "version": "1.0",
-        "last_updated": "2025-01-01T00:00:00Z"
-      }
+    "interval": 5,
+    "qos": 0,
+    "lwt": true,
+    "retain": true,
+    "template_id": "local",
+    "broker_config": {
+      "template_id": "local",
+      "overrides": {}
     },
-    {
-      "template_id": "edge_gateway_v1",
-      "name": "Edge Computing Gateway",
-      "description": "Local edge broker untuk processing cepat dengan fallback lokal",
-      "category": "edge",
-      "config": {
-        "protocol": "mqtt",
-        "host": "localhost",
-        "port": 1883,
-        "ssl": false,
-        "username": "",
-        "password": "",
-        "qos": 1,
-        "retain": false,
-        "keepalive": 30,
-        "connection_timeout": 5,
-        "reconnect_period": 3
-      },
-      "fallback_brokers": [
-        {
-          "host": "localhost",
-          "port": 9000,
-          "protocol": "ws",
-          "path": "/mqtt"
-        }
-      ],
-      "metadata": {
-        "created_by": "system",
-        "version": "1.0",
-        "last_updated": "2025-01-01T00:00:00Z"
-      }
+    "created_at": "2025-10-14T15:02:11.086163",
+    "updated_at": "2025-10-14T15:02:11.086163",
+    "version": 1
+  },
+  {
+    "id": "2c6bd35539fa4249",
+    "topic": "ffgtyf",
+    "data": {
+      "bhjb": "bhjg"
     },
-    {
-      "template_id": "backup_failover_v1",
-      "name": "Backup Failover Broker",
-      "description": "Backup broker untuk failover scenarios dengan fallback lokal",
-      "category": "backup",
-      "config": {
-        "protocol": "mqtt",
-        "host": "localhost",
-        "port": 1883,
-        "ssl": false,
-        "username": "",
-        "password": "",
-        "qos": 1,
-        "retain": true,
-        "keepalive": 60,
-        "connection_timeout": 5,
-        "reconnect_period": 3
-      },
-      "fallback_brokers": [
-        {
-          "host": "localhost",
-          "port": 9000,
-          "protocol": "ws",
-          "path": "/mqtt"
-        }
-      ],
-      "metadata": {
-        "created_by": "admin",
-        "version": "1.0",
-        "last_updated": "2025-01-01T00:00:00Z"
-      }
-    }
-  ],
-  "payloads": [
-    {
-      "id": "sensor_humidity_001",
-      "topic": "home/sensor/humidity",
-      "data": {
-        "sensor_id": "HUM_001",
-        "location": "Kitchen",
-        "temperature": 24.8,
-        "humidity": 65,
-        "co2_level": 450
-      },
-      "interval": 45,
-      "qos": 0,
-      "lwt": true,
-      "retain": true,
-      "template_id": "edge_gateway_v1",
-      "broker_config": {
-        "template_id": "edge_gateway_v1",
-        "overrides": {
-          "qos": 0,
-          "retain": true
-        }
-      },
-      "created_at": "2025-09-29T16:27:50.000000",
-      "updated_at": "2025-09-29T16:33:45.226851",
-      "version": 1
+    "interval": 3,
+    "qos": 0,
+    "lwt": false,
+    "retain": false,
+    "template_id": "local",
+    "broker_config": {
+      "template_id": "local",
+      "overrides": {}
     },
-    {
-      "id": "device_status_001",
-      "topic": "home/device/status",
-      "data": {
-        "device_id": "MAIN_HUB",
-        "status": "online",
-        "uptime": 3600,
-        "cpu_usage": 15.5,
-        "memory_usage": 45.2
-      },
-      "interval": 60,
-      "qos": 2,
-      "lwt": true,
-      "retain": true,
-      "template_id": "cloud_prod_v1",
-      "broker_config": {
-        "template_id": "cloud_prod_v1",
-        "overrides": {
-          "qos": 2,
-          "retain": true
-        }
-      },
-      "created_at": "2025-09-29T16:27:50.000000",
-      "updated_at": "2025-09-29T16:33:45.226861",
-      "version": 1
-    },
-    {
-      "id": "energy_monitor_001",
-      "topic": "home/energy/monitor",
-      "data": {
-        "device_id": "ENERGY_MONITOR",
-        "current_power": 1250,
-        "daily_consumption": 28,
-        "voltage": 220,
-        "current": 5
-      },
-      "interval": 30,
-      "qos": 1,
-      "lwt": false,
-      "retain": false,
-      "template_id": "local_dev_v1",
-      "broker_config": {
-        "template_id": "local_dev_v1",
-        "overrides": {
-          "interval": 30
-        }
-      },
-      "created_at": "2025-09-29T16:27:50.000000",
-      "updated_at": "2025-09-30T14:10:58.237881",
-      "version": 3
-    },
-    {
-      "id": "4939dc0e61f07344",
-      "topic": "test/isolation/sensor_1759138425",
-      "data": {
-        "isolation_test": true,
-        "timestamp": 1759138425
-      },
-      "interval": 30,
-      "qos": 0,
-      "lwt": true,
-      "retain": false,
-      "template_id": "local_dev_v1",
-      "broker_config": {
-        "template_id": "local_dev_v1"
-      },
-      "created_at": "2025-09-29T16:33:45.225785",
-      "updated_at": "2025-09-30T14:58:52.453728",
-      "version": 3
-    },
-    {
-      "id": "2dd773c053604d7a",
-      "topic": "ikhsal/data/4",
-      "data": {
-        "name_id": "ikhsaln",
-        "age": 25,
-        "isMale": true
-      },
-      "interval": 5,
-      "qos": 1,
-      "lwt": true,
-      "retain": true,
-      "template_id": "cloud_prod_v1",
-      "broker_config": {
-        "template_id": "cloud_prod_v1",
-        "overrides": {
-          "interval": 5,
-          "retain": true
-        }
-      },
-      "created_at": "2025-09-30T15:15:58.584787",
-      "updated_at": "2025-09-30T15:27:19.019865",
-      "version": 4
-    },
-    {
-      "id": "32eab54b0fe246fc",
-      "topic": "test/topik/1",
-      "data": {
-        "status_card": "Employee",
-        "id_card": 1,
-        "IT_Department": false
-      },
-      "interval": 3,
-      "qos": 0,
-      "lwt": false,
-      "retain": false,
-      "template_id": "local_dev_v1",
-      "broker_config": {
-        "template_id": "local_dev_v1",
-        "overrides": {
-          "interval": 3
-        }
-      },
-      "created_at": "2025-09-30T17:29:01.241850",
-      "updated_at": "2025-10-06T08:45:37.517150",
-      "version": 3
-    },
-    {
-      "id": "08b4bd8db5ce4054",
-      "topic": "sensor/temperature/001",
-      "data": {
-        "temperature": 36,
-        "battery_level": "good"
-      },
-      "interval": 30,
-      "qos": 1,
-      "lwt": true,
-      "retain": false,
-      "template_id": "local_dev_v1",
-      "broker_config": {
-        "template_id": "local_dev_v1",
-        "overrides": {}
-      },
-      "created_at": "2025-10-06T08:51:36.744971",
-      "updated_at": "2025-10-06T08:51:36.744971",
-      "version": 1
-    }
-  ]
-}
+    "created_at": "2025-10-14T15:03:35.468008",
+    "updated_at": "2025-10-14T15:03:35.468008",
+    "version": 1
+  }
+]
