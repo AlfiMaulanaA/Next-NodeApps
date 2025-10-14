@@ -35,6 +35,7 @@ if __name__ == '__main__':
         'openvpn_service.py',
         'ikev2_service.py',
         'wireguard_service.py',
+        'UiUpdater.py',
     ]
 
     # Membuat dan menjalankan proses untuk setiap file

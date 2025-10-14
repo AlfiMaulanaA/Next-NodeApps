@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 // @ts-ignore - CSS import side effect
 import "./globals.css";
+import { Toaster } from "sonner";
 import dynamic from "next/dynamic";
 import { ThemeProvider } from "next-themes";
 
@@ -43,6 +44,7 @@ export default function RootLayout({
           >
           {/* Semua konten aplikasi dibungkus oleh ClientLayout */}
           <ClientLayout>{children}</ClientLayout>
+        <Toaster />
         </ThemeProvider>
       </body>
     </html>

@@ -1,0 +1,591 @@
+{
+  "unified_rules": [
+    {
+      "id": "schedule-range-work-hours",
+      "rule_name": "Work Hours Lamp Control",
+      "description": "Turn on office lights during work hours (Mon-Fri, 8 AM - 5 PM)",
+      "group_rule_name": "Office Lighting Schedule",
+      "created_at": "2025-10-10 08:00:00",
+      "updated_at": null,
+      "trigger_groups": [
+        {
+          "group_name": "Work Hours Schedule",
+          "triggers": [
+            {
+              "device_name": "schedule_trigger_hourly",
+              "trigger_type": "schedule",
+              "schedule_type": "time_range",
+              "start_time": "08:00",
+              "end_time": "17:00",
+              "active_days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+              "condition_operator": "time_range",
+              "delay_on": 0,
+              "delay_off": 0
+            }
+          ],
+          "group_operator": "AND"
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "control_relay",
+          "target_device": "Main Relay Switcher",
+          "target_mac": "00:00:00:00:00:00",
+          "target_address": 1,
+          "target_bus": 1,
+          "relay_pin": 1,
+          "target_value": true,
+          "description": "Turn on main office lights",
+          "delay_on": 30,
+          "delay_off": 0,
+          "latching": false
+        }
+      ]
+    },
+    {
+      "id": "temperature-high-fan-control",
+      "rule_name": "High Temperature Fan Activation",
+      "description": "Activate cooling fan when temperature exceeds 35°C",
+      "group_rule_name": "Temperature Control",
+      "created_at": "2025-10-10 08:30:00",
+      "updated_at": null,
+      "trigger_groups": [
+        {
+          "group_name": "Temperature Monitoring",
+          "triggers": [
+            {
+              "device_name": "Temperature Sensor Module",
+              "device_topic": "modular/TemperatureSensor/1",
+              "trigger_type": "numeric",
+              "field_name": "temperature",
+              "condition_operator": "greater_than",
+              "target_value": 35,
+              "delay_on": 60,
+              "delay_off": 300
+            }
+          ],
+          "group_operator": "AND"
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "control_relay",
+          "target_device": "Cooling Fan Relay",
+          "target_mac": "00:00:00:00:00:00",
+          "target_address": 2,
+          "target_bus": 1,
+          "relay_pin": 1,
+          "target_value": true,
+          "description": "Turn on industrial cooling fan",
+          "delay_on": 10,
+          "delay_off": 20,
+          "latching": false
+        }
+      ]
+    },
+    {
+      "id": "door-sensor-alarm-with-schedule",
+      "rule_name": "Security Alert System",
+      "description": "Sound alarm when door opens outside business hours, but only if motion sensor also detects movement",
+      "group_rule_name": "Security System",
+      "created_at": "2025-10-10 09:00:00",
+      "updated_at": null,
+      "trigger_groups": [
+        {
+          "group_name": "Door Security",
+          "triggers": [
+            {
+              "device_name": "Front Door Sensor",
+              "device_topic": "modular/DoorContactSensor/2",
+              "trigger_type": "drycontact",
+              "field_name": "doorContact1",
+              "condition_operator": "is",
+              "target_value": false,
+              "delay_on": 0,
+              "delay_off": 5
+            }
+          ],
+          "group_operator": "AND"
+        },
+        {
+          "group_name": "After Hours Schedule",
+          "triggers": [
+            {
+              "device_name": "schedule_trigger_night",
+              "trigger_type": "schedule",
+              "schedule_type": "time_range",
+              "start_time": "18:00",
+              "end_time": "06:00",
+              "active_days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+              "condition_operator": "time_range",
+              "delay_on": 0,
+              "delay_off": 0
+            }
+          ],
+          "group_operator": "AND"
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "control_relay",
+          "target_device": "Siren Alarm",
+          "target_mac": "00:00:00:00:00:00",
+          "target_address": 3,
+          "target_bus": 1,
+          "relay_pin": 1,
+          "target_value": true,
+          "description": "Activate security alarm siren",
+          "delay_on": 0,
+          "delay_off": 300,
+          "latching": false
+        },
+        {
+          "action_type": "send_message",
+          "target_device": "Security Messaging",
+          "message": "🚨 SECURITY ALERT: Door opened outside business hours!",
+          "message_type": "whatsapp",
+          "whatsapp_number": "6281234567890",
+          "whatsapp_name": "Security Team",
+          "message_template_id": "300d84f2-d962-4451-bc27-870fb99d18e7",
+          "channel_integration_id": "662f9fcb-7e2b-4c1a-8eda-9aeb4a388004",
+          "description": "Send WhatsApp alert to security",
+          "delay_on": 5,
+          "delay_off": 0
+        }
+      ]
+    },
+    {
+      "id": "power-surge-protection",
+      "rule_name": "Power Quality Monitoring",
+      "description": "Monitor voltage ranges and alert if outside safe parameters",
+      "group_rule_name": "Power Quality",
+      "created_at": "2025-10-10 09:15:00",
+      "updated_at": null,
+      "trigger_groups": [
+        {
+          "group_name": "Voltage Ranges",
+          "triggers": [
+            {
+              "device_name": "Power Quality Monitor",
+              "device_topic": "modbus/PowerMonitor/3",
+              "trigger_type": "numeric",
+              "field_name": "voltageL1",
+              "condition_operator": "less_than",
+              "target_value": 200,
+              "delay_on": 30,
+              "delay_off": 60
+            },
+            {
+              "device_name": "Power Quality Monitor",
+              "device_topic": "modbus/PowerMonitor/3",
+              "trigger_type": "numeric",
+              "field_name": "voltageL1",
+              "condition_operator": "greater_than",
+              "target_value": 250,
+              "delay_on": 30,
+              "delay_off": 60
+            }
+          ],
+          "group_operator": "OR"
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "send_message",
+          "target_device": "Power Alert System",
+          "message": "⚠️ POWER QUALITY ALERT: Voltage out of safe range! Check immediately.",
+          "message_type": "whatsapp",
+          "whatsapp_number": "6281234567891",
+          "whatsapp_name": "Maintenance Team",
+          "message_template_id": "300d84f2-d962-4451-bc27-870fb99d18e7",
+          "channel_integration_id": "662f9fcb-7e2b-4c1a-8eda-9aeb4a388004",
+          "description": "Send WhatsApp alert to maintenance",
+          "delay_on": 0,
+          "delay_off": 0
+        }
+      ]
+    },
+    {
+      "id": "maintenance-schedule-notification",
+      "rule_name": "Daily Maintenance Reminder",
+      "description": "Send daily maintenance checklist at 8 AM every weekday",
+      "group_rule_name": "Maintenance Schedule",
+      "created_at": "2025-10-10 09:30:00",
+      "updated_at": null,
+      "trigger_groups": [
+        {
+          "group_name": "Maintenance Time",
+          "triggers": [
+            {
+              "device_name": "schedule_trigger_maintenance",
+              "trigger_type": "schedule",
+              "schedule_type": "specific_time",
+              "specific_time": "08:00",
+              "active_days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+              "condition_operator": "specific_time",
+              "delay_on": 0,
+              "delay_off": 0
+            }
+          ],
+          "group_operator": "AND"
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "send_message",
+          "target_device": "Daily Maintenance",
+          "message": "🛠️ DAILY MAINTENANCE REMINDER\\n\\n📋 Checklist:\\n• Check oil levels\\n• Inspect filters\\n• Clean dust accumulation\\n• Test emergency systems\\n• Verify sensor readings",
+          "message_type": "whatsapp",
+          "whatsapp_number": "6281234567892",
+          "whatsapp_name": "Maintenance Supervisor",
+          "message_template_id": "300d84f2-d962-4451-bc27-870fb99d18e7",
+          "channel_integration_id": "662f9fcb-7e2b-4c1a-8eda-9aeb4a388004",
+          "description": "Send daily maintenance checklist",
+          "delay_on": 0,
+          "delay_off": 0
+        }
+      ]
+    },
+    {
+      "id": "hvac-optimization",
+      "rule_name": "HVAC System Optimization",
+      "description": "Optimize air conditioning based on temperature and humidity levels with occupancy override",
+      "group_rule_name": "Building Comfort System",
+      "created_at": "2025-10-10 10:00:00",
+      "updated_at": null,
+      "trigger_groups": [
+        {
+          "group_name": "Temperature Control",
+          "triggers": [
+            {
+              "device_name": "HVAC Temperature Sensor",
+              "device_topic": "modbus/HVACSensor/4",
+              "trigger_type": "numeric",
+              "field_name": "temperature",
+              "condition_operator": "greater_than",
+              "target_value": 26,
+              "delay_on": 300,
+              "delay_off": 600
+            }
+          ],
+          "group_operator": "AND"
+        },
+        {
+          "group_name": "Humidity Control",
+          "triggers": [
+            {
+              "device_name": "HVAC Humidity Sensor",
+              "device_topic": "modbus/HVACSensor/4",
+              "trigger_type": "numeric",
+              "field_name": "humidity",
+              "condition_operator": "greater_than",
+              "target_value": 65,
+              "delay_on": 600,
+              "delay_off": 300
+            }
+          ],
+          "group_operator": "AND"
+        },
+        {
+          "group_name": "Occupied Hours",
+          "triggers": [
+            {
+              "device_name": "schedule_trigger_business",
+              "trigger_type": "schedule",
+              "schedule_type": "time_range",
+              "start_time": "07:00",
+              "end_time": "19:00",
+              "active_days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+              "condition_operator": "time_range",
+              "delay_on": 0,
+              "delay_off": 0
+            }
+          ],
+          "group_operator": "AND"
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "control_relay",
+          "target_device": "Air Conditioning Unit",
+          "target_mac": "00:00:00:00:00:00",
+          "target_address": 4,
+          "target_bus": 1,
+          "relay_pin": 1,
+          "target_value": true,
+          "description": "Activate air conditioning system",
+          "delay_on": 60,
+          "delay_off": 120,
+          "latching": false
+        }
+      ]
+    },
+    {
+      "id": "night-time-security-lighting",
+      "rule_name": "Night Security Lighting",
+      "description": "Activate perimeter security lights from sunset to sunrise, every day",
+      "group_rule_name": "Night Security",
+      "created_at": "2025-10-10 10:30:00",
+      "updated_at": null,
+      "trigger_groups": [
+        {
+          "group_name": "Night Hours",
+          "triggers": [
+            {
+              "device_name": "schedule_trigger_night_security",
+              "trigger_type": "schedule",
+              "schedule_type": "time_range",
+              "start_time": "18:30",
+              "end_time": "05:30",
+              "active_days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+              "condition_operator": "time_range",
+              "delay_on": 0,
+              "delay_off": 0
+            }
+          ],
+          "group_operator": "AND"
+        },
+        {
+          "group_name": "Motion Override",
+          "triggers": [
+            {
+              "device_name": "Perimeter Motion Sensor",
+              "device_topic": "modular/MotionSensor/5",
+              "trigger_type": "drycontact",
+              "field_name": "motionSensor1",
+              "condition_operator": "is",
+              "target_value": true,
+              "delay_on": 0,
+              "delay_off": 30
+            }
+          ],
+          "group_operator": "OR"
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "control_relay",
+          "target_device": "Security Lights",
+          "target_mac": "00:00:00:00:00:00",
+          "target_address": 5,
+          "target_bus": 1,
+          "relay_pin": 1,
+          "target_value": true,
+          "description": "Turn on perimeter security lights",
+          "delay_on": 10,
+          "delay_off": 300,
+          "latching": false
+        }
+      ]
+    },
+    {
+      "id": "weekend-maintenance-mode",
+      "rule_name": "Weekend Maintenance Mode",
+      "description": "Put equipment in maintenance mode during weekends (except emergency override)",
+      "group_rule_name": "Equipment Maintenance",
+      "created_at": "2025-10-10 11:00:00",
+      "updated_at": null,
+      "trigger_groups": [
+        {
+          "group_name": "Weekend Schedule",
+          "triggers": [
+            {
+              "device_name": "schedule_trigger_weekend",
+              "trigger_type": "schedule",
+              "schedule_type": "daily",
+              "active_days": ["Sat", "Sun"],
+              "condition_operator": "daily",
+              "delay_on": 0,
+              "delay_off": 0
+            }
+          ],
+          "group_operator": "AND"
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "control_relay",
+          "target_device": "Maintenance Mode Indicator",
+          "target_mac": "00:00:00:00:00:00",
+          "target_address": 6,
+          "target_bus": 1,
+          "relay_pin": 1,
+          "target_value": true,
+          "description": "Activate maintenance mode indicator",
+          "delay_on": 0,
+          "delay_off": 0,
+          "latching": true
+        },
+        {
+          "action_type": "send_message",
+          "target_device": "Maintenance Notification",
+          "message": "🔧 WEEKEND MAINTENANCE MODE ACTIVATED\\n\\nEquipment systems are now in maintenance mode.\\nNormal operations resume Monday morning.",
+          "message_type": "whatsapp",
+          "whatsapp_number": "6281234567893",
+          "whatsapp_name": "Operations Team",
+          "message_template_id": "300d84f2-d962-4451-bc27-870fb99d18e7",
+          "channel_integration_id": "662f9fcb-7e2b-4c1a-8eda-9aeb4a388004",
+          "description": "Notify operations team of weekend maintenance",
+          "delay_on": 0,
+          "delay_off": 0
+        }
+      ]
+    },
+    {
+      "id": "emergency-shutdown-system",
+      "rule_name": "Emergency Shutdown Protection",
+      "description": "Emergency shutdown activated by manual button or critical sensor failure",
+      "group_rule_name": "Emergency Systems",
+      "created_at": "2025-10-10 11:30:00",
+      "updated_at": null,
+      "trigger_groups": [
+        {
+          "group_name": "Emergency Triggers",
+          "triggers": [
+            {
+              "device_name": "Emergency Stop Button",
+              "device_topic": "modular/EmergencyButton/6",
+              "trigger_type": "drycontact",
+              "field_name": "emergencyButton1",
+              "condition_operator": "is",
+              "target_value": false,
+              "delay_on": 0,
+              "delay_off": 0
+            },
+            {
+              "device_name": "Critical Sensor Monitor",
+              "device_topic": "modbus/CriticalSensor/5",
+              "trigger_type": "numeric",
+              "field_name": "pressure",
+              "condition_operator": "less_than",
+              "target_value": 5,
+              "delay_on": 10,
+              "delay_off": 0
+            },
+            {
+              "device_name": "Smoke Detector Array",
+              "device_topic": "modbus/SmokeDetector/6",
+              "trigger_type": "numeric",
+              "field_name": "smokeLevel",
+              "condition_operator": "greater_than",
+              "target_value": 80,
+              "delay_on": 0,
+              "delay_off": 0
+            }
+          ],
+          "group_operator": "OR"
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "control_relay",
+          "target_device": "Main Power Breaker",
+          "target_mac": "00:00:00:00:00:00",
+          "target_address": 7,
+          "target_bus": 1,
+          "relay_pin": 1,
+          "target_value": false,
+          "description": "Emergency shutdown - cut main power",
+          "delay_on": 0,
+          "delay_off": 0,
+          "latching": true
+        },
+        {
+          "action_type": "control_relay",
+          "target_device": "Emergency Siren",
+          "target_mac": "00:00:00:00:00:00",
+          "target_address": 8,
+          "target_bus": 1,
+          "relay_pin": 1,
+          "target_value": true,
+          "description": "Activate emergency alarm siren",
+          "delay_on": 0,
+          "delay_off": 0,
+          "latching": true
+        },
+        {
+          "action_type": "send_message",
+          "target_device": "Emergency Alert System",
+          "message": "🚨 EMERGENCY SHUTDOWN ACTIVATED!\\n\\nCritical safety condition detected.\\nPlease evacuate building immediately.\\nContact emergency services if needed.",
+          "message_type": "whatsapp",
+          "whatsapp_number": "6281234567894",
+          "whatsapp_name": "Emergency Response",
+          "message_template_id": "300d84f2-d962-4451-bc27-870fb99d18e7",
+          "channel_integration_id": "662f9fcb-7e2b-4c1a-8eda-9aeb4a388004",
+          "description": "Broadcast emergency alert to all personnel",
+          "delay_on": 5,
+          "delay_off": 0
+        }
+      ]
+    },
+    {
+      "id": "smart-irrigation-system",
+      "rule_name": "Smart Garden Irrigation",
+      "description": "Automated garden watering based on soil moisture and weather schedule",
+      "group_rule_name": "Garden Automation",
+      "created_at": "2025-10-10 12:00:00",
+      "updated_at": null,
+      "trigger_groups": [
+        {
+          "group_name": "Soil Moisture",
+          "triggers": [
+            {
+              "device_name": "Soil Moisture Sensor",
+              "device_topic": "modbus/SoilMoisture/7",
+              "trigger_type": "numeric",
+              "field_name": "moistureLevel",
+              "condition_operator": "less_than",
+              "target_value": 30,
+              "delay_on": 1800,
+              "delay_off": 3600
+            }
+          ],
+          "group_operator": "AND"
+        },
+        {
+          "group_name": "Irrigation Schedule",
+          "triggers": [
+            {
+              "device_name": "schedule_trigger_morning",
+              "trigger_type": "schedule",
+              "schedule_type": "time_range",
+              "start_time": "06:00",
+              "end_time": "08:00",
+              "active_days": ["Mon", "Wed", "Fri"],
+              "condition_operator": "time_range",
+              "delay_on": 0,
+              "delay_off": 0
+            },
+            {
+              "device_name": "schedule_trigger_evening",
+              "trigger_type": "schedule",
+              "schedule_type": "time_range",
+              "start_time": "17:00",
+              "end_time": "19:00",
+              "active_days": ["Tue", "Thu", "Sat"],
+              "condition_operator": "time_range",
+              "delay_on": 0,
+              "delay_off": 0
+            }
+          ],
+          "group_operator": "OR"
+        }
+      ],
+      "actions": [
+        {
+          "action_type": "control_relay",
+          "target_device": "Irrigation Solenoid Valve",
+          "target_mac": "00:00:00:00:00:00",
+          "target_address": 9,
+          "target_bus": 1,
+          "relay_pin": 1,
+          "target_value": true,
+          "description": "Open garden irrigation valve",
+          "delay_on": 15,
+          "delay_off": 30,
+          "latching": false
+        }
+      ]
+    }
+  ]
+}

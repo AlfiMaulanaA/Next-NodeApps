@@ -5,6 +5,7 @@ import logging
 import uuid
 import operator
 import subprocess
+
 import paho.mqtt.client as mqtt
 from datetime import datetime, timedelta
 from ErrorLogger import initialize_error_logger, send_error_log, ERROR_TYPE_MINOR, ERROR_TYPE_MAJOR, ERROR_TYPE_CRITICAL, ERROR_TYPE_WARNING
@@ -788,16 +789,20 @@ def evaluate_unified_rule(rule, device_topic, device_data):
             return
 
         # Check if this rule has any triggers for the current device topic
-        has_matching_triggers = False
-        for group in trigger_groups:
-            triggers = group.get('triggers', [])
-            for trigger in triggers:
-                rule_topic = trigger.get('device_topic', '')
-                if rule_topic == device_topic:
-                    has_matching_triggers = True
+        # Special case for schedule triggers (no device_topic needed)
+        is_schedule_check = (device_topic == 'schedule_check')
+        has_matching_triggers = is_schedule_check
+
+        if not has_matching_triggers:
+            for group in trigger_groups:
+                triggers = group.get('triggers', [])
+                for trigger in triggers:
+                    rule_topic = trigger.get('device_topic', '')
+                    if rule_topic == device_topic:
+                        has_matching_triggers = True
+                        break
+                if has_matching_triggers:
                     break
-            if has_matching_triggers:
-                break
 
         if not has_matching_triggers:
             return
@@ -809,15 +814,22 @@ def evaluate_unified_rule(rule, device_topic, device_data):
 
         all_groups_true = all(group_results)
 
-        rule_key = f"{rule_id}_{device_topic}"
+        # Use different rule keys for device-based vs schedule-based triggers
+        if is_schedule_check:
+            rule_key = f"{rule_id}_schedule"
+        else:
+            rule_key = f"{rule_id}_{device_topic}"
+
         previous_state = trigger_states.get(rule_key, False)
 
         if all_groups_true and not previous_state:
-            log_simple(f"[TRIGGER] Unified rule ACTIVATED (ON): {rule_name}", "SUCCESS")
+            trigger_type = "SCHEDULE" if is_schedule_check else "DEVICE"
+            log_simple(f"[TRIGGER] Unified rule ACTIVATED (ON): {rule_name} [via {trigger_type}]", "SUCCESS")
             execute_unified_rule_actions(rule)
             trigger_states[rule_key] = True
         elif not all_groups_true and previous_state:
-            log_simple(f"[TRIGGER] Unified rule DEACTIVATED (OFF): {rule_name}", "SUCCESS")
+            trigger_type = "SCHEDULE" if is_schedule_check else "DEVICE"
+            log_simple(f"[TRIGGER] Unified rule DEACTIVATED (OFF): {rule_name} [via {trigger_type}]", "SUCCESS")
             execute_unified_rule_actions_off(rule)
             trigger_states[rule_key] = False
 
@@ -842,6 +854,8 @@ def evaluate_unified_trigger_group(group, device_topic, device_data):
                     result = evaluate_boolean_trigger(trigger, device_data)
                 elif trigger_type == 'numeric':
                     result = evaluate_numeric_trigger(trigger, device_data)
+                elif trigger_type == 'schedule':
+                    result = evaluate_schedule_trigger(trigger)
                 else:
                     log_simple(f"[ERROR] Unknown trigger type: {trigger_type}", "ERROR")
 
@@ -937,6 +951,62 @@ def evaluate_numeric_trigger(trigger, device_data):
 
     except Exception as e:
         log_simple(f"[ERROR] evaluate_numeric_trigger: {e}", "ERROR")
+        return False
+
+def evaluate_schedule_trigger(trigger):
+    """Evaluate schedule-based trigger conditions (time/day based)"""
+    try:
+        schedule_type = trigger.get('schedule_type', 'daily')
+        current_time = datetime.now()
+        current_day = current_time.strftime("%a")
+        current_time_str = current_time.strftime('%H:%M')
+
+        # Check active days filter
+        active_days = trigger.get('active_days', ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+        if current_day not in active_days:
+            return False
+
+        # Evaluate based on schedule type
+        if schedule_type == 'time_range':
+            start_time = trigger.get('start_time', '00:00')
+            end_time = trigger.get('end_time', '23:59')
+
+            # Handle time range wrapping (e.g., 22:00 - 06:00 next day)
+            if start_time <= end_time:
+                # Same day range (e.g., 09:00 - 17:00)
+                is_active = start_time <= current_time_str <= end_time
+                debug_msg = f"[SCHEDULE] Time range {start_time}-{end_time}, current {current_time_str} = {'ACTIVE' if is_active else 'INACTIVE'}"
+                log_simple(debug_msg, "INFO" if is_active else "WARNING")
+                return is_active
+            else:
+                # Overnight range (e.g., 22:00 - 06:00)
+                is_active = current_time_str >= start_time or current_time_str <= end_time
+                debug_msg = f"[SCHEDULE] Overnight range {start_time}-{end_time}, current {current_time_str} = {'ACTIVE' if is_active else 'INACTIVE'}"
+                log_simple(debug_msg, "INFO" if is_active else "WARNING")
+                return is_active
+
+        elif schedule_type == 'specific_time':
+            specific_time = trigger.get('specific_time', '00:00')
+            # Check if current time matches or is very close (within 1 minute)
+            time_diff = abs((current_time - datetime.strptime(specific_time, '%H:%M').replace(
+                year=current_time.year, month=current_time.month, day=current_time.day
+            )).total_seconds())
+            is_active = time_diff <= 60  # Within 1 minute
+
+            debug_msg = f"[SCHEDULE] Specific time {specific_time}, current {current_time_str}, diff {time_diff:.1f}s = {'ACTIVE' if is_active else 'INACTIVE'}"
+            log_simple(debug_msg, "INFO" if is_active else "WARNING")
+            return is_active
+
+        elif schedule_type == 'daily':
+            # Default behavior - always true when active days match
+            log_simple(f"[SCHEDULE] Daily schedule active on {current_day}", "SUCCESS")
+            return True
+
+        log_simple(f"[SCHEDULE] Unknown schedule type: {schedule_type}", "ERROR")
+        return False
+
+    except Exception as e:
+        log_simple(f"[ERROR] evaluate_schedule_trigger: {e}", "ERROR")
         return False
 
 def execute_unified_rule_actions(rule):
@@ -1216,6 +1286,37 @@ def execute_whatsapp_message(action, rule):
         log_simple(f"Error executing WhatsApp message: {e}", "ERROR")
         send_error_log("execute_whatsapp_message", f"WhatsApp message execution error: {e}", ERROR_TYPE_MINOR)
 
+# --- Schedule Management ---
+def check_schedule_triggers(client_control):
+    """Periodic background check for schedule-based triggers"""
+    try:
+        schedule_triggers_active = False
+
+        for rule in config:
+            rule_id = rule.get('id', '')
+            trigger_groups = rule.get('trigger_groups', [])
+
+            # Check if rule has any schedule triggers
+            has_schedule_triggers = False
+            for group in trigger_groups:
+                for trigger in group.get('triggers', []):
+                    if trigger.get('trigger_type') == 'schedule':
+                        has_schedule_triggers = True
+                        break
+                if has_schedule_triggers:
+                    break
+
+            if has_schedule_triggers:
+                # Evaluate rule with current time (no device data needed for schedule)
+                evaluate_unified_rule(rule, 'schedule_check', None)
+                schedule_triggers_active = True
+
+        if schedule_triggers_active:
+            log_simple("[SCHEDULE] Performed periodic schedule trigger evaluation", "INFO")
+
+    except Exception as e:
+        log_simple(f"Error in periodic schedule check: {e}", "ERROR")
+
 # --- MQTT Client Setup ---
 def connect_mqtt(client_id, broker, port, username="", password="", on_connect_callback=None, on_disconnect_callback=None, on_message_callback=None):
     """Create and connect MQTT client"""
@@ -1299,6 +1400,9 @@ def run():
 
     try:
         while True:
+            # Run schedule-based checks at regular intervals
+            check_schedule_triggers(client_control)
+
             # Reconnection handling
             if client_crud and not client_crud.is_connected():
                 log_simple("Attempting to reconnect CRUD client...", "WARNING")

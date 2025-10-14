@@ -1,0 +1,32 @@
+{
+    "max_file_size": 100000000,
+    "allowed_extensions": [".zip"],
+    "backup_settings": {
+        "max_backups": 5,
+        "auto_cleanup": true
+    },
+    "security": {
+        "validate_zip_content": true,
+        "required_files": ["index.html"],
+        "max_extract_time": 300,
+        "exclude_patterns": [
+            "*.exe",
+            "*.bat",
+            "*.sh",
+            "*.cmd",
+            "*.pif",
+            "*.scr",
+            "*.vbs"
+        ]
+    },
+    "network": {
+        "broker_address": "localhost",
+        "broker_port": 1883,
+        "timeout": 60
+    },
+    "logging": {
+        "enable_detailed_logs": true,
+        "log_level": "INFO",
+        "error_log_topic": "alert/ui-update"
+    }
+}

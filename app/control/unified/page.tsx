@@ -72,14 +72,28 @@ import {
 import MqttStatus from "@/components/mqtt-status";
 
 // Type definitions for Unified Automation
+// Schedule-based trigger interface
+interface ScheduleTrigger {
+  schedule_type: "time_range" | "specific_time" | "daily";
+  active_days: string[]; // ["Mon", "Tue", etc.]
+  start_time?: string; // HH:MM format
+  end_time?: string; // HH:MM format
+  specific_time?: string; // HH:MM format
+}
+
 interface UnifiedTriggerCondition {
-  device_name: string;
-  device_topic?: string;
-  trigger_type: "drycontact" | "numeric";
+  device_name?: string; // Optional for schedule triggers
+  device_topic?: string; // Optional for schedule triggers
+  trigger_type: "drycontact" | "numeric" | "schedule";
   // For drycontact triggers
   pin_number?: number;
   // For numeric triggers
   field_name?: string;
+  // For schedule triggers
+  start_time?: string;
+  end_time?: string;
+  specific_time?: string;
+  active_days?: string[];
   // Common condition settings
   condition_operator: string; // Different operators based on trigger_type
   target_value: boolean | number | number[]; // Single value or range [min, max]
@@ -240,7 +254,7 @@ const UnifiedAutomationControl = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // Available condition operators for different trigger types
+  // Available condition operators and schedule types for different trigger types
   const conditionOperators = {
     drycontact: [
       { value: "is", label: "Is" },
@@ -254,7 +268,23 @@ const UnifiedAutomationControl = () => {
       { value: "not_equals", label: "Not Equal (≠)" },
       { value: "between", label: "Between (Range)" },
     ],
+    schedule: [
+      { value: "time_range", label: "Time Range" },
+      { value: "specific_time", label: "Specific Time" },
+      { value: "daily", label: "Daily (All Day)" },
+    ],
   };
+
+  // Available days for schedule triggers
+  const daysOfWeek = [
+    { value: "Mon", label: "Monday" },
+    { value: "Tue", label: "Tuesday" },
+    { value: "Wed", label: "Wednesday" },
+    { value: "Thu", label: "Thursday" },
+    { value: "Fri", label: "Friday" },
+    { value: "Sat", label: "Saturday" },
+    { value: "Sun", label: "Sunday" },
+  ];
 
   // Function to get relay pins based on device PART_NUMBER
   const getRelayPinsForDevice = useCallback(
@@ -962,6 +992,18 @@ const UnifiedAutomationControl = () => {
 
   const dryContactTriggers = totalTriggers - numericTriggers;
 
+  // Calculate schedule triggers count
+  const scheduleTriggers = automationConfig?.unified_rules?.reduce(
+    (sum, rule) =>
+      sum +
+      rule.trigger_groups?.reduce(
+        (groupSum, group) =>
+          groupSum + (group.triggers?.filter(t => t.trigger_type === "schedule").length || 0),
+        0
+      ) || 0,
+    0
+  ) || 0;
+
   // Format operator for display
   const formatOperator = (op: string, triggerType: string): string => {
     if (triggerType === "drycontact") {
@@ -1026,7 +1068,7 @@ const UnifiedAutomationControl = () => {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         {/* Enhanced Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-blue-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Unified Rules</CardTitle>
@@ -1130,6 +1172,31 @@ const UnifiedAutomationControl = () => {
                 <div className="flex justify-between text-xs">
                   <span>Relays:</span>
                   <span className="font-medium">{relayDevices.length}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-indigo-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Schedule Triggers</CardTitle>
+              <Calendar className="h-5 w-5 text-indigo-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-indigo-600">{scheduleTriggers}</div>
+              <p className="text-xs text-muted-foreground">Time-based conditions</p>
+              <div className="mt-2">
+                <div className="flex justify-between text-xs">
+                  <span>Active schedules:</span>
+                  <span className="font-medium">{scheduleTriggers}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span>Rule utilities:</span>
+                  <span className="font-medium">{automationConfig?.unified_rules?.filter(rule =>
+                    rule.trigger_groups?.some(group =>
+                      group.triggers?.some(trigger => trigger.trigger_type === "schedule")
+                    )
+                  ).length || 0}</span>
                 </div>
               </div>
             </CardContent>
@@ -2011,7 +2078,7 @@ const UnifiedAutomationControl = () => {
 
                       {group.triggers.map((trigger, triggerIndex) => {
                         const selectedDeviceOption = allDevices.find(
-                          (d) => d.value === trigger.device_name
+                          (d: {value: string, label: string, device?: any, topic?: string}) => d.value === trigger.device_name
                         );
                         const selectedDevice = selectedDeviceOption?.device;
                         const availableFields = getDeviceFields(
@@ -2020,7 +2087,7 @@ const UnifiedAutomationControl = () => {
 
                         // For modular devices, also get fields specifically for boolean triggers
                         const modularDevice = modularDevices.find(
-                          (d) => d.name === trigger.device_name
+                          (d: ModularDevice) => d.name === trigger.device_name
                         );
                         const modularAvailableFields = modularDevice ? getDeviceFields(modularDevice) : [];
 
@@ -2076,14 +2143,18 @@ const UnifiedAutomationControl = () => {
                                   <Select
                                     value={trigger.trigger_type}
                                     onValueChange={(value) => {
+                                      const newTriggerType = value as "drycontact" | "numeric" | "schedule";
                                       updateTrigger(groupIndex, triggerIndex, {
                                         ...trigger,
-                                        trigger_type: value as "drycontact" | "numeric",
-                                        device_name: "", // Reset device when changing type
-                                        field_name: value === "numeric" ? "" : trigger.field_name,
-                                        pin_number: value === "drycontact" ? 1 : trigger.pin_number,
-                                        condition_operator: value === "drycontact" ? "is" : "greater_than",
-                                        target_value: value === "drycontact" ? true : 0,
+                                        trigger_type: newTriggerType,
+                                        device_name: newTriggerType === "schedule" ? undefined : "", // No device required for schedule
+                                        device_topic: newTriggerType === "schedule" ? undefined : "",
+                                        field_name: newTriggerType === "schedule" ? undefined : (newTriggerType === "numeric" ? "" : trigger.field_name),
+                                        pin_number: newTriggerType === "drycontact" ? 1 : trigger.pin_number,
+                                        condition_operator: newTriggerType === "schedule" ? "time_range" : (newTriggerType === "drycontact" ? "is" : "greater_than"),
+                                        target_value: newTriggerType === "drycontact" ? true : (newTriggerType === "numeric" ? 0 : true),
+                                        start_time: newTriggerType === "schedule" ? "" : undefined,
+                                        end_time: newTriggerType === "schedule" ? "" : undefined,
                                       });
                                     }}
                                   >
@@ -2097,68 +2168,196 @@ const UnifiedAutomationControl = () => {
                                       <SelectItem value="numeric">
                                         Numeric (Sensor Value)
                                       </SelectItem>
+                                      <SelectItem value="schedule" className="flex items-center gap-1">
+                                        Schedule (Time-based)
+                                      </SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
 
-                                {/* Device Selection - filtered by type */}
-                                <div>
-                                  <Label className="text-xs">Device *</Label>
-                                  <Select
-                                    value={trigger.device_name}
-                                    onValueChange={(value) => {
-                                      const selectedDevice = allDevices.find(
-                                        (d) => d.value === value
-                                      );
-                                      updateTrigger(groupIndex, triggerIndex, {
-                                        ...trigger,
-                                        device_name: value,
-                                        device_topic: selectedDevice?.topic || "",
-                                      });
-                                    }}
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Select device" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {trigger.trigger_type === "drycontact" ? (
-                                        dryContactDevices.length === 0 ? (
-                                          <SelectItem value="no-devices" disabled>
-                                            No dry contact devices available
-                                          </SelectItem>
-                                        ) : (
-                                          dryContactDevices.map((device) => (
-                                            <SelectItem
-                                              key={device.value}
-                                              value={device.value}
-                                            >
-                                              {device.label}
-                                            </SelectItem>
-                                          ))
-                                        )
-                                      ) : (
-                                        sensorDevices.length === 0 ? (
-                                          <SelectItem value="no-devices" disabled>
-                                            No sensor devices available
-                                          </SelectItem>
-                                        ) : (
-                                          sensorDevices.map((device) => (
-                                            <SelectItem
-                                              key={device.value}
-                                              value={device.value}
-                                            >
-                                              {device.label}
-                                            </SelectItem>
-                                          ))
-                                        )
-                                      )}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
+                                {/* Device Selection or Schedule Configuration */}
+                                {trigger.trigger_type === "schedule" ? (
+                                  <div className="md:col-span-2">
+                                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                      Schedule Configuration
+                                    </Label>
 
-                                {/* Dynamic Fields based on trigger type */}
-                                {trigger.trigger_type === "drycontact" ? (
+                                    {/* Time Configuration - Start and End Time */}
+                                    <div className="grid grid-cols-2 gap-3 mt-2">
+                                      <div>
+                                        <Label className="text-xs">Waktu ON (Start Time) *</Label>
+                                        <Select
+                                          value={trigger.start_time || ""}
+                                          onValueChange={(value) =>
+                                            updateTrigger(groupIndex, triggerIndex, {
+                                              ...trigger,
+                                              start_time: value,
+                                            })
+                                          }
+                                        >
+                                          <SelectTrigger className="font-mono">
+                                            <SelectValue placeholder="HH:MM" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {Array.from({ length: 24 * 60 }, (_, index) => {
+                                              const hour = Math.floor(index / 60);
+                                              const minute = index % 60;
+                                              const h = hour.toString().padStart(2, "0");
+                                              const m = minute.toString().padStart(2, "0");
+                                              return (
+                                                <SelectItem key={`${h}:${m}`} value={`${h}:${m}`}>
+                                                  {`${h}:${m}`}
+                                                </SelectItem>
+                                              );
+                                            })}
+                                          </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          24-hour format (HH:MM)
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <Label className="text-xs">Waktu OFF (End Time) *</Label>
+                                        <Select
+                                          value={trigger.end_time || ""}
+                                          onValueChange={(value) =>
+                                            updateTrigger(groupIndex, triggerIndex, {
+                                              ...trigger,
+                                              end_time: value,
+                                            })
+                                          }
+                                        >
+                                          <SelectTrigger className="font-mono">
+                                            <SelectValue placeholder="HH:MM" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {Array.from({ length: 24 * 60 }, (_, index) => {
+                                              const hour = Math.floor(index / 60);
+                                              const minute = index % 60;
+                                              const h = hour.toString().padStart(2, "0");
+                                              const m = minute.toString().padStart(2, "0");
+                                              return (
+                                                <SelectItem key={`${h}:${m}`} value={`${h}:${m}`}>
+                                                  {`${h}:${m}`}
+                                                </SelectItem>
+                                              );
+                                            })}
+                                          </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          24-hour format (HH:MM)
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    {/* Active Days */}
+                                    <div className="mt-3">
+                                      <Label className="text-xs">Hari Aktif (Active Days) *</Label>
+                                      <div className="grid grid-cols-7 gap-1 mt-1">
+                                        {daysOfWeek.map((day: {value: string, label: string}) => {
+                                          // For schedule triggers, we'll use active_days from a separate property or extract from target_value
+                                          const activeDays = (trigger as any).active_days ||
+                                            (trigger.trigger_type === "schedule" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : []);
+
+                                          const isActive = activeDays?.includes(day.value);
+
+                                          return (
+                                            <Button
+                                              key={day.value}
+                                              type="button"
+                                              variant={isActive ? "default" : "outline"}
+                                              size="sm"
+                                              className="text-xs h-8 px-2"
+                                              onClick={() => {
+                                                const currentDays = (trigger as any).active_days ||
+                                                  (trigger.trigger_type === "schedule" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : []);
+                                                const newDays = isActive
+                                                  ? currentDays.filter((d: string) => d !== day.value)
+                                                  : [...currentDays, day.value];
+
+                                                updateTrigger(groupIndex, triggerIndex, {
+                                                  ...trigger,
+                                                  active_days: newDays,
+                                                });
+                                              }}
+                                            >
+                                              {day.label.charAt(0)}
+                                            </Button>
+                                          );
+                                        })}
+                                      </div>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Pilih hari-hari dalam seminggu dimana jadwal ini berlaku
+                                      </p>
+                                    </div>
+                                  </div>
+                                ) : (
                                   <div>
+                                    <Label className="text-xs">Device *</Label>
+                                    <Select
+                                      value={trigger.device_name}
+                                      onValueChange={(value) => {
+                                        const selectedDevice = allDevices.find(
+                                          (d: {value: string, label: string, device?: any, topic?: string}) => d.value === value
+                                        );
+                                        updateTrigger(groupIndex, triggerIndex, {
+                                          ...trigger,
+                                          device_name: value,
+                                          device_topic: selectedDevice?.topic || "",
+                                        });
+                                      }}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select device" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {trigger.trigger_type === "drycontact" ? (
+                                          dryContactDevices.length === 0 ? (
+                                            <SelectItem value="no-devices" disabled>
+                                              No dry contact devices available
+                                            </SelectItem>
+                                          ) : (
+                                            dryContactDevices.map((device) => (
+                                              <SelectItem
+                                                key={device.value}
+                                                value={device.value}
+                                              >
+                                                {device.label}
+                                              </SelectItem>
+                                            ))
+                                          )
+                                        ) : (
+                                          sensorDevices.length === 0 ? (
+                                            <SelectItem value="no-devices" disabled>
+                                              No sensor devices available
+                                            </SelectItem>
+                                          ) : (
+                                            sensorDevices.map((device) => (
+                                              <SelectItem
+                                                key={device.value}
+                                                value={device.value}
+                                              >
+                                                {device.label}
+                                              </SelectItem>
+                                            ))
+                                          )
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                )}
+
+                              </div>
+                            </div>
+
+                            {/* Dynamic Fields based on trigger type - Only for device-based triggers */}
+                            {trigger.trigger_type !== "schedule" && (
+                              <div className="space-y-3">
+                                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                  Device Field Configuration
+                                </Label>
+                                {trigger.trigger_type === "drycontact" ? (
+                                  <div className="md:col-span-2">
                                     <Label className="text-xs">Field Name *</Label>
                                     <Select
                                       value={trigger.field_name || ""}
@@ -2202,7 +2401,7 @@ const UnifiedAutomationControl = () => {
                                     )}
                                   </div>
                                 ) : (
-                                  <div>
+                                  <div className="md:col-span-2">
                                     <Label className="text-xs">Field Name *</Label>
                                     <Select
                                       value={trigger.field_name || ""}
@@ -2246,68 +2445,32 @@ const UnifiedAutomationControl = () => {
                                     )}
                                   </div>
                                 )}
-
-                                {/* Device Topic Display */}
-                                <div className="md:col-span-2">
-                                  <Label className="text-xs">MQTT Topic</Label>
-                                  <Input
-                                    value={trigger.device_topic || ""}
-                                    readOnly
-                                    placeholder="Topic will be set automatically"
-                                    className="bg-muted text-xs font-mono"
-                                  />
-                                </div>
                               </div>
-                            </div>
+                            )}
 
-                            {/* Condition Configuration */}
-                            <div className="space-y-3">
-                              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                Condition Settings
-                              </Label>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {/* Condition Operator */}
-                                <div>
-                                  <Label className="text-xs">Operator *</Label>
-                                  <Select
-                                    value={trigger.condition_operator}
-                                    onValueChange={(value) =>
-                                      updateTrigger(groupIndex, triggerIndex, {
-                                        ...trigger,
-                                        condition_operator: value,
-                                        target_value: value === "between" && trigger.trigger_type === "numeric"
-                                          ? [0, 0]
-                                          : value === "between" && trigger.trigger_type === "drycontact"
-                                          ? trigger.target_value
-                                          : value === "is" && trigger.trigger_type === "drycontact"
-                                          ? true
-                                          : trigger.trigger_type === "numeric" ? 0 : trigger.target_value,
-                                      })
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {(conditionOperators[trigger.trigger_type] || []).map((op) => (
-                                        <SelectItem key={op.value} value={op.value}>
-                                          {op.label}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-
-                                {/* Target Value - Dynamic based on type and operator */}
-                                {trigger.trigger_type === "drycontact" ? (
+                            {/* Condition Configuration - Only show for device-based triggers */}
+                            {trigger.trigger_type !== "schedule" && (
+                              <div className="space-y-3">
+                                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                  Condition Settings
+                                </Label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {/* Condition Operator */}
                                   <div>
-                                    <Label className="text-xs">Target Value *</Label>
+                                    <Label className="text-xs">Operator *</Label>
                                     <Select
-                                      value={trigger.target_value.toString()}
+                                      value={trigger.condition_operator}
                                       onValueChange={(value) =>
                                         updateTrigger(groupIndex, triggerIndex, {
                                           ...trigger,
-                                          target_value: value === "true",
+                                          condition_operator: value,
+                                          target_value: value === "between" && trigger.trigger_type === "numeric"
+                                            ? [0, 0]
+                                            : value === "between" && trigger.trigger_type === "drycontact"
+                                            ? trigger.target_value
+                                            : value === "is" && trigger.trigger_type === "drycontact"
+                                            ? true
+                                            : trigger.trigger_type === "numeric" ? 0 : trigger.target_value,
                                         })
                                       }
                                     >
@@ -2315,87 +2478,114 @@ const UnifiedAutomationControl = () => {
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        <SelectItem value="true">TRUE (ON/HIGH)</SelectItem>
-                                        <SelectItem value="false">FALSE (OFF/LOW)</SelectItem>
+                                        {(conditionOperators[trigger.trigger_type] || []).map((op) => (
+                                          <SelectItem key={op.value} value={op.value}>
+                                            {op.label}
+                                          </SelectItem>
+                                        ))}
                                       </SelectContent>
                                     </Select>
                                   </div>
-                                ) : trigger.condition_operator === "between" ? (
-                                  <>
+
+                                  {/* Target Value - Dynamic based on type and operator */}
+                                  {trigger.trigger_type === "drycontact" ? (
                                     <div>
-                                      <Label className="text-xs">Min Value *</Label>
+                                      <Label className="text-xs">Target Value *</Label>
+                                      <Select
+                                        value={trigger.target_value.toString()}
+                                        onValueChange={(value) =>
+                                          updateTrigger(groupIndex, triggerIndex, {
+                                            ...trigger,
+                                            target_value: value === "true",
+                                          })
+                                        }
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="true">TRUE (ON/HIGH)</SelectItem>
+                                          <SelectItem value="false">FALSE (OFF/LOW)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  ) : trigger.condition_operator === "between" ? (
+                                    <>
+                                      <div>
+                                        <Label className="text-xs">Min Value *</Label>
+                                        <Input
+                                          type="number"
+                                          step="any"
+                                          value={
+                                            Array.isArray(trigger.target_value)
+                                              ? trigger.target_value[0]
+                                              : 0
+                                          }
+                                          onChange={(e) => {
+                                            const currentValue = Array.isArray(trigger.target_value)
+                                              ? trigger.target_value
+                                              : [0, 0];
+                                            updateTrigger(groupIndex, triggerIndex, {
+                                              ...trigger,
+                                              target_value: [
+                                                parseFloat(e.target.value) || 0,
+                                                currentValue[1],
+                                              ],
+                                            });
+                                          }}
+                                          placeholder="Min value"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label className="text-xs">Max Value *</Label>
+                                        <Input
+                                          type="number"
+                                          step="any"
+                                          value={
+                                            Array.isArray(trigger.target_value)
+                                              ? trigger.target_value[1]
+                                              : 0
+                                          }
+                                          onChange={(e) => {
+                                            const currentValue = Array.isArray(trigger.target_value)
+                                              ? trigger.target_value
+                                              : [0, 0];
+                                            updateTrigger(groupIndex, triggerIndex, {
+                                              ...trigger,
+                                              target_value: [
+                                                currentValue[0],
+                                                parseFloat(e.target.value) || 0,
+                                              ],
+                                            });
+                                          }}
+                                          placeholder="Max value"
+                                        />
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div>
+                                      <Label className="text-xs">Target Value *</Label>
                                       <Input
                                         type="number"
                                         step="any"
                                         value={
-                                          Array.isArray(trigger.target_value)
-                                            ? trigger.target_value[0]
+                                          typeof trigger.target_value === "number"
+                                            ? trigger.target_value
                                             : 0
                                         }
-                                        onChange={(e) => {
-                                          const currentValue = Array.isArray(trigger.target_value)
-                                            ? trigger.target_value
-                                            : [0, 0];
+                                        onChange={(e) =>
                                           updateTrigger(groupIndex, triggerIndex, {
                                             ...trigger,
-                                            target_value: [
-                                              parseFloat(e.target.value) || 0,
-                                              currentValue[1],
-                                            ],
-                                          });
-                                        }}
-                                        placeholder="Min value"
-                                      />
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs">Max Value *</Label>
-                                      <Input
-                                        type="number"
-                                        step="any"
-                                        value={
-                                          Array.isArray(trigger.target_value)
-                                            ? trigger.target_value[1]
-                                            : 0
+                                            target_value: parseFloat(e.target.value) || 0,
+                                          })
                                         }
-                                        onChange={(e) => {
-                                          const currentValue = Array.isArray(trigger.target_value)
-                                            ? trigger.target_value
-                                            : [0, 0];
-                                          updateTrigger(groupIndex, triggerIndex, {
-                                            ...trigger,
-                                            target_value: [
-                                              currentValue[0],
-                                              parseFloat(e.target.value) || 0,
-                                            ],
-                                          });
-                                        }}
-                                        placeholder="Max value"
+                                        placeholder="Enter target value"
                                       />
                                     </div>
-                                  </>
-                                ) : (
-                                  <div>
-                                    <Label className="text-xs">Target Value *</Label>
-                                    <Input
-                                      type="number"
-                                      step="any"
-                                      value={
-                                        typeof trigger.target_value === "number"
-                                          ? trigger.target_value
-                                          : 0
-                                      }
-                                      onChange={(e) =>
-                                        updateTrigger(groupIndex, triggerIndex, {
-                                          ...trigger,
-                                          target_value: parseFloat(e.target.value) || 0,
-                                        })
-                                      }
-                                      placeholder="Enter target value"
-                                    />
-                                  </div>
-                                )}
+                                  )}
+                                </div>
                               </div>
-                            </div>
+                            )}
 
                             {/* TRIGGER DELAYS REMOVED - now handled at action level */}
                           </div>
@@ -2496,7 +2686,7 @@ const UnifiedAutomationControl = () => {
                               value={action.target_device}
                               onValueChange={(value) => {
                                 const selectedDevice = relayDevices.find(
-                                  (d) => d.value === value
+                                  (d: {value: string, label: string, address?: number, device_bus?: number, mac?: string}) => d.value === value
                                 );
                                 updateAction(actionIndex, {
                                   ...action,

@@ -98,7 +98,12 @@ export function useMQTT(options: UseMQTTOptions = {}) {
         client.off("offline", handleOffline);
         client.off("reconnect", handleReconnect);
 
-        // Unsubscribe from topics
+        // Unsubscribe from topics and clean up message handlers
+        messageHandlersRef.current.forEach((handler, topic) => {
+          client.off("message", handler);
+        });
+        messageHandlersRef.current.clear();
+
         Array.from(subscribedTopicsRef.current).forEach((topic) => {
           unsubscribeFromTopic(topic);
         });
@@ -156,23 +161,23 @@ export function useMQTT(options: UseMQTTOptions = {}) {
   // Add message handler for specific topic
   const addMessageHandler = useCallback(
     (topic: string, handler: (topic: string, message: Buffer) => void) => {
+      const client = clientRef.current;
+
+      // Store the handler for potential cleanup
       messageHandlersRef.current.set(topic, handler);
 
-      const client = clientRef.current;
-      if (client) {
-        // Remove existing handler if any
-        const existingHandler = messageHandlersRef.current.get(topic);
-        if (existingHandler) {
-          client.off("message", existingHandler);
-        }
-
-        // Add new handler
+      if (client && client.connected) {
+        // Create wrapped handler function
         const wrappedHandler = (receivedTopic: string, message: Buffer) => {
           if (receivedTopic === topic) {
             handler(receivedTopic, message);
           }
         };
 
+        // Store the wrapped handler
+        messageHandlersRef.current.set(topic, wrappedHandler);
+
+        // Add event listener
         client.on("message", wrappedHandler);
       }
     },
