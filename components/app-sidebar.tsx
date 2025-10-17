@@ -251,6 +251,12 @@ const menuData = {
           isUse: true,
         },
         {
+          title: "Node Info Configuration",
+          url: "/settings/node-info",
+          icon: Info,
+          isUse: true,
+        },
+        {
           title: "Information",
           url: "/info",
           icon: Info,
