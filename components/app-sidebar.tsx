@@ -24,6 +24,7 @@ import {
   Shield,
   Info,
   Lock,
+  GitBranch,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -219,6 +220,12 @@ const menuData = {
           title: "Scheduler Control",
           url: "/control/schedule",
           icon: Clock,
+          isUse: true,
+        },
+        {
+          title: "Rule Chains",
+          url: "/control/chains",
+          icon: GitBranch,
           isUse: true,
         },
       ],

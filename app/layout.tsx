@@ -17,8 +17,8 @@ export const metadata: Metadata = {
   title: `${AppName} | GSPE`,
   description: "Enterprise devices and user management system",
   icons: {
-    icon: "/IOT.ico", // Menggunakan path langsung, variabel IconTabs tidak diperlukan
-    shortcut: "/IOT.ico",
+    icon: "/node-icon.svg",
+    shortcut: "/node-icon.svg",
     apple: "/apple-touch-icon.png",
   },
 };

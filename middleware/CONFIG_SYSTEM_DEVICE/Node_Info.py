@@ -8,6 +8,7 @@ import json
 import os
 import time
 import subprocess
+import psutil
 from datetime import datetime
 import uuid
 import paho.mqtt.client as mqtt
@@ -337,6 +338,141 @@ def get_network_info():
             "mac_address": "ERROR"
         }
 
+def get_device_status():
+    """Get system device status information including CPU, RAM, Storage, and Temperature"""
+    try:
+        status = {}
+
+        # CPU Information
+        try:
+            # CPU usage percentage
+            cpu_percent = psutil.cpu_percent(interval=1)  # Get CPU usage over 1 second
+            status["cpu_usage_percent"] = round(cpu_percent, 2)
+
+            # CPU count (logical and physical)
+            cpu_count_logical = psutil.cpu_count(logical=True)
+            cpu_count_physical = psutil.cpu_count(logical=False)
+            status["cpu_count_logical"] = cpu_count_logical
+            status["cpu_count_physical"] = cpu_count_physical
+
+            # CPU load average (for Unix-like systems)
+            try:
+                load_avg = psutil.getloadavg()
+                status["cpu_load_1min"] = round(load_avg[0], 2)
+                status["cpu_load_5min"] = round(load_avg[1], 2)
+                status["cpu_load_15min"] = round(load_avg[2], 2)
+            except AttributeError:
+                # Windows doesn't have getloadavg
+                status["cpu_load_1min"] = None
+                status["cpu_load_5min"] = None
+                status["cpu_load_15min"] = None
+
+            # CPU frequency (if available)
+            try:
+                cpu_freq = psutil.cpu_freq()
+                if cpu_freq:
+                    status["cpu_freq_current_mhz"] = round(cpu_freq.current, 2) if cpu_freq.current else None
+                    status["cpu_freq_min_mhz"] = round(cpu_freq.min, 2) if cpu_freq.min else None
+                    status["cpu_freq_max_mhz"] = round(cpu_freq.max, 2) if cpu_freq.max else None
+                else:
+                    status["cpu_freq_current_mhz"] = None
+                    status["cpu_freq_min_mhz"] = None
+                    status["cpu_freq_max_mhz"] = None
+            except Exception:
+                status["cpu_freq_current_mhz"] = None
+                status["cpu_freq_min_mhz"] = None
+                status["cpu_freq_max_mhz"] = None
+
+        except Exception as e:
+            logger.warning(f"Error getting CPU info: {e}")
+            status["cpu_usage_percent"] = None
+            status["cpu_count_logical"] = None
+            status["cpu_count_physical"] = None
+
+        # RAM (Memory) Information
+        try:
+            memory = psutil.virtual_memory()
+            status["ram_total_gb"] = round(memory.total / (1024**3), 2)
+            status["ram_used_gb"] = round(memory.used / (1024**3), 2)
+            status["ram_free_gb"] = round(memory.available / (1024**3), 2)  # available is more accurate than free
+            status["ram_usage_percent"] = round(memory.percent, 2)
+        except Exception as e:
+            logger.warning(f"Error getting RAM info: {e}")
+            status["ram_total_gb"] = None
+            status["ram_used_gb"] = None
+            status["ram_free_gb"] = None
+            status["ram_usage_percent"] = None
+
+        # Storage Information
+        try:
+            # Get disk usage for root filesystem
+            disk = psutil.disk_usage('/')
+            status["storage_total_gb"] = round(disk.total / (1024**3), 2)
+            status["storage_used_gb"] = round(disk.used / (1024**3), 2)
+            status["storage_free_gb"] = round(disk.free / (1024**3), 2)
+            status["storage_usage_percent"] = round(disk.percent, 2)
+        except Exception as e:
+            logger.warning(f"Error getting storage info: {e}")
+            status["storage_total_gb"] = None
+            status["storage_used_gb"] = None
+            status["storage_free_gb"] = None
+            status["storage_usage_percent"] = None
+
+        # Temperature Information (if available)
+        try:
+            temps = psutil.sensors_temperatures()
+            if temps:
+                # Get CPU temperature (common sensors)
+                cpu_temp = None
+                for sensor_name in ['coretemp', 'k10temp', 'cpu_thermal', 'cpu-thermal']:
+                    if sensor_name in temps:
+                        for temp_entry in temps[sensor_name]:
+                            if temp_entry.current and temp_entry.current > 0:
+                                cpu_temp = round(temp_entry.current, 1)
+                                break
+                        if cpu_temp:
+                            break
+
+                # If no specific CPU sensor found, try to get first available temperature
+                if not cpu_temp:
+                    for sensor_type, sensor_list in temps.items():
+                        for temp_entry in sensor_list:
+                            if temp_entry.current and temp_entry.current > 0:
+                                cpu_temp = round(temp_entry.current, 1)
+                                break
+                        if cpu_temp:
+                            break
+
+                status["cpu_temperature_celsius"] = cpu_temp
+            else:
+                status["cpu_temperature_celsius"] = None
+        except Exception as e:
+            logger.warning(f"Error getting temperature info: {e}")
+            status["cpu_temperature_celsius"] = None
+
+        # System uptime
+        try:
+            uptime_seconds = time.time() - psutil.boot_time()
+            uptime_hours = round(uptime_seconds / 3600, 2)
+            status["system_uptime_hours"] = uptime_hours
+        except Exception as e:
+            logger.warning(f"Error getting uptime info: {e}")
+            status["system_uptime_hours"] = None
+
+        logger.info(f"Device status collected: CPU={status.get('cpu_usage_percent')}%, RAM={status.get('ram_usage_percent')}%, Storage={status.get('storage_usage_percent')}%, Temp={status.get('cpu_temperature_celsius')}°C")
+
+        return status
+
+    except Exception as e:
+        logger.error(f"Error getting device status: {e}")
+        return {
+            "cpu_usage_percent": None,
+            "ram_usage_percent": None,
+            "storage_usage_percent": None,
+            "cpu_temperature_celsius": None,
+            "system_uptime_hours": None
+        }
+
 # Load MQTT configuration
 def load_mqtt_config():
     """Load MQTT broker configuration from file"""
@@ -395,7 +531,7 @@ def on_disconnect(client, userdata, rc):
     global mqtt_connected
     if rc != 0:
         mqtt_connected = False
-        logger.warning(f"NodeInfoService disconnected from MQTT broker - will retry")
+        logger.warning(f"NodeInfoService disconnected from MQTT broker - rc: {rc} - will retry")
 
 def on_command_message(client, userdata, msg):
     """Handle incoming MQTT command messages"""
@@ -660,8 +796,7 @@ def publish_node_info():
     password = mqtt_config["password"]
 
     # Create single MQTT client (following MODBUS_SNMP pattern)
-    client_id = f"node-info-service-{get_node_name().lower()}-{uuid.uuid4().hex[:8]}"
-    mqtt_client = mqtt.Client(client_id=client_id, clean_session=True)
+    mqtt_client = mqtt.Client()
     mqtt_client.on_connect = on_connect
     mqtt_client.on_disconnect = on_disconnect
     mqtt_client.on_message = on_command_message
@@ -685,6 +820,11 @@ def publish_node_info():
             if not mqtt_connected:
                 logger.info(f"Attempting to connect to MQTT broker: {broker}:{port}")
                 try:
+                    # Disconnect any existing connection to free resources
+                    try:
+                        mqtt_client.disconnect()
+                    except:
+                        pass
                     mqtt_client.connect(broker, port, keepalive=60)
                     mqtt_client.loop_start()
 
@@ -695,18 +835,24 @@ def publish_node_info():
                         time.sleep(0.1)
 
                     if not mqtt_connected:
+                        mqtt_client.loop_stop()
                         logger.warning("MQTT connection timeout, retrying in 10 seconds")
                         time.sleep(10)
                         continue
 
                 except Exception as e:
                     logger.error(f"MQTT connection failed: {e}")
+                    try:
+                        mqtt_client.loop_stop()
+                    except:
+                        pass
                     time.sleep(10)
                     continue
 
             # Get current information
             node_name = get_node_name()
             network_info = get_network_info()
+            device_status = get_device_status()
             timestamp = datetime.now().isoformat()
 
             # Load device data from installed devices files
@@ -721,6 +867,7 @@ def publish_node_info():
                 "mac_address": network_info.get("mac_address", "N/A"),  # Backward compatibility
                 "mac_address_eth": network_info.get("mac_address_eth", "N/A"),
                 "mac_address_wlan": network_info.get("mac_address_wlan", "N/A"),
+                "device_status": device_status,
                 "data": {
                     "modbus": modbus_devices,
                     "modular": modular_devices
