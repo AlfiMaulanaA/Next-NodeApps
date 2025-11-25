@@ -54,13 +54,13 @@ interface FullDevicePayload {
   mac: string;
   protocol_type: string;
   number_address: number;
-  value: string; // The 'value' field itself is a JSON string
+  value: string | object; // The 'value' field can be a JSON string or already parsed object
   Timestamp: string;
 }
 
 // Define the type for the parsed 'value' content
 interface ParsedValueData {
-  [key: string]: boolean | undefined; // All drycontactInput are booleans
+  [key: string]: boolean | undefined; // All relay and drycontact inputs are booleans
 }
 
 // State untuk menyimpan data payload dari setiap topik perangkat
@@ -333,7 +333,15 @@ export default function DeviceManagerPage() {
       const currentPayload = prevPayloads[device.profile.topic];
       if (currentPayload) {
         try {
-          const parsedValue = JSON.parse(currentPayload.value);
+          let parsedValue: ParsedValueData;
+          if (typeof currentPayload.value === "string") {
+            parsedValue = JSON.parse(currentPayload.value);
+          } else if (typeof currentPayload.value === "object" && currentPayload.value !== null) {
+            parsedValue = currentPayload.value as ParsedValueData;
+          } else {
+            return prevPayloads;
+          }
+
           // Pastikan parsedValue adalah objek sebelum mencoba memperbarui properti
           if (typeof parsedValue === "object" && parsedValue !== null) {
             parsedValue[inputKey] = newState;
@@ -341,7 +349,7 @@ export default function DeviceManagerPage() {
               ...prevPayloads,
               [device.profile.topic]: {
                 ...currentPayload,
-                value: JSON.stringify(parsedValue),
+                value: typeof currentPayload.value === "string" ? JSON.stringify(parsedValue) : parsedValue,
               },
             };
           }
@@ -552,22 +560,27 @@ export default function DeviceManagerPage() {
                   const showLiveData = showLiveDataState[device.profile.topic];
 
                   let parsedValue: ParsedValueData | null = null;
-                  if (
-                    fullDevicePayload &&
-                    typeof fullDevicePayload.value === "string"
-                  ) {
-                    try {
-                      parsedValue = JSON.parse(fullDevicePayload.value);
+                  if (fullDevicePayload) {
+                    if (typeof fullDevicePayload.value === "string") {
+                      try {
+                        parsedValue = JSON.parse(fullDevicePayload.value);
+                        console.log(
+                          `Parsed value for ${device.profile.topic}:`,
+                          parsedValue
+                        );
+                      } catch (e) {
+                        console.error(
+                          `Error parsing value for topic ${device.profile.topic}:`,
+                          e,
+                          "Raw value:",
+                          fullDevicePayload.value
+                        );
+                      }
+                    } else if (typeof fullDevicePayload.value === "object" && fullDevicePayload.value !== null) {
+                      parsedValue = fullDevicePayload.value as ParsedValueData;
                       console.log(
-                        `Parsed value for ${device.profile.topic}:`,
+                        `Parsed value for ${device.profile.topic} (already object):`,
                         parsedValue
-                      );
-                    } catch (e) {
-                      console.error(
-                        `Error parsing value for topic ${device.profile.topic}:`,
-                        e,
-                        "Raw value:",
-                        fullDevicePayload.value
                       );
                     }
                   }
@@ -669,7 +682,9 @@ export default function DeviceManagerPage() {
                                         .filter(
                                           ([key]) =>
                                             key.startsWith("relayMiniOutput") ||
-                                            key.startsWith("drycontactInput")
+                                            key.startsWith("drycontactInput") ||
+                                            key.startsWith("optocouplerInput") ||
+                                            key.startsWith("optocouplerOutput")
                                         )
                                         .map(([key, value]) => {
                                           if (typeof value !== "boolean")
@@ -679,13 +694,18 @@ export default function DeviceManagerPage() {
                                             key.startsWith("relayMiniOutput");
                                           const isDryContactInput =
                                             key.startsWith("drycontactInput");
+                                          const isOptocouplerOutput =
+                                            key.startsWith("optocouplerOutput");
+                                          const isOptocouplerInput =
+                                            key.startsWith("optocouplerInput");
+                                          const isOutput = isRelayOutput || isOptocouplerOutput;
+                                          const isInput = isDryContactInput || isOptocouplerInput;
+
                                           const numberMatch = key.match(/\d+/);
                                           const number = numberMatch
                                             ? parseInt(numberMatch[0])
                                             : 0;
-                                          const displayKey = isRelayOutput
-                                            ? `${number}`
-                                            : `${number}`;
+                                          const displayKey = `${number}`;
 
                                           return (
                                             <div
@@ -693,8 +713,7 @@ export default function DeviceManagerPage() {
                                               className="flex flex-col items-center gap-2"
                                             >
                                               <span className="text-xs font-medium text-muted-foreground">
-                                                {isRelayOutput ? "OUT" : "IN"}{" "}
-                                                {number}
+                                                {isOutput ? "OUT" : "IN"} {number}
                                               </span>
                                               <Toggle
                                                 pressed={value}
@@ -712,9 +731,9 @@ export default function DeviceManagerPage() {
                                                   "data-[state=on]:text-white data-[state=off]:text-white",
                                                   "w-12 h-6 flex items-center justify-center text-xs"
                                                 )}
-                                                disabled={isControlDisabled}
+                                                disabled={isControlDisabled || isInput}
                                               >
-                                                {isRelayOutput ? (
+                                                {isOutput ? (
                                                   value ? (
                                                     "ON"
                                                   ) : (

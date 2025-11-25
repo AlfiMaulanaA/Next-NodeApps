@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "export", // Enable static export for frontend-only deployment
+  // Temporarily remove output: "export" to fix webpack compilation issues
+  // output: "export", // Enable static export for frontend-only deployment
   trailingSlash: true,
   eslint: {
     ignoreDuringBuilds: true,

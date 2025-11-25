@@ -117,9 +117,15 @@ const menuData = {
       title: "Device Management",
       items: [
         {
-          title: "Modbus Device Manager",
+          title: "Modbus/SNMP Device",
           url: "/devices/modbus",
           icon: HardDrive,
+          isUse: true,
+        },
+        {
+          title: "Modular I2C Devices",
+          url: "/devices/modular",
+          icon: Cpu,
           isUse: true,
         },
         {
@@ -146,12 +152,7 @@ const menuData = {
           icon: Activity,
           isUse: true,
         },
-        {
-          title: "Modular I2C Devices",
-          url: "/devices/modular",
-          icon: Cpu,
-          isUse: true,
-        },
+        
         {
           title: "Threshold & Alerts",
           url: "/devices/threshold",
