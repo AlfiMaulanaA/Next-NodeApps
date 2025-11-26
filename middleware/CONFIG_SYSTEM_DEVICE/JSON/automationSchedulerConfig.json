@@ -25,5 +25,43 @@
         "offTime": "18:00"
       }
     ]
+  },
+  {
+    "id": "f3ebe129-60ea-4415-bb07-6c95ef1b8eb1",
+    "customName": "Pue Container 1",
+    "deviceName": "RELAYBOARD",
+    "name": "RELAYBOARD",
+    "mac": "02:81:dd:6e:0f:11",
+    "address": 1,
+    "device_bus": 1,
+    "part_number": "RELAY",
+    "startDay": "Mon",
+    "endDay": "Sun",
+    "controls": [
+      {
+        "pin": 1,
+        "customName": "ddsfsd",
+        "onTime": "08:00",
+        "offTime": "17:00"
+      }
+    ]
+  },
+  {
+    "name": "Test Device",
+    "part_number": "PART-001",
+    "address": 0,
+    "device_bus": 0,
+    "startDay": "Mon",
+    "endDay": "Fri",
+    "autoControl": true,
+    "controls": [
+      {
+        "pin": 1,
+        "customName": "Relay Pin 1",
+        "onTime": "09:00",
+        "offTime": "17:00"
+      }
+    ],
+    "id": "1d84d99e-caf4-42be-9ecc-d97a4a0ae361"
   }
 ]

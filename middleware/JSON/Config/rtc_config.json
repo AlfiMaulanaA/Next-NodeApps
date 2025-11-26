@@ -1,0 +1,14 @@
+{
+    "i2c_bus": 2,
+    "i2c_address": 104,
+    "enabled": true,
+    "sync_all_methods": true,
+    "internet_sync_enabled": true,
+    "local_sync_enabled": true,
+    "timezone": "WIB",
+    "supported_timezones": [
+        "WIB",
+        "WITA",
+        "WIT"
+    ]
+}

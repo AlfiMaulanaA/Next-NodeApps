@@ -1,1 +1,29 @@
-[]
+{
+  "templates": [],
+  "payloads": [
+    {
+      "id": "c46887b778af4de4",
+      "topic": "sensor/room1/data",
+      "data": {
+        "room": "Room 1",
+        "temperature": 22.5,
+        "humidity": 55,
+        "pressure": 1013.25,
+        "co2": 400,
+        "timestamp": "2025-11-25T19:49:01.074882"
+      },
+      "interval": 10,
+      "qos": 1,
+      "lwt": true,
+      "retain": true,
+      "template_id": "sensor_v1",
+      "broker_config": {
+        "template_id": "sensor_v1",
+        "overrides": {}
+      },
+      "created_at": "2025-11-25T19:49:01.102534",
+      "updated_at": "2025-11-25T19:49:01.102534",
+      "version": 1
+    }
+  ]
+}

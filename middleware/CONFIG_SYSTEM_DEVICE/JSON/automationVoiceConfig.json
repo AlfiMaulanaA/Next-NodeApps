@@ -1,1 +1,9 @@
-[]
+[
+    {
+        "keyword": "turn on light",
+        "action": "control",
+        "manufacturer": "generic",
+        "custom_name": "Light Control",
+        "uuid": "71911f2f-8ce6-4a46-a34e-6df67bd298af"
+    }
+]

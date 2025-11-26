@@ -207,15 +207,19 @@ const UnifiedAutomationControl = () => {
   );
 
   // Connection Status
-  const [mqttConnectionStatus, setMqttConnectionStatus] = useState("Disconnected");
+  const [mqttConnectionStatus, setMqttConnectionStatus] =
+    useState("Disconnected");
 
   // Data States
-  const [automationConfig, setAutomationConfig] = useState<UnifiedAutomationConfig>({
-    unified_rules: [],
-  });
+  const [automationConfig, setAutomationConfig] =
+    useState<UnifiedAutomationConfig>({
+      unified_rules: [],
+    });
   const [modbusDevices, setModbusDevices] = useState<ModbusDevice[]>([]);
   const [modularDevices, setModularDevices] = useState<ModularDevice[]>([]);
-  const [deviceProfiles, setDeviceProfiles] = useState<Record<string, DeviceProfile>>({});
+  const [deviceProfiles, setDeviceProfiles] = useState<
+    Record<string, DeviceProfile>
+  >({});
   const [loading, setLoading] = useState(false);
   const [loadingDevices, setLoadingDevices] = useState(false);
 
@@ -224,7 +228,8 @@ const UnifiedAutomationControl = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
-  const [selectedRule, setSelectedRule] = useState<UnifiedAutomationRule | null>(null);
+  const [selectedRule, setSelectedRule] =
+    useState<UnifiedAutomationRule | null>(null);
 
   // Alert and Confirmation Dialog States
   const [alertDialogOpen, setAlertDialogOpen] = useState(false);
@@ -256,9 +261,7 @@ const UnifiedAutomationControl = () => {
 
   // Available condition operators and schedule types for different trigger types
   const conditionOperators = {
-    drycontact: [
-      { value: "is", label: "Is" },
-    ],
+    drycontact: [{ value: "is", label: "Is" }],
     numeric: [
       { value: "equals", label: "Equals (=)" },
       { value: "greater_than", label: "Greater Than (>)" },
@@ -322,7 +325,7 @@ const UnifiedAutomationControl = () => {
         // Load both modbus and modular device profiles
         const [modbusResponse, modularResponse] = await Promise.all([
           fetch("/files/modbus/devices.json"),
-          fetch("/files/modular/devices.json")
+          fetch("/files/modular/devices.json"),
         ]);
 
         if (!modbusResponse.ok) {
@@ -334,7 +337,7 @@ const UnifiedAutomationControl = () => {
 
         const [modbusData, modularData] = await Promise.all([
           modbusResponse.json(),
-          modularResponse.json()
+          modularResponse.json(),
         ]);
 
         // Merge both device profiles
@@ -488,7 +491,10 @@ const UnifiedAutomationControl = () => {
               case TOPICS.RESPONSE:
                 if (payload.data && Array.isArray(payload.data)) {
                   setAutomationConfig({ unified_rules: payload.data });
-                  console.log("Unified automation config loaded:", payload.data);
+                  console.log(
+                    "Unified automation config loaded:",
+                    payload.data
+                  );
                   setLoading(false);
                 } else {
                   handleCRUDResponse(payload);
@@ -500,18 +506,27 @@ const UnifiedAutomationControl = () => {
                 let modbusDevices = [];
                 if (payload.status === "success" && payload.data) {
                   modbusDevices = payload.data;
-                  console.log("MODBUS devices loaded (wrapped):", payload.data.length);
+                  console.log(
+                    "MODBUS devices loaded (wrapped):",
+                    payload.data.length
+                  );
                 } else {
                   // Try parsing as direct array or dict format
                   try {
                     const parsed = JSON.parse(message.toString());
                     if (Array.isArray(parsed)) {
                       modbusDevices = parsed;
-                      console.log("MODBUS devices loaded (direct array):", parsed.length);
+                      console.log(
+                        "MODBUS devices loaded (direct array):",
+                        parsed.length
+                      );
                     } else if (parsed && Array.isArray(parsed.devices)) {
                       modbusDevices = parsed.devices;
-                      console.log("MODBUS devices loaded (dict.devices):", parsed.devices.length);
-                    } else if (parsed && typeof parsed === 'object') {
+                      console.log(
+                        "MODBUS devices loaded (dict.devices):",
+                        parsed.devices.length
+                      );
+                    } else if (parsed && typeof parsed === "object") {
                       // Handle direct device objects in array
                       modbusDevices = [parsed];
                       console.log("MODBUS devices loaded (single device):", 1);
@@ -529,18 +544,27 @@ const UnifiedAutomationControl = () => {
                 let modularDevices = [];
                 if (payload.status === "success" && payload.data) {
                   modularDevices = payload.data;
-                  console.log("Modular devices loaded (wrapped):", payload.data.length);
+                  console.log(
+                    "Modular devices loaded (wrapped):",
+                    payload.data.length
+                  );
                 } else {
                   // Try parsing as direct array or dict format
                   try {
                     const parsed = JSON.parse(message.toString());
                     if (Array.isArray(parsed)) {
                       modularDevices = parsed;
-                      console.log("Modular devices loaded (direct array):", parsed.length);
+                      console.log(
+                        "Modular devices loaded (direct array):",
+                        parsed.length
+                      );
                     } else if (parsed && Array.isArray(parsed.devices)) {
                       modularDevices = parsed.devices;
-                      console.log("Modular devices loaded (dict.devices):", parsed.devices.length);
-                    } else if (parsed && typeof parsed === 'object') {
+                      console.log(
+                        "Modular devices loaded (dict.devices):",
+                        parsed.devices.length
+                      );
+                    } else if (parsed && typeof parsed === "object") {
                       // Handle direct device objects in array
                       modularDevices = [parsed];
                       console.log("Modular devices loaded (single device):", 1);
@@ -694,8 +718,6 @@ const UnifiedAutomationControl = () => {
       return;
     }
 
-
-
     if (currentRule.trigger_groups.length === 0) {
       setAlertDialogContent({
         title: "Validation Error",
@@ -756,10 +778,14 @@ const UnifiedAutomationControl = () => {
           }
 
           if (trigger.condition_operator === "between") {
-            if (!Array.isArray(trigger.target_value) || trigger.target_value.length !== 2) {
+            if (
+              !Array.isArray(trigger.target_value) ||
+              trigger.target_value.length !== 2
+            ) {
               setAlertDialogContent({
                 title: "Validation Error",
-                description: "Between operator requires both minimum and maximum values.",
+                description:
+                  "Between operator requires both minimum and maximum values.",
               });
               setAlertDialogOpen(true);
               return;
@@ -795,16 +821,16 @@ const UnifiedAutomationControl = () => {
         {
           group_name: `Trigger Group ${prev.trigger_groups.length + 1}`,
           group_operator: "AND",
-      triggers: [
-        {
-          device_name: "",
-          device_topic: "",
-          trigger_type: "numeric",
-          field_name: "",
-          condition_operator: "greater_than",
-          target_value: 0,
-        },
-      ],
+          triggers: [
+            {
+              device_name: "",
+              device_topic: "",
+              trigger_type: "numeric",
+              field_name: "",
+              condition_operator: "greater_than",
+              target_value: 0,
+            },
+          ],
         },
       ],
     }));
@@ -817,7 +843,10 @@ const UnifiedAutomationControl = () => {
     }));
   };
 
-  const updateTriggerGroup = (index: number, updatedGroup: UnifiedTriggerGroup) => {
+  const updateTriggerGroup = (
+    index: number,
+    updatedGroup: UnifiedTriggerGroup
+  ) => {
     setCurrentRule((prev) => ({
       ...prev,
       trigger_groups: prev.trigger_groups.map((group, i) =>
@@ -979,30 +1008,36 @@ const UnifiedAutomationControl = () => {
   );
 
   // Calculate additional stats
-  const numericTriggers = automationConfig?.unified_rules?.reduce(
-    (sum, rule) =>
-      sum +
-      rule.trigger_groups?.reduce(
-        (groupSum, group) =>
-          groupSum + (group.triggers?.filter(t => t.trigger_type === "numeric").length || 0),
-        0
-      ) || 0,
-    0
-  ) || 0;
+  const numericTriggers =
+    automationConfig?.unified_rules?.reduce(
+      (sum, rule) =>
+        sum +
+          rule.trigger_groups?.reduce(
+            (groupSum, group) =>
+              groupSum +
+              (group.triggers?.filter((t) => t.trigger_type === "numeric")
+                .length || 0),
+            0
+          ) || 0,
+      0
+    ) || 0;
 
   const dryContactTriggers = totalTriggers - numericTriggers;
 
   // Calculate schedule triggers count
-  const scheduleTriggers = automationConfig?.unified_rules?.reduce(
-    (sum, rule) =>
-      sum +
-      rule.trigger_groups?.reduce(
-        (groupSum, group) =>
-          groupSum + (group.triggers?.filter(t => t.trigger_type === "schedule").length || 0),
-        0
-      ) || 0,
-    0
-  ) || 0;
+  const scheduleTriggers =
+    automationConfig?.unified_rules?.reduce(
+      (sum, rule) =>
+        sum +
+          rule.trigger_groups?.reduce(
+            (groupSum, group) =>
+              groupSum +
+              (group.triggers?.filter((t) => t.trigger_type === "schedule")
+                .length || 0),
+            0
+          ) || 0,
+      0
+    ) || 0;
 
   // Format operator for display
   const formatOperator = (op: string, triggerType: string): string => {
@@ -1071,11 +1106,15 @@ const UnifiedAutomationControl = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-blue-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Unified Rules</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Unified Rules
+              </CardTitle>
               <Combine className="h-5 w-5 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{totalRules}</div>
+              <div className="text-2xl font-bold text-blue-600">
+                {totalRules}
+              </div>
               <p className="text-xs text-muted-foreground">
                 Active mixed trigger rules
               </p>
@@ -1096,8 +1135,12 @@ const UnifiedAutomationControl = () => {
               <Target className="h-5 w-5 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{totalTriggers}</div>
-              <p className="text-xs text-muted-foreground">Total conditions configured</p>
+              <div className="text-2xl font-bold text-green-600">
+                {totalTriggers}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Total conditions configured
+              </p>
               <div className="mt-2 space-y-1">
                 <div className="flex justify-between text-xs">
                   <span className="flex items-center gap-1">
@@ -1123,7 +1166,9 @@ const UnifiedAutomationControl = () => {
               <Zap className="h-5 w-5 text-orange-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-600">{totalActions}</div>
+              <div className="text-2xl font-bold text-orange-600">
+                {totalActions}
+              </div>
               <p className="text-xs text-muted-foreground">
                 Automated responses
               </p>
@@ -1133,7 +1178,10 @@ const UnifiedAutomationControl = () => {
                   <span className="font-medium">
                     {automationConfig?.unified_rules?.reduce(
                       (sum, rule) =>
-                        sum + (rule.actions?.filter(a => a.action_type === "control_relay").length || 0),
+                        sum +
+                        (rule.actions?.filter(
+                          (a) => a.action_type === "control_relay"
+                        ).length || 0),
                       0
                     ) || 0}
                   </span>
@@ -1143,7 +1191,10 @@ const UnifiedAutomationControl = () => {
                   <span className="font-medium">
                     {automationConfig?.unified_rules?.reduce(
                       (sum, rule) =>
-                        sum + (rule.actions?.filter(a => a.action_type === "send_message").length || 0),
+                        sum +
+                        (rule.actions?.filter(
+                          (a) => a.action_type === "send_message"
+                        ).length || 0),
                       0
                     ) || 0}
                   </span>
@@ -1158,7 +1209,9 @@ const UnifiedAutomationControl = () => {
               <Settings2 className="h-5 w-5 text-purple-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-purple-600">{allDevices.length}</div>
+              <div className="text-2xl font-bold text-purple-600">
+                {allDevices.length}
+              </div>
               <p className="text-xs text-muted-foreground">Available devices</p>
               <div className="mt-2 space-y-1">
                 <div className="flex justify-between text-xs">
@@ -1167,7 +1220,9 @@ const UnifiedAutomationControl = () => {
                 </div>
                 <div className="flex justify-between text-xs">
                   <span>Dry Contacts:</span>
-                  <span className="font-medium">{dryContactDevices.length}</span>
+                  <span className="font-medium">
+                    {dryContactDevices.length}
+                  </span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span>Relays:</span>
@@ -1179,12 +1234,18 @@ const UnifiedAutomationControl = () => {
 
           <Card className="shadow-sm hover:shadow-md transition-shadow border-l-4 border-l-indigo-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Schedule Triggers</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                Schedule Triggers
+              </CardTitle>
               <Calendar className="h-5 w-5 text-indigo-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-indigo-600">{scheduleTriggers}</div>
-              <p className="text-xs text-muted-foreground">Time-based conditions</p>
+              <div className="text-2xl font-bold text-indigo-600">
+                {scheduleTriggers}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Time-based conditions
+              </p>
               <div className="mt-2">
                 <div className="flex justify-between text-xs">
                   <span>Active schedules:</span>
@@ -1192,11 +1253,15 @@ const UnifiedAutomationControl = () => {
                 </div>
                 <div className="flex justify-between text-xs">
                   <span>Rule utilities:</span>
-                  <span className="font-medium">{automationConfig?.unified_rules?.filter(rule =>
-                    rule.trigger_groups?.some(group =>
-                      group.triggers?.some(trigger => trigger.trigger_type === "schedule")
-                    )
-                  ).length || 0}</span>
+                  <span className="font-medium">
+                    {automationConfig?.unified_rules?.filter((rule) =>
+                      rule.trigger_groups?.some((group) =>
+                        group.triggers?.some(
+                          (trigger) => trigger.trigger_type === "schedule"
+                        )
+                      )
+                    ).length || 0}
+                  </span>
                 </div>
               </div>
             </CardContent>
@@ -1234,9 +1299,7 @@ const UnifiedAutomationControl = () => {
                       <TableHead className="min-w-48">
                         Rule Information
                       </TableHead>
-                      <TableHead className="min-w-80">
-                        Mixed Triggers
-                      </TableHead>
+                      <TableHead className="min-w-80">Mixed Triggers</TableHead>
                       <TableHead className="min-w-80">Actions</TableHead>
                       <TableHead className="text-center w-32">
                         Controls
@@ -1317,7 +1380,8 @@ const UnifiedAutomationControl = () => {
                                           className="text-xs bg-background/60 rounded px-2 py-1"
                                         >
                                           <div className="font-medium truncate flex items-center gap-1">
-                                            {trigger.trigger_type === "drycontact" ? (
+                                            {trigger.trigger_type ===
+                                            "drycontact" ? (
                                               <Power className="h-3 w-3 text-blue-500" />
                                             ) : (
                                               <Cpu className="h-3 w-3 text-purple-500" />
@@ -1325,10 +1389,15 @@ const UnifiedAutomationControl = () => {
                                             {trigger.device_name}
                                           </div>
                                           <div className="text-muted-foreground">
-                                            {trigger.trigger_type === "drycontact"
-                                              ? `${trigger.field_name || `Pin ${trigger.pin_number || 1}`}`
-                                              : trigger.field_name
-                                            }{" "}
+                                            {trigger.trigger_type ===
+                                            "drycontact"
+                                              ? `${
+                                                  trigger.field_name ||
+                                                  `Pin ${
+                                                    trigger.pin_number || 1
+                                                  }`
+                                                }`
+                                              : trigger.field_name}{" "}
                                             {formatOperator(
                                               trigger.condition_operator,
                                               trigger.trigger_type
@@ -1913,7 +1982,8 @@ const UnifiedAutomationControl = () => {
               </DialogTitle>
             </div>
             <DialogDescription>
-              Configure advanced automation rules with mixed boolean and numeric triggers
+              Configure advanced automation rules with mixed boolean and numeric
+              triggers
             </DialogDescription>
           </DialogHeader>
 
@@ -1989,7 +2059,8 @@ const UnifiedAutomationControl = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">
-                    Combine boolean and numeric triggers in flexible groups with AND/OR logic
+                    Combine boolean and numeric triggers in flexible groups with
+                    AND/OR logic
                   </p>
                   <Button
                     type="button"
@@ -2078,7 +2149,12 @@ const UnifiedAutomationControl = () => {
 
                       {group.triggers.map((trigger, triggerIndex) => {
                         const selectedDeviceOption = allDevices.find(
-                          (d: {value: string, label: string, device?: any, topic?: string}) => d.value === trigger.device_name
+                          (d: {
+                            value: string;
+                            label: string;
+                            device?: any;
+                            topic?: string;
+                          }) => d.value === trigger.device_name
                         );
                         const selectedDevice = selectedDeviceOption?.device;
                         const availableFields = getDeviceFields(
@@ -2089,7 +2165,9 @@ const UnifiedAutomationControl = () => {
                         const modularDevice = modularDevices.find(
                           (d: ModularDevice) => d.name === trigger.device_name
                         );
-                        const modularAvailableFields = modularDevice ? getDeviceFields(modularDevice) : [];
+                        const modularAvailableFields = modularDevice
+                          ? getDeviceFields(modularDevice)
+                          : [];
 
                         return (
                           <div
@@ -2139,22 +2217,57 @@ const UnifiedAutomationControl = () => {
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {/* Trigger Type */}
                                 <div>
-                                  <Label className="text-xs">Trigger Type *</Label>
+                                  <Label className="text-xs">
+                                    Trigger Type *
+                                  </Label>
                                   <Select
                                     value={trigger.trigger_type}
                                     onValueChange={(value) => {
-                                      const newTriggerType = value as "drycontact" | "numeric" | "schedule";
+                                      const newTriggerType = value as
+                                        | "drycontact"
+                                        | "numeric"
+                                        | "schedule";
                                       updateTrigger(groupIndex, triggerIndex, {
                                         ...trigger,
                                         trigger_type: newTriggerType,
-                                        device_name: newTriggerType === "schedule" ? undefined : "", // No device required for schedule
-                                        device_topic: newTriggerType === "schedule" ? undefined : "",
-                                        field_name: newTriggerType === "schedule" ? undefined : (newTriggerType === "numeric" ? "" : trigger.field_name),
-                                        pin_number: newTriggerType === "drycontact" ? 1 : trigger.pin_number,
-                                        condition_operator: newTriggerType === "schedule" ? "time_range" : (newTriggerType === "drycontact" ? "is" : "greater_than"),
-                                        target_value: newTriggerType === "drycontact" ? true : (newTriggerType === "numeric" ? 0 : true),
-                                        start_time: newTriggerType === "schedule" ? "" : undefined,
-                                        end_time: newTriggerType === "schedule" ? "" : undefined,
+                                        device_name:
+                                          newTriggerType === "schedule"
+                                            ? undefined
+                                            : "", // No device required for schedule
+                                        device_topic:
+                                          newTriggerType === "schedule"
+                                            ? undefined
+                                            : "",
+                                        field_name:
+                                          newTriggerType === "schedule"
+                                            ? undefined
+                                            : newTriggerType === "numeric"
+                                            ? ""
+                                            : trigger.field_name,
+                                        pin_number:
+                                          newTriggerType === "drycontact"
+                                            ? 1
+                                            : trigger.pin_number,
+                                        condition_operator:
+                                          newTriggerType === "schedule"
+                                            ? "time_range"
+                                            : newTriggerType === "drycontact"
+                                            ? "is"
+                                            : "greater_than",
+                                        target_value:
+                                          newTriggerType === "drycontact"
+                                            ? true
+                                            : newTriggerType === "numeric"
+                                            ? 0
+                                            : true,
+                                        start_time:
+                                          newTriggerType === "schedule"
+                                            ? ""
+                                            : undefined,
+                                        end_time:
+                                          newTriggerType === "schedule"
+                                            ? ""
+                                            : undefined,
                                       });
                                     }}
                                   >
@@ -2168,7 +2281,10 @@ const UnifiedAutomationControl = () => {
                                       <SelectItem value="numeric">
                                         Numeric (Sensor Value)
                                       </SelectItem>
-                                      <SelectItem value="schedule" className="flex items-center gap-1">
+                                      <SelectItem
+                                        value="schedule"
+                                        className="flex items-center gap-1"
+                                      >
                                         Schedule (Time-based)
                                       </SelectItem>
                                     </SelectContent>
@@ -2185,31 +2301,49 @@ const UnifiedAutomationControl = () => {
                                     {/* Time Configuration - Start and End Time */}
                                     <div className="grid grid-cols-2 gap-3 mt-2">
                                       <div>
-                                        <Label className="text-xs">Waktu ON (Start Time) *</Label>
+                                        <Label className="text-xs">
+                                          Waktu ON (Start Time) *
+                                        </Label>
                                         <Select
                                           value={trigger.start_time || ""}
                                           onValueChange={(value) =>
-                                            updateTrigger(groupIndex, triggerIndex, {
-                                              ...trigger,
-                                              start_time: value,
-                                            })
+                                            updateTrigger(
+                                              groupIndex,
+                                              triggerIndex,
+                                              {
+                                                ...trigger,
+                                                start_time: value,
+                                              }
+                                            )
                                           }
                                         >
                                           <SelectTrigger className="font-mono">
                                             <SelectValue placeholder="HH:MM" />
                                           </SelectTrigger>
                                           <SelectContent>
-                                            {Array.from({ length: 24 * 60 }, (_, index) => {
-                                              const hour = Math.floor(index / 60);
-                                              const minute = index % 60;
-                                              const h = hour.toString().padStart(2, "0");
-                                              const m = minute.toString().padStart(2, "0");
-                                              return (
-                                                <SelectItem key={`${h}:${m}`} value={`${h}:${m}`}>
-                                                  {`${h}:${m}`}
-                                                </SelectItem>
-                                              );
-                                            })}
+                                            {Array.from(
+                                              { length: 24 * 60 },
+                                              (_, index) => {
+                                                const hour = Math.floor(
+                                                  index / 60
+                                                );
+                                                const minute = index % 60;
+                                                const h = hour
+                                                  .toString()
+                                                  .padStart(2, "0");
+                                                const m = minute
+                                                  .toString()
+                                                  .padStart(2, "0");
+                                                return (
+                                                  <SelectItem
+                                                    key={`${h}:${m}`}
+                                                    value={`${h}:${m}`}
+                                                  >
+                                                    {`${h}:${m}`}
+                                                  </SelectItem>
+                                                );
+                                              }
+                                            )}
                                           </SelectContent>
                                         </Select>
                                         <p className="text-xs text-muted-foreground mt-1">
@@ -2217,31 +2351,49 @@ const UnifiedAutomationControl = () => {
                                         </p>
                                       </div>
                                       <div>
-                                        <Label className="text-xs">Waktu OFF (End Time) *</Label>
+                                        <Label className="text-xs">
+                                          Waktu OFF (End Time) *
+                                        </Label>
                                         <Select
                                           value={trigger.end_time || ""}
                                           onValueChange={(value) =>
-                                            updateTrigger(groupIndex, triggerIndex, {
-                                              ...trigger,
-                                              end_time: value,
-                                            })
+                                            updateTrigger(
+                                              groupIndex,
+                                              triggerIndex,
+                                              {
+                                                ...trigger,
+                                                end_time: value,
+                                              }
+                                            )
                                           }
                                         >
                                           <SelectTrigger className="font-mono">
                                             <SelectValue placeholder="HH:MM" />
                                           </SelectTrigger>
                                           <SelectContent>
-                                            {Array.from({ length: 24 * 60 }, (_, index) => {
-                                              const hour = Math.floor(index / 60);
-                                              const minute = index % 60;
-                                              const h = hour.toString().padStart(2, "0");
-                                              const m = minute.toString().padStart(2, "0");
-                                              return (
-                                                <SelectItem key={`${h}:${m}`} value={`${h}:${m}`}>
-                                                  {`${h}:${m}`}
-                                                </SelectItem>
-                                              );
-                                            })}
+                                            {Array.from(
+                                              { length: 24 * 60 },
+                                              (_, index) => {
+                                                const hour = Math.floor(
+                                                  index / 60
+                                                );
+                                                const minute = index % 60;
+                                                const h = hour
+                                                  .toString()
+                                                  .padStart(2, "0");
+                                                const m = minute
+                                                  .toString()
+                                                  .padStart(2, "0");
+                                                return (
+                                                  <SelectItem
+                                                    key={`${h}:${m}`}
+                                                    value={`${h}:${m}`}
+                                                  >
+                                                    {`${h}:${m}`}
+                                                  </SelectItem>
+                                                );
+                                              }
+                                            )}
                                           </SelectContent>
                                         </Select>
                                         <p className="text-xs text-muted-foreground mt-1">
@@ -2252,42 +2404,90 @@ const UnifiedAutomationControl = () => {
 
                                     {/* Active Days */}
                                     <div className="mt-3">
-                                      <Label className="text-xs">Hari Aktif (Active Days) *</Label>
+                                      <Label className="text-xs">
+                                        Hari Aktif (Active Days) *
+                                      </Label>
                                       <div className="grid grid-cols-7 gap-1 mt-1">
-                                        {daysOfWeek.map((day: {value: string, label: string}) => {
-                                          // For schedule triggers, we'll use active_days from a separate property or extract from target_value
-                                          const activeDays = (trigger as any).active_days ||
-                                            (trigger.trigger_type === "schedule" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : []);
+                                        {daysOfWeek.map(
+                                          (day: {
+                                            value: string;
+                                            label: string;
+                                          }) => {
+                                            // For schedule triggers, we'll use active_days from a separate property or extract from target_value
+                                            const activeDays =
+                                              (trigger as any).active_days ||
+                                              (trigger.trigger_type ===
+                                              "schedule"
+                                                ? [
+                                                    "Mon",
+                                                    "Tue",
+                                                    "Wed",
+                                                    "Thu",
+                                                    "Fri",
+                                                    "Sat",
+                                                    "Sun",
+                                                  ]
+                                                : []);
 
-                                          const isActive = activeDays?.includes(day.value);
+                                            const isActive =
+                                              activeDays?.includes(day.value);
 
-                                          return (
-                                            <Button
-                                              key={day.value}
-                                              type="button"
-                                              variant={isActive ? "default" : "outline"}
-                                              size="sm"
-                                              className="text-xs h-8 px-2"
-                                              onClick={() => {
-                                                const currentDays = (trigger as any).active_days ||
-                                                  (trigger.trigger_type === "schedule" ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : []);
-                                                const newDays = isActive
-                                                  ? currentDays.filter((d: string) => d !== day.value)
-                                                  : [...currentDays, day.value];
+                                            return (
+                                              <Button
+                                                key={day.value}
+                                                type="button"
+                                                variant={
+                                                  isActive
+                                                    ? "default"
+                                                    : "outline"
+                                                }
+                                                size="sm"
+                                                className="text-xs h-8 px-2"
+                                                onClick={() => {
+                                                  const currentDays =
+                                                    (trigger as any)
+                                                      .active_days ||
+                                                    (trigger.trigger_type ===
+                                                    "schedule"
+                                                      ? [
+                                                          "Mon",
+                                                          "Tue",
+                                                          "Wed",
+                                                          "Thu",
+                                                          "Fri",
+                                                          "Sat",
+                                                          "Sun",
+                                                        ]
+                                                      : []);
+                                                  const newDays = isActive
+                                                    ? currentDays.filter(
+                                                        (d: string) =>
+                                                          d !== day.value
+                                                      )
+                                                    : [
+                                                        ...currentDays,
+                                                        day.value,
+                                                      ];
 
-                                                updateTrigger(groupIndex, triggerIndex, {
-                                                  ...trigger,
-                                                  active_days: newDays,
-                                                });
-                                              }}
-                                            >
-                                              {day.label.charAt(0)}
-                                            </Button>
-                                          );
-                                        })}
+                                                  updateTrigger(
+                                                    groupIndex,
+                                                    triggerIndex,
+                                                    {
+                                                      ...trigger,
+                                                      active_days: newDays,
+                                                    }
+                                                  );
+                                                }}
+                                              >
+                                                {day.label.charAt(0)}
+                                              </Button>
+                                            );
+                                          }
+                                        )}
                                       </div>
                                       <p className="text-xs text-muted-foreground mt-1">
-                                        Pilih hari-hari dalam seminggu dimana jadwal ini berlaku
+                                        Pilih hari-hari dalam seminggu dimana
+                                        jadwal ini berlaku
                                       </p>
                                     </div>
                                   </div>
@@ -2298,22 +2498,36 @@ const UnifiedAutomationControl = () => {
                                       value={trigger.device_name}
                                       onValueChange={(value) => {
                                         const selectedDevice = allDevices.find(
-                                          (d: {value: string, label: string, device?: any, topic?: string}) => d.value === value
+                                          (d: {
+                                            value: string;
+                                            label: string;
+                                            device?: any;
+                                            topic?: string;
+                                          }) => d.value === value
                                         );
-                                        updateTrigger(groupIndex, triggerIndex, {
-                                          ...trigger,
-                                          device_name: value,
-                                          device_topic: selectedDevice?.topic || "",
-                                        });
+                                        updateTrigger(
+                                          groupIndex,
+                                          triggerIndex,
+                                          {
+                                            ...trigger,
+                                            device_name: value,
+                                            device_topic:
+                                              selectedDevice?.topic || "",
+                                          }
+                                        );
                                       }}
                                     >
                                       <SelectTrigger>
                                         <SelectValue placeholder="Select device" />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {trigger.trigger_type === "drycontact" ? (
+                                        {trigger.trigger_type ===
+                                        "drycontact" ? (
                                           dryContactDevices.length === 0 ? (
-                                            <SelectItem value="no-devices" disabled>
+                                            <SelectItem
+                                              value="no-devices"
+                                              disabled
+                                            >
                                               No dry contact devices available
                                             </SelectItem>
                                           ) : (
@@ -2326,27 +2540,27 @@ const UnifiedAutomationControl = () => {
                                               </SelectItem>
                                             ))
                                           )
+                                        ) : sensorDevices.length === 0 ? (
+                                          <SelectItem
+                                            value="no-devices"
+                                            disabled
+                                          >
+                                            No sensor devices available
+                                          </SelectItem>
                                         ) : (
-                                          sensorDevices.length === 0 ? (
-                                            <SelectItem value="no-devices" disabled>
-                                              No sensor devices available
+                                          sensorDevices.map((device) => (
+                                            <SelectItem
+                                              key={device.value}
+                                              value={device.value}
+                                            >
+                                              {device.label}
                                             </SelectItem>
-                                          ) : (
-                                            sensorDevices.map((device) => (
-                                              <SelectItem
-                                                key={device.value}
-                                                value={device.value}
-                                              >
-                                                {device.label}
-                                              </SelectItem>
-                                            ))
-                                          )
+                                          ))
                                         )}
                                       </SelectContent>
                                     </Select>
                                   </div>
                                 )}
-
                               </div>
                             </div>
 
@@ -2358,72 +2572,115 @@ const UnifiedAutomationControl = () => {
                                 </Label>
                                 {trigger.trigger_type === "drycontact" ? (
                                   <div className="md:col-span-2">
-                                    <Label className="text-xs">Field Name *</Label>
+                                    <Label className="text-xs">
+                                      Field Name *
+                                    </Label>
                                     <Select
                                       value={trigger.field_name || ""}
                                       onValueChange={(value) =>
-                                        updateTrigger(groupIndex, triggerIndex, {
-                                          ...trigger,
-                                          field_name: value,
-                                        })
+                                        updateTrigger(
+                                          groupIndex,
+                                          triggerIndex,
+                                          {
+                                            ...trigger,
+                                            field_name: value,
+                                          }
+                                        )
                                       }
-                                      disabled={!trigger.device_name || modularAvailableFields.length === 0}
+                                      disabled={
+                                        !trigger.device_name ||
+                                        modularAvailableFields.length === 0
+                                      }
                                     >
                                       <SelectTrigger>
                                         <SelectValue placeholder="Select field from device profile" />
                                       </SelectTrigger>
                                       <SelectContent>
                                         {!trigger.device_name ? (
-                                          <SelectItem value="no-device" disabled>
+                                          <SelectItem
+                                            value="no-device"
+                                            disabled
+                                          >
                                             Select device first
                                           </SelectItem>
-                                        ) : modularAvailableFields.length === 0 ? (
-                                          <SelectItem value="no-fields" disabled>
-                                            No boolean fields available for {trigger.device_name}
+                                        ) : modularAvailableFields.length ===
+                                          0 ? (
+                                          <SelectItem
+                                            value="no-fields"
+                                            disabled
+                                          >
+                                            No boolean fields available for{" "}
+                                            {trigger.device_name}
                                           </SelectItem>
                                         ) : (
-                                          modularAvailableFields.map((field) => (
-                                            <SelectItem
-                                              key={field.var_name}
-                                              value={field.var_name}
-                                            >
-                                              {field.var_name} (Boolean)
-                                            </SelectItem>
-                                          ))
+                                          modularAvailableFields.map(
+                                            (field) => (
+                                              <SelectItem
+                                                key={field.var_name}
+                                                value={field.var_name}
+                                              >
+                                                {field.var_name} (Boolean)
+                                              </SelectItem>
+                                            )
+                                          )
                                         )}
                                       </SelectContent>
                                     </Select>
                                     {/* Show available boolean fields count and tooltip */}
-                                    {trigger.device_name && modularAvailableFields.length > 0 && (
-                                      <div className="mt-1 text-xs text-muted-foreground">
-                                        {modularAvailableFields.length} boolean field{modularAvailableFields.length !== 1 ? 's' : ''} available from {modularDevice?.manufacturer} {modularDevice?.part_number}
-                                      </div>
-                                    )}
+                                    {trigger.device_name &&
+                                      modularAvailableFields.length > 0 && (
+                                        <div className="mt-1 text-xs text-muted-foreground">
+                                          {modularAvailableFields.length}{" "}
+                                          boolean field
+                                          {modularAvailableFields.length !== 1
+                                            ? "s"
+                                            : ""}{" "}
+                                          available from{" "}
+                                          {modularDevice?.manufacturer}{" "}
+                                          {modularDevice?.part_number}
+                                        </div>
+                                      )}
                                   </div>
                                 ) : (
                                   <div className="md:col-span-2">
-                                    <Label className="text-xs">Field Name *</Label>
+                                    <Label className="text-xs">
+                                      Field Name *
+                                    </Label>
                                     <Select
                                       value={trigger.field_name || ""}
                                       onValueChange={(value) =>
-                                        updateTrigger(groupIndex, triggerIndex, {
-                                          ...trigger,
-                                          field_name: value,
-                                        })
+                                        updateTrigger(
+                                          groupIndex,
+                                          triggerIndex,
+                                          {
+                                            ...trigger,
+                                            field_name: value,
+                                          }
+                                        )
                                       }
-                                      disabled={!trigger.device_name || availableFields.length === 0}
+                                      disabled={
+                                        !trigger.device_name ||
+                                        availableFields.length === 0
+                                      }
                                     >
                                       <SelectTrigger>
                                         <SelectValue placeholder="Select field from device profile" />
                                       </SelectTrigger>
                                       <SelectContent>
                                         {!trigger.device_name ? (
-                                          <SelectItem value="no-device" disabled>
+                                          <SelectItem
+                                            value="no-device"
+                                            disabled
+                                          >
                                             Select device first
                                           </SelectItem>
                                         ) : availableFields.length === 0 ? (
-                                          <SelectItem value="no-fields" disabled>
-                                            No fields available for {trigger.device_name}
+                                          <SelectItem
+                                            value="no-fields"
+                                            disabled
+                                          >
+                                            No fields available for{" "}
+                                            {trigger.device_name}
                                           </SelectItem>
                                         ) : (
                                           availableFields.map((field) => (
@@ -2431,18 +2688,26 @@ const UnifiedAutomationControl = () => {
                                               key={field.var_name}
                                               value={field.var_name}
                                             >
-                                              {field.var_name} ({field.data_type})
+                                              {field.var_name} (
+                                              {field.data_type})
                                             </SelectItem>
                                           ))
                                         )}
                                       </SelectContent>
                                     </Select>
                                     {/* Show available fields count and tooltip */}
-                                    {trigger.device_name && availableFields.length > 0 && (
-                                      <div className="mt-1 text-xs text-muted-foreground">
-                                        {availableFields.length} field{availableFields.length !== 1 ? 's' : ''} available from {selectedDevice?.manufacturer} {selectedDevice?.part_number}
-                                      </div>
-                                    )}
+                                    {trigger.device_name &&
+                                      availableFields.length > 0 && (
+                                        <div className="mt-1 text-xs text-muted-foreground">
+                                          {availableFields.length} field
+                                          {availableFields.length !== 1
+                                            ? "s"
+                                            : ""}{" "}
+                                          available from{" "}
+                                          {selectedDevice?.manufacturer}{" "}
+                                          {selectedDevice?.part_number}
+                                        </div>
+                                      )}
                                   </div>
                                 )}
                               </div>
@@ -2457,29 +2722,51 @@ const UnifiedAutomationControl = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   {/* Condition Operator */}
                                   <div>
-                                    <Label className="text-xs">Operator *</Label>
+                                    <Label className="text-xs">
+                                      Operator *
+                                    </Label>
                                     <Select
                                       value={trigger.condition_operator}
                                       onValueChange={(value) =>
-                                        updateTrigger(groupIndex, triggerIndex, {
-                                          ...trigger,
-                                          condition_operator: value,
-                                          target_value: value === "between" && trigger.trigger_type === "numeric"
-                                            ? [0, 0]
-                                            : value === "between" && trigger.trigger_type === "drycontact"
-                                            ? trigger.target_value
-                                            : value === "is" && trigger.trigger_type === "drycontact"
-                                            ? true
-                                            : trigger.trigger_type === "numeric" ? 0 : trigger.target_value,
-                                        })
+                                        updateTrigger(
+                                          groupIndex,
+                                          triggerIndex,
+                                          {
+                                            ...trigger,
+                                            condition_operator: value,
+                                            target_value:
+                                              value === "between" &&
+                                              trigger.trigger_type === "numeric"
+                                                ? [0, 0]
+                                                : value === "between" &&
+                                                  trigger.trigger_type ===
+                                                    "drycontact"
+                                                ? trigger.target_value
+                                                : value === "is" &&
+                                                  trigger.trigger_type ===
+                                                    "drycontact"
+                                                ? true
+                                                : trigger.trigger_type ===
+                                                  "numeric"
+                                                ? 0
+                                                : trigger.target_value,
+                                          }
+                                        )
                                       }
                                     >
                                       <SelectTrigger>
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {(conditionOperators[trigger.trigger_type] || []).map((op) => (
-                                          <SelectItem key={op.value} value={op.value}>
+                                        {(
+                                          conditionOperators[
+                                            trigger.trigger_type
+                                          ] || []
+                                        ).map((op) => (
+                                          <SelectItem
+                                            key={op.value}
+                                            value={op.value}
+                                          >
                                             {op.label}
                                           </SelectItem>
                                         ))}
@@ -2490,29 +2777,42 @@ const UnifiedAutomationControl = () => {
                                   {/* Target Value - Dynamic based on type and operator */}
                                   {trigger.trigger_type === "drycontact" ? (
                                     <div>
-                                      <Label className="text-xs">Target Value *</Label>
+                                      <Label className="text-xs">
+                                        Target Value *
+                                      </Label>
                                       <Select
                                         value={trigger.target_value.toString()}
                                         onValueChange={(value) =>
-                                          updateTrigger(groupIndex, triggerIndex, {
-                                            ...trigger,
-                                            target_value: value === "true",
-                                          })
+                                          updateTrigger(
+                                            groupIndex,
+                                            triggerIndex,
+                                            {
+                                              ...trigger,
+                                              target_value: value === "true",
+                                            }
+                                          )
                                         }
                                       >
                                         <SelectTrigger>
                                           <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          <SelectItem value="true">TRUE (ON/HIGH)</SelectItem>
-                                          <SelectItem value="false">FALSE (OFF/LOW)</SelectItem>
+                                          <SelectItem value="true">
+                                            TRUE (ON/HIGH)
+                                          </SelectItem>
+                                          <SelectItem value="false">
+                                            FALSE (OFF/LOW)
+                                          </SelectItem>
                                         </SelectContent>
                                       </Select>
                                     </div>
-                                  ) : trigger.condition_operator === "between" ? (
+                                  ) : trigger.condition_operator ===
+                                    "between" ? (
                                     <>
                                       <div>
-                                        <Label className="text-xs">Min Value *</Label>
+                                        <Label className="text-xs">
+                                          Min Value *
+                                        </Label>
                                         <Input
                                           type="number"
                                           step="any"
@@ -2522,22 +2822,31 @@ const UnifiedAutomationControl = () => {
                                               : 0
                                           }
                                           onChange={(e) => {
-                                            const currentValue = Array.isArray(trigger.target_value)
+                                            const currentValue = Array.isArray(
+                                              trigger.target_value
+                                            )
                                               ? trigger.target_value
                                               : [0, 0];
-                                            updateTrigger(groupIndex, triggerIndex, {
-                                              ...trigger,
-                                              target_value: [
-                                                parseFloat(e.target.value) || 0,
-                                                currentValue[1],
-                                              ],
-                                            });
+                                            updateTrigger(
+                                              groupIndex,
+                                              triggerIndex,
+                                              {
+                                                ...trigger,
+                                                target_value: [
+                                                  parseFloat(e.target.value) ||
+                                                    0,
+                                                  currentValue[1],
+                                                ],
+                                              }
+                                            );
                                           }}
                                           placeholder="Min value"
                                         />
                                       </div>
                                       <div>
-                                        <Label className="text-xs">Max Value *</Label>
+                                        <Label className="text-xs">
+                                          Max Value *
+                                        </Label>
                                         <Input
                                           type="number"
                                           step="any"
@@ -2547,16 +2856,23 @@ const UnifiedAutomationControl = () => {
                                               : 0
                                           }
                                           onChange={(e) => {
-                                            const currentValue = Array.isArray(trigger.target_value)
+                                            const currentValue = Array.isArray(
+                                              trigger.target_value
+                                            )
                                               ? trigger.target_value
                                               : [0, 0];
-                                            updateTrigger(groupIndex, triggerIndex, {
-                                              ...trigger,
-                                              target_value: [
-                                                currentValue[0],
-                                                parseFloat(e.target.value) || 0,
-                                              ],
-                                            });
+                                            updateTrigger(
+                                              groupIndex,
+                                              triggerIndex,
+                                              {
+                                                ...trigger,
+                                                target_value: [
+                                                  currentValue[0],
+                                                  parseFloat(e.target.value) ||
+                                                    0,
+                                                ],
+                                              }
+                                            );
                                           }}
                                           placeholder="Max value"
                                         />
@@ -2564,20 +2880,28 @@ const UnifiedAutomationControl = () => {
                                     </>
                                   ) : (
                                     <div>
-                                      <Label className="text-xs">Target Value *</Label>
+                                      <Label className="text-xs">
+                                        Target Value *
+                                      </Label>
                                       <Input
                                         type="number"
                                         step="any"
                                         value={
-                                          typeof trigger.target_value === "number"
+                                          typeof trigger.target_value ===
+                                          "number"
                                             ? trigger.target_value
                                             : 0
                                         }
                                         onChange={(e) =>
-                                          updateTrigger(groupIndex, triggerIndex, {
-                                            ...trigger,
-                                            target_value: parseFloat(e.target.value) || 0,
-                                          })
+                                          updateTrigger(
+                                            groupIndex,
+                                            triggerIndex,
+                                            {
+                                              ...trigger,
+                                              target_value:
+                                                parseFloat(e.target.value) || 0,
+                                            }
+                                          )
                                         }
                                         placeholder="Enter target value"
                                       />
@@ -2635,7 +2959,9 @@ const UnifiedAutomationControl = () => {
                           onValueChange={(value) =>
                             updateAction(actionIndex, {
                               ...action,
-                              action_type: value as "control_relay" | "send_message",
+                              action_type: value as
+                                | "control_relay"
+                                | "send_message",
                             })
                           }
                         >
@@ -2643,8 +2969,12 @@ const UnifiedAutomationControl = () => {
                             <SelectValue placeholder="Select action type" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="control_relay">Control Relay</SelectItem>
-                            <SelectItem value="send_message">Send Message</SelectItem>
+                            <SelectItem value="control_relay">
+                              Control Relay
+                            </SelectItem>
+                            <SelectItem value="send_message">
+                              Send Message
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -2686,7 +3016,13 @@ const UnifiedAutomationControl = () => {
                               value={action.target_device}
                               onValueChange={(value) => {
                                 const selectedDevice = relayDevices.find(
-                                  (d: {value: string, label: string, address?: number, device_bus?: number, mac?: string}) => d.value === value
+                                  (d: {
+                                    value: string;
+                                    label: string;
+                                    address?: number;
+                                    device_bus?: number;
+                                    mac?: string;
+                                  }) => d.value === value
                                 );
                                 updateAction(actionIndex, {
                                   ...action,
@@ -2702,7 +3038,10 @@ const UnifiedAutomationControl = () => {
                               </SelectTrigger>
                               <SelectContent>
                                 {relayDevices.map((device) => (
-                                  <SelectItem key={device.value} value={device.value}>
+                                  <SelectItem
+                                    key={device.value}
+                                    value={device.value}
+                                  >
                                     {device.label}
                                   </SelectItem>
                                 ))}
@@ -2725,8 +3064,13 @@ const UnifiedAutomationControl = () => {
                                 <SelectValue placeholder="Select pin" />
                               </SelectTrigger>
                               <SelectContent>
-                                {getRelayPinsForDevice(action.target_device || "").map((pin) => (
-                                  <SelectItem key={pin.value} value={pin.value.toString()}>
+                                {getRelayPinsForDevice(
+                                  action.target_device || ""
+                                ).map((pin) => (
+                                  <SelectItem
+                                    key={pin.value}
+                                    value={pin.value.toString()}
+                                  >
                                     {pin.label}
                                   </SelectItem>
                                 ))}
@@ -2750,7 +3094,9 @@ const UnifiedAutomationControl = () => {
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="true">ON (True)</SelectItem>
-                                <SelectItem value="false">OFF (False)</SelectItem>
+                                <SelectItem value="false">
+                                  OFF (False)
+                                </SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -2787,7 +3133,9 @@ const UnifiedAutomationControl = () => {
                         <div className="space-y-3">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
-                              <Label className="text-xs">WhatsApp Number *</Label>
+                              <Label className="text-xs">
+                                WhatsApp Number *
+                              </Label>
                               <Input
                                 value={action.whatsapp_number || ""}
                                 onChange={(e) =>
@@ -2836,9 +3184,14 @@ const UnifiedAutomationControl = () => {
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
-                              <Label className="text-xs">Message Template ID</Label>
+                              <Label className="text-xs">
+                                Message Template ID
+                              </Label>
                               <Input
-                                value={action.message_template_id || "300d84f2-d962-4451-bc27-870fb99d18e7"}
+                                value={
+                                  action.message_template_id ||
+                                  "300d84f2-d962-4451-bc27-870fb99d18e7"
+                                }
                                 onChange={(e) =>
                                   updateAction(actionIndex, {
                                     ...action,
@@ -2850,9 +3203,14 @@ const UnifiedAutomationControl = () => {
                               />
                             </div>
                             <div>
-                              <Label className="text-xs">Channel Integration ID</Label>
+                              <Label className="text-xs">
+                                Channel Integration ID
+                              </Label>
                               <Input
-                                value={action.channel_integration_id || "662f9fcb-7e2b-4c1a-8eda-9aeb4a388004"}
+                                value={
+                                  action.channel_integration_id ||
+                                  "662f9fcb-7e2b-4c1a-8eda-9aeb4a388004"
+                                }
                                 onChange={(e) =>
                                   updateAction(actionIndex, {
                                     ...action,

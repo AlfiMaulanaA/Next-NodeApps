@@ -1,16 +1,19 @@
 {
-  "enable": true,
-  "broker_address": "localhost",
-  "broker_port": 1883,
-  "username": "",
-  "password": "",
-  "qos": 1,
-  "retain": true,
-  "client_id": "mqtt-config-service",
-  "reconnect_period": 3000,
-  "connect_timeout": 5000,
-  "protocol": "mqtt",
-  "clean_session": true,
-  "keepalive": 60,
-  "mac_address": "00:00:00:00:00:00"
+    "enable": true,
+    "pub_interval": 2,
+    "broker_address": "18.143.215.113",
+    "broker_address_local": "18.143.215.113",
+    "broker_port": 1883,
+    "username": "",
+    "password": "",
+    "qos": 1,
+    "retain": true,
+    "pub_topic": [
+        "telemetry"
+    ],
+    "sub_topic_system": "gspe_iot1",
+    "sub_topic_modbusRTU": "gspe_iot2",
+    "sub_topic_modbusTCP": "gspe_iot3",
+    "sub_topic_snmp": "gspe_iot4",
+    "publish_failed_data_modbusrtu": "gspe_iot5"
 }

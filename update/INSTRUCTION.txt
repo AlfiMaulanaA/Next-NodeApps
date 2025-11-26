@@ -1,0 +1,149 @@
+================================================================================
+PANDUAN PEMBARUAN APLIKASI - UPDATE INSTRUCTIONS
+================================================================================
+
+Ikuti langkah-langkah berikut untuk melakukan pembaruan aplikasi dengan file-file
+yang telah disediakan di folder update/:
+
+================================================================================
+LANGKAH 1: TAMBAH DIREKTORI ERROR-LOG KE SETTINGS
+================================================================================
+Salin direktori @update/error-log/ ke dalam @app/settings/
+
+Command:
+  cp -r ./update/error-log ./app/settings/
+
+Hasil:
+  - Direktori baru: app/settings/error-log/
+  - File baru: app/settings/error-log/page.tsx
+
+
+================================================================================
+LANGKAH 2: PERBARUI DIREKTORI LIBRARY
+================================================================================
+Hapus direktori lama @app/settings/library/ dan ganti dengan yang baru dari update
+
+Command:
+  rm -rf ./app/settings/library/
+  cp -r ./update/library ./app/settings/
+
+Hasil:
+  - Direktori lama dihapus
+  - Direktori baru: app/settings/library/ (dari update)
+
+
+================================================================================
+LANGKAH 3: PERBARUI VPN PAGE
+================================================================================
+Ganti file @app/network/vpn/page.tsx dengan @update/network/vpn/page.tsx
+
+Command:
+  cp ./update/network/vpn/page.tsx ./app/network/vpn/page.tsx
+
+Hasil:
+  - File app/network/vpn/page.tsx diperbarui dengan versi terbaru
+
+
+================================================================================
+LANGKAH 4: PERBARUI PAYLOAD STATIC
+================================================================================
+Hapus direktori lama @app/payload/static/ dan ganti dengan yang baru dari update
+
+Command:
+  rm -rf ./app/payload/static/
+  cp -r ./update/payload/static ./app/payload/
+
+Hasil:
+  - Direktori lama dihapus
+  - Direktori baru: app/payload/static/ (dari update)
+
+
+================================================================================
+LANGKAH 5: PERBARUI SNMP DATA GET
+================================================================================
+Hapus direktori lama @app/snmp-data-get/ dan ganti dengan yang baru dari update
+
+Command:
+  rm -rf ./app/snmp-data-get/
+  cp -r ./update/snmp-data-get ./app/
+
+Hasil:
+  - Direktori lama dihapus
+  - Direktori baru: app/snmp-data-get/ (dari update)
+
+
+================================================================================
+LANGKAH 6: PERBARUI CONTROL VOICE
+================================================================================
+Hapus direktori lama @app/control/voice/ dan ganti dengan yang baru dari update
+
+Command:
+  rm -rf ./app/control/voice/
+  cp -r ./update/voice ./app/control/
+
+Hasil:
+  - Direktori lama dihapus
+  - Direktori baru: app/control/voice/ (dari update)
+
+
+================================================================================
+LANGKAH 7: PERBARUI MIDDLEWARE
+================================================================================
+Ganti seluruh direktori middleware lama dengan yang baru dari update
+
+Command:
+  rm -rf ./middleware/
+  cp -r ./update/middleware ./
+
+Hasil:
+  - Seluruh middleware lama dihapus dan diganti dengan versi terbaru
+  - Semua file dan direktori dalam middleware/ diperbarui
+
+
+================================================================================
+LANGKAH OPSIONAL: VERIFIKASI PERUBAHAN
+================================================================================
+Untuk memverifikasi bahwa semua file telah diperbarui dengan benar:
+
+1. Periksa bahwa file-file baru ada di tempat yang seharusnya
+2. Jalankan lint untuk memastikan tidak ada error syntax
+3. Build aplikasi untuk memastikan semua dependensi terpenuhi
+
+Command:
+  npm run lint
+  npm run build
+
+
+================================================================================
+CATATAN PENTING
+================================================================================
+
+- Pastikan Anda berada di root direktori project sebelum menjalankan command
+- Backup folder app/ dan middleware/ sebelum melakukan update jika diperlukan
+- Setelah semua update selesai, jalankan npm install jika ada perubahan dependencies
+- Test aplikasi secara keseluruhan untuk memastikan semua fitur berfungsi dengan baik
+
+================================================================================
+RINGKASAN PERUBAHAN
+================================================================================
+
+Struktur direktori akan berubah menjadi:
+
+app/
+├── control/
+│   ├── voice/            [DIPERBARUI]
+│   └── unified/
+├── network/
+│   └── vpn/
+│       └── page.tsx      [DIPERBARUI]
+├── payload/
+│   └── static/           [DIPERBARUI]
+├── settings/
+│   ├── error-log/        [BARU]
+│   ├── library/          [DIPERBARUI]
+│   └── ...
+└── snmp-data-get/        [DIPERBARUI]
+
+middleware/               [SELURUHNYA DIPERBARUI]
+
+================================================================================

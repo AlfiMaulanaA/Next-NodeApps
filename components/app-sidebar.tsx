@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import { memo, useState } from "react";
 import {
@@ -152,7 +152,7 @@ const menuData = {
           icon: Activity,
           isUse: true,
         },
-        
+
         {
           title: "Threshold & Alerts",
           url: "/devices/threshold",
@@ -240,11 +240,11 @@ const menuData = {
           icon: Settings,
           isUse: true,
         },
-         {
+        {
           title: "RTC DS3231 Sync",
           url: "/settings/rtc-sync",
           icon: Clock,
-          isUse: false,
+          isUse: true,
         },
         {
           title: "Device Library",
@@ -270,7 +270,6 @@ const menuData = {
           icon: Info,
           isUse: true,
         },
-
       ],
     },
   ],
@@ -333,7 +332,9 @@ export const AppSidebar = memo(function AppSidebar() {
       >
         {menuData.groups.map((group, groupIndex) => {
           // Filter items that have isUse: true
-          const visibleItems = group.items.filter(item => item.isUse !== false);
+          const visibleItems = group.items.filter(
+            (item) => item.isUse !== false
+          );
 
           // Only render the group if it has visible items
           if (visibleItems.length === 0) {

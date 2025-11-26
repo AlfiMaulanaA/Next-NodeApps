@@ -1,4 +1,4 @@
 {
-    "NODE_NAME": "pontianak/gateway/main",
-    "BASE_TOPIC_MQTT": "iot/"
+    "NODE_NAME": "TEST_NODE_006",
+    "BASE_TOPIC_MQTT": "NEW_TOPIC/tes/"
 }

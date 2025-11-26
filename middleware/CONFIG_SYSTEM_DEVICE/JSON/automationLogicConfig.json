@@ -1,1 +1,100 @@
-[]
+[
+  {
+    "rule_name": "Test Logic Rulesasa",
+    "trigger_groups": [
+      {
+        "group_name": "Group 1",
+        "group_operator": "AND",
+        "triggers": [
+          {
+            "device_name": "Drycontact1",
+            "trigger_type": "drycontact",
+            "pin_number": 1,
+            "condition_operator": "is",
+            "target_value": true,
+            "device_topic": "modular/drycontact"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action_type": "control_relay",
+        "target_device": "relay_device",
+        "relay_pin": 1,
+        "target_value": true,
+        "delay_on": 0,
+        "delay_off": 0,
+        "description": "",
+        "target_mac": "",
+        "target_address": 0,
+        "target_bus": 0
+      }
+    ],
+    "id": "1e058d9e-a497-458f-93cd-57c2b0da4b42",
+    "created_at": "2025-11-25 21:11:09",
+    "updated_at": "2025-11-25 21:32:33"
+  },
+  {
+    "rule_name": "Test Logic Rule",
+    "trigger_groups": [
+      {
+        "group_name": "Group 1",
+        "group_operator": "AND",
+        "triggers": [
+          {
+            "device_name": "Drycontact1",
+            "trigger_type": "drycontact",
+            "pin_number": 1,
+            "condition_operator": "is",
+            "target_value": true,
+            "device_topic": "modular/drycontact"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action_type": "control_relay",
+        "target_device": "relay_device",
+        "relay_pin": 1,
+        "target_value": true,
+        "delay_on": 0,
+        "delay_off": 0
+      }
+    ],
+    "id": "a95f2cc3-55c9-42b7-9546-ec3c191f4987",
+    "created_at": "2025-11-25 21:11:36"
+  },
+  {
+    "rule_name": "Test Logic Rule",
+    "trigger_groups": [
+      {
+        "group_name": "Group 1",
+        "group_operator": "AND",
+        "triggers": [
+          {
+            "device_name": "Drycontact1",
+            "trigger_type": "drycontact",
+            "pin_number": 1,
+            "condition_operator": "is",
+            "target_value": true,
+            "device_topic": "modular/drycontact"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "action_type": "control_relay",
+        "target_device": "relay_device",
+        "relay_pin": 1,
+        "target_value": true,
+        "delay_on": 0,
+        "delay_off": 0
+      }
+    ],
+    "id": "e5f333b7-8dec-4034-89e1-1aaa0ba4e766",
+    "created_at": "2025-11-25 21:11:58"
+  }
+]
